@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:8afcbc473d71d0ff546e443c7b2c21e2f5525928bc6a42748d7fd8c20b112be5",
+  "approval_digest": "sha256:974e2ae57a8dbdc51485d50805d107b0bb648ad225886612531bb89b625a142d",
   "approved_date": "2026-08-17",
-  "authorization_basis": "Re-registration authorized by the maintainer in an interactive session on 2026-08-17 ('kotama'). The instrument changed twice. The regression verdict no longer adjudicates inside the measurement's own spread: measured, the frozen reference built with its own flags and scored against ITSELF was returning 'fail' at 0.9942 / 0.9996 / 0.9994, because the comparison was strict against a threshold of exactly 1.0. And the governed path gained the worker argv it lacked, without which every request for this Harness died at minting and the bridge recorded only 'inconclusive'. Measured after the change: the clean control passes at validate, both negative controls still fail and for different reasons, the reference against itself is inconclusive at one repetition and passes at three, and the parity probe returns passed=True with the clean control resolved. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
-  "evidence_bundle_digest": "sha256:08d376388c6db5e2a5d9858402e4f5950440f5ccd48bddb2fc4cc42d1c78e98d",
+  "authorization_basis": "reviewed the five-execution control sequence and its discrimination evidence",
+  "evidence_bundle_digest": "sha256:4545b1ead879d17bdd57ccdb85c84d29410a9ff7ef9dd10ed019affc98509f3f",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-dense-fp64-problem-correctness",
   "harness_manifest_digest": "sha256:42931413275cdf788a65dedbfa8c1e72476f3d61745b379ee2affd5fda5d773d",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:cda3124f6cfc80f76ee4eb5d48e5aedc4d8ae6417230e8bb7182885fbe8b2b87",
+  "registration_report_digest": "sha256:ecf31a40327e8d6bd923667f89b7025e69eabfdb8685997a973a0821b5ea23ed",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

@@ -3,7 +3,7 @@
   "gates": [
     {
       "detail": "clean control verdict 'pass'",
-      "evidence_digest": "sha256:75ec9dcc433f72e0f698cb73ec18d2eba0f83449272484e804ebdfb3eb5ff385",
+      "evidence_digest": "sha256:a0cadb0855bc9591e20a247121cc2f47842605c4f2b9798b02d6a37e2ebe08d5",
       "gate_id": "reference_oracle_pass",
       "passed": true
     },
@@ -15,13 +15,13 @@
     },
     {
       "detail": "passed at spread 0.0",
-      "evidence_digest": "sha256:904968e8550883231985c9d99f0c7b8434a228f9b0966f83c55006e6ebd59586",
+      "evidence_digest": "sha256:a28066913e541dc32a0903b0ddd73126d4286442d76001dcd9591184ab36a7fa",
       "gate_id": "clean_control_pass",
       "passed": true
     },
     {
       "detail": "probe passed against this driver",
-      "evidence_digest": "sha256:87d2123563af3a4302af8ded91d0544ad57c53633651af1aaec8a588542a7055",
+      "evidence_digest": "sha256:7ac3c6eef42f42faea7a3bdb498c578fd6771133381a480572aed4aaaa49acb0",
       "gate_id": "official_runner_parity",
       "passed": true
     },
@@ -56,7 +56,7 @@
       "passed": true
     },
     {
-      "detail": "pinned at a8bb13a200ef, an ancestor of 2f8c458e6460",
+      "detail": "pinned at a8bb13a200ef, an ancestor of 096b873856a0",
       "evidence_digest": "sha256:a9fbf0776e79e1234bee75704a7c940129e23f2545f153686ae2600adbd7b890",
       "gate_id": "source_revision_digest_pin",
       "passed": true
@@ -94,6 +94,6 @@
   ],
   "harness_id": "hpc/gemm-dense-fp64-problem-correctness",
   "manifest_digest": "sha256:42931413275cdf788a65dedbfa8c1e72476f3d61745b379ee2affd5fda5d773d",
-  "report_digest": "sha256:cda3124f6cfc80f76ee4eb5d48e5aedc4d8ae6417230e8bb7182885fbe8b2b87",
+  "report_digest": "sha256:ecf31a40327e8d6bd923667f89b7025e69eabfdb8685997a973a0821b5ea23ed",
   "schema_version": "ari.harness-registration-report/v1"
 }

@@ -1,0 +1,202 @@
+{
+  "baseline_lock_digest": "sha256:f7fd4c0da9435735250e1a4ca9d51844be7ff737eac3c8111108478bf1e5f9a5",
+  "clean_control_verdict": "pass",
+  "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
+  "container_reference": "singularity:orfs-26q3-openroad-7304ba78.sif",
+  "dataset_digest": "sha256:17d6b66d3387670643f197c4e403816866fcfea208e886985bbe93f5b2fd0590",
+  "dataset_revision": "native-perf-gemm-cases/v1@scored-2026q3",
+  "driver_digest": "sha256:abb0f0efc33db25dd3071b0814c9d066cd047c8e1f3574f640155b22e905eb9d",
+  "driver_revision": "ari.assurance.problem-correctness/v1",
+  "environment_digest": "sha256:1e98cd1990cff75e6529f4167dd6291f4a2045e6c95c6d1ba464175f715e5910",
+  "harness_id": "hpc/gemm-dense-fp64-problem-correctness",
+  "harness_version": "1.0.0",
+  "isolation": {
+    "basis": {
+      "container_identity_matched_the_manifest_pin": true,
+      "declared_networks": [
+        "deny"
+      ],
+      "emitted_result_schema": "ari.native-problem-correctness-report/v1",
+      "every_run_returned_a_parsed_typed_report": true,
+      "manifest_pins_that_schema_and_its_digest": true,
+      "oracle_visibility_note": "read off the manifest's hidden_test_policy; this records what the manifest declares, not an execution that tried to reach the oracle",
+      "target_digest_unchanged_by_run": {
+        "clean-certify": true,
+        "clean-certify-repeat": true,
+        "clean-screen": true,
+        "negative-interface-screen": true,
+        "negative-screen": true
+      }
+    },
+    "network_isolation": "proved",
+    "oracle_visibility": "denied",
+    "result_schema_conformant": true,
+    "target_write_isolation": "proved"
+  },
+  "manifest_digest": "sha256:42931413275cdf788a65dedbfa8c1e72476f3d61745b379ee2affd5fda5d773d",
+  "negative_control_verdict": "fail",
+  "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
+  "problem_revision": "gemm-dense-fp64/v1@2026q3",
+  "runs": [
+    {
+      "attempt_id": "har-49c880717973d50700af6cfa1896d127-0",
+      "attestation_digest": "sha256:3f717cb8141b5b980ca0098550d16eddd6e09de25ac97080bd5b0d2839d3fc85",
+      "candidate_provenance": "reference_gemm.c",
+      "discrimination": {
+        "build_error": null,
+        "case_count": 3,
+        "every_case_wrote_the_expected_element_count": true,
+        "failed_case_count": 0,
+        "interface_error": null,
+        "label": "clean-screen",
+        "residual_ratio_limit": 1.0,
+        "verifier_report_digest": "sha256:fc479d6187ad16a4d02886a194e1d4c39b8e49a8a7d5b578396d2facb07fcbaf",
+        "worst_residual_ratio": 0.0014228149641327523
+      },
+      "label": "clean-screen",
+      "nondeterminism_observations": [],
+      "observed_property_verdicts": {
+        "interface-conformance": "pass",
+        "numerical-equivalence": "pass"
+      },
+      "observed_verdict": "pass",
+      "required_property_verdicts": {
+        "interface-conformance": "pass",
+        "numerical-equivalence": "pass"
+      },
+      "required_verdict": "pass",
+      "retry_index": 0,
+      "tier": "screen",
+      "why": "the problem's frozen reference is right about its own question"
+    },
+    {
+      "attempt_id": "har-64417c38d6f8bc038f97742a09823f59-0",
+      "attestation_digest": "sha256:cc3735f46e9ea4b25e44cf5f96e75ade306bce0308796da2754b0d1bb9ba8068",
+      "candidate_provenance": "reference_gemm.c",
+      "discrimination": {
+        "build_error": null,
+        "case_count": 3,
+        "every_case_wrote_the_expected_element_count": true,
+        "failed_case_count": 0,
+        "interface_error": null,
+        "label": "clean-certify",
+        "residual_ratio_limit": 1.0,
+        "verifier_report_digest": "sha256:4e9c0463366e0281afd8d2145f8dba273d6b3c69ee9cf6d026a1ae812490750c",
+        "worst_residual_ratio": 0.0018343480604064522
+      },
+      "label": "clean-certify",
+      "nondeterminism_observations": [],
+      "observed_property_verdicts": {
+        "interface-conformance": "pass",
+        "numerical-equivalence": "pass"
+      },
+      "observed_verdict": "pass",
+      "required_property_verdicts": {
+        "interface-conformance": "pass",
+        "numerical-equivalence": "pass"
+      },
+      "required_verdict": "pass",
+      "retry_index": 0,
+      "tier": "certify",
+      "why": "and stays right at the tier a publication claim is made at"
+    },
+    {
+      "attempt_id": "har-54809f57b03341ce343b8569579befe6-1",
+      "attestation_digest": "sha256:5fa93dd5993cd57023827da063f1a646ea1d218ea37a8ff05d7085aa93fe6b90",
+      "candidate_provenance": "reference_gemm.c",
+      "discrimination": {
+        "build_error": null,
+        "case_count": 3,
+        "every_case_wrote_the_expected_element_count": true,
+        "failed_case_count": 0,
+        "interface_error": null,
+        "label": "clean-certify-repeat",
+        "residual_ratio_limit": 1.0,
+        "verifier_report_digest": "sha256:cf54ffec91a64cf5f40bb0b7f487590595bfce87ec34e1d42afdc21c0c362492",
+        "worst_residual_ratio": 0.0017636314387713052
+      },
+      "label": "clean-certify-repeat",
+      "nondeterminism_observations": [],
+      "observed_property_verdicts": {
+        "interface-conformance": "pass",
+        "numerical-equivalence": "pass"
+      },
+      "observed_verdict": "pass",
+      "required_property_verdicts": {
+        "interface-conformance": "pass",
+        "numerical-equivalence": "pass"
+      },
+      "required_verdict": "pass",
+      "retry_index": 1,
+      "tier": "certify",
+      "why": "and again, at a different derived seed: the verdict is stable across instances, which is a weaker and more honest claim than digest equality"
+    },
+    {
+      "attempt_id": "har-71ab9a69e5124b0bbba7ea012e2d46c7-0",
+      "attestation_digest": "sha256:e2fed4fd9f19d8f36a51e5501e7f49688144ad4f5f9ec104a039a97753e2ebd4",
+      "candidate_provenance": "wrong_gemm.c",
+      "discrimination": {
+        "build_error": null,
+        "case_count": 3,
+        "every_case_wrote_the_expected_element_count": true,
+        "failed_case_count": 3,
+        "interface_error": null,
+        "label": "negative-screen",
+        "residual_ratio_limit": 1.0,
+        "verifier_report_digest": "sha256:867ced458ad073719c638ac206d5032c17094cd4d54dec5764fa3c53d5f2df6d",
+        "worst_residual_ratio": 723785762413.8441
+      },
+      "label": "negative-screen",
+      "nondeterminism_observations": [],
+      "observed_property_verdicts": {
+        "interface-conformance": "pass",
+        "numerical-equivalence": "fail"
+      },
+      "observed_verdict": "fail",
+      "required_property_verdicts": {
+        "interface-conformance": "pass",
+        "numerical-equivalence": "fail"
+      },
+      "required_verdict": "fail",
+      "retry_index": 0,
+      "tier": "screen",
+      "why": "a fast-but-wrong kernel is caught BY THE ORACLE: it builds, it conforms, it writes every element, and it misses the bound"
+    },
+    {
+      "attempt_id": "har-a1803ae4a8353ffea10b5fd7f4899261-0",
+      "attestation_digest": "sha256:f3b3ea58a7b81540b212898b769072e4183bd4fb0859609c596283d68b18e769",
+      "candidate_provenance": "seed_gemm.c + the driver's file-scope-global transform",
+      "discrimination": {
+        "build_error": null,
+        "case_count": 0,
+        "every_case_wrote_the_expected_element_count": null,
+        "failed_case_count": 0,
+        "interface_error": "candidate kernel exports symbols other than 'gemm': ['ari_problem_correctness_probe_symbol']",
+        "label": "negative-interface-screen",
+        "residual_ratio_limit": 1.0,
+        "verifier_report_digest": "sha256:423478bd61cd24f95039826ece8b886e7c7e97c7ae4d772d16de988b799a322f",
+        "worst_residual_ratio": null
+      },
+      "label": "negative-interface-screen",
+      "nondeterminism_observations": [],
+      "observed_property_verdicts": {
+        "interface-conformance": "fail",
+        "numerical-equivalence": "fail"
+      },
+      "observed_verdict": "fail",
+      "required_property_verdicts": {
+        "interface-conformance": "fail",
+        "numerical-equivalence": "fail"
+      },
+      "required_verdict": "fail",
+      "retry_index": 0,
+      "tier": "screen",
+      "why": "a kernel that exports a symbol the contract does not grant is refused by the object audit; this is the only run in which interface-conformance is ever seen to fail"
+    }
+  ],
+  "schema_version": "ari.harness-control-sequence/v1",
+  "sequence_digest": "sha256:3f045753cb75e70dcb81f0f18f01af2ef5db882154df3d3bcaf52a24250ca7e9",
+  "target_logical_name": "candidate_gemm.c",
+  "verdict_source": "read back off HarnessAttestationV1 artifacts minted from container executions; no control outcome in this record was asserted",
+  "verification_contract_digest": "sha256:1e2820e737c414b34243b2af29a39c25a38847e3773d15890f00794e1b527ea7"
+}

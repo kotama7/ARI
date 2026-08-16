@@ -1,0 +1,224 @@
+{
+  "active_harness_lock_digest": "sha256:f7fd4c0da9435735250e1a4ca9d51844be7ff737eac3c8111108478bf1e5f9a5",
+  "attempt_id": "har-64417c38d6f8bc038f97742a09823f59-0",
+  "attestation_digest": "sha256:cc3735f46e9ea4b25e44cf5f96e75ade306bce0308796da2754b0d1bb9ba8068",
+  "baseline_harness_lock_digest": "sha256:f7fd4c0da9435735250e1a4ca9d51844be7ff737eac3c8111108478bf1e5f9a5",
+  "capability_binding_lock_digest": "sha256:194df4714255447584ae860c72eda00149f947de24df6dcc1812e4fe9acc6980",
+  "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
+  "dataset_digest": "sha256:17d6b66d3387670643f197c4e403816866fcfea208e886985bbe93f5b2fd0590",
+  "driver_digest": "sha256:abb0f0efc33db25dd3071b0814c9d066cd047c8e1f3574f640155b22e905eb9d",
+  "epoch_id": "registration-epoch",
+  "evidence_artifact_refs": [
+    {
+      "digest": "sha256:e4d69d393becb05133374089079b8e9f83190cb3deb6cfbc30cc8381f5c67a36",
+      "logical_name": ".ari-execution/e4d69d393becb05133374089079b8e9f83190cb3deb6cfbc30cc8381f5c67a36.stdout.log",
+      "media_type": "text/plain; charset=utf-8",
+      "role": "harness-stdout",
+      "schema_version": "ari.research-artifact-ref/v1",
+      "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
+    },
+    {
+      "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "logical_name": ".ari-execution/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.stderr.log",
+      "media_type": "text/plain; charset=utf-8",
+      "role": "harness-stderr",
+      "schema_version": "ari.research-artifact-ref/v1",
+      "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
+    }
+  ],
+  "execution_identity": "sha256:c64559064173316936708ecd059b03a9cfdc64a0aed8441136eedea381c5724a",
+  "execution_result_digest": "sha256:063b092fe6cc6ad29be568f827b123f3265014a2d6365ccc4700583ff6901541",
+  "harness_manifest_digest": "sha256:42931413275cdf788a65dedbfa8c1e72476f3d61745b379ee2affd5fda5d773d",
+  "infrastructure_status": "ready",
+  "knowledge_skill_use_digest": "sha256:8e2a116b1daea019352a9ed94735fc604385b48c7d554ce13a812255068422da",
+  "node_id": "registration-clean-certify",
+  "nondeterminism_declaration": "none",
+  "nondeterminism_observations": [],
+  "oracle_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
+  "producer_component_id": "fixed_verifier_v1",
+  "producer_epoch_id": "registration-epoch",
+  "producer_prompt_hash": null,
+  "property_results": [
+    {
+      "covered_atom_digests": [
+        "sha256:51ebfedff96c30de23e7a2691298badfd9c91ba30b523c289348ef9da7355572"
+      ],
+      "evidence_artifact_refs": [
+        {
+          "digest": "sha256:e4d69d393becb05133374089079b8e9f83190cb3deb6cfbc30cc8381f5c67a36",
+          "logical_name": ".ari-execution/e4d69d393becb05133374089079b8e9f83190cb3deb6cfbc30cc8381f5c67a36.stdout.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stdout",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
+        },
+        {
+          "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "logical_name": ".ari-execution/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.stderr.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stderr",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
+        }
+      ],
+      "measurements": {
+        "case_count": 3,
+        "failed_case_count": 0,
+        "output_elements_by_case": {
+          "1000x1000x1000": {
+            "expected": 1000000,
+            "written": 1000000
+          },
+          "1500x600x1500": {
+            "expected": 2250000,
+            "written": 2250000
+          },
+          "2000x500x500": {
+            "expected": 1000000,
+            "written": 1000000
+          }
+        },
+        "worst_residual_ratio": 0.0018343480604064522,
+        "worst_residual_ratio_by_case": {
+          "1000x1000x1000": 0.0008372426933196789,
+          "1500x600x1500": 0.0012841822969933518,
+          "2000x500x500": 0.0018343480604064522
+        }
+      },
+      "method": "differential-testing",
+      "oracle_comparison": {
+        "build_error": null,
+        "candidate_toolchain": {
+          "requested": null,
+          "resolved_path": "/usr/local/bin/wrapped-cc/cc",
+          "status": "default",
+          "version": "gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0"
+        },
+        "dataset_revision": "native-perf-gemm-cases/v1@scored-2026q3",
+        "interface_error": null,
+        "oracle": "gemm-family-residual-bound",
+        "problem": "gemm-dense-fp64/v1@2026q3",
+        "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
+        "report_digest": "sha256:4e9c0463366e0281afd8d2145f8dba273d6b3c69ee9cf6d026a1ae812490750c"
+      },
+      "property_id": "numerical-equivalence",
+      "tested_scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "tier": "certify",
+      "tolerance_evidence": {
+        "error_model": "per-element backward-error bound (family oracle)",
+        "residual_ratio_limit": 1.0
+      },
+      "verdict": "pass"
+    },
+    {
+      "covered_atom_digests": [
+        "sha256:64d1962cea65ccfc05dc58a171e6b495e33108ddfe5b32693a3473464415fe21"
+      ],
+      "evidence_artifact_refs": [
+        {
+          "digest": "sha256:e4d69d393becb05133374089079b8e9f83190cb3deb6cfbc30cc8381f5c67a36",
+          "logical_name": ".ari-execution/e4d69d393becb05133374089079b8e9f83190cb3deb6cfbc30cc8381f5c67a36.stdout.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stdout",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
+        },
+        {
+          "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "logical_name": ".ari-execution/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.stderr.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stderr",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
+        }
+      ],
+      "measurements": {
+        "case_count": 3,
+        "failed_case_count": 0,
+        "output_elements_by_case": {
+          "1000x1000x1000": {
+            "expected": 1000000,
+            "written": 1000000
+          },
+          "1500x600x1500": {
+            "expected": 2250000,
+            "written": 2250000
+          },
+          "2000x500x500": {
+            "expected": 1000000,
+            "written": 1000000
+          }
+        },
+        "worst_residual_ratio": 0.0018343480604064522,
+        "worst_residual_ratio_by_case": {
+          "1000x1000x1000": 0.0008372426933196789,
+          "1500x600x1500": 0.0012841822969933518,
+          "2000x500x500": 0.0018343480604064522
+        }
+      },
+      "method": "interface-check",
+      "oracle_comparison": {
+        "build_error": null,
+        "candidate_toolchain": {
+          "requested": null,
+          "resolved_path": "/usr/local/bin/wrapped-cc/cc",
+          "status": "default",
+          "version": "gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0"
+        },
+        "dataset_revision": "native-perf-gemm-cases/v1@scored-2026q3",
+        "interface_error": null,
+        "oracle": "gemm-family-residual-bound",
+        "problem": "gemm-dense-fp64/v1@2026q3",
+        "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
+        "report_digest": "sha256:4e9c0463366e0281afd8d2145f8dba273d6b3c69ee9cf6d026a1ae812490750c"
+      },
+      "property_id": "interface-conformance",
+      "tested_scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "tier": "certify",
+      "tolerance_evidence": {
+        "error_model": "per-element backward-error bound (family oracle)",
+        "residual_ratio_limit": 1.0
+      },
+      "verdict": "pass"
+    }
+  ],
+  "research_contract_digest": "sha256:fd8719ae8c8bca2d8f289141e6ae18e552eb14b91bcd2a157f15d5d2fe6bdfe0",
+  "retry_index": 0,
+  "run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness",
+  "schema_version": "ari.harness-attestation/v1",
+  "target_digest": "sha256:6e56b8e6350e8d57e0f992dc87c8d84b22506375239755608f8fa0876e0cd436",
+  "target_kind": "benchmark-submission",
+  "target_logical_name": "candidate_gemm.c",
+  "verdict": "pass",
+  "verification_contract_digest": "sha256:1e2820e737c414b34243b2af29a39c25a38847e3773d15890f00794e1b527ea7"
+}

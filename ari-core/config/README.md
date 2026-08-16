@@ -68,12 +68,30 @@ Shipped default config files (YAML) loaded by ari-core.
         - `negative-screen-stderr.log` — stderr from invalid GEMM screening.
         - `negative-screen-stdout.log` — stdout from invalid GEMM screening.
     - `hpc_gemm_dense_fp64_problem_correctness/` — registration evidence for the problem-pinned GEMM correctness harness, produced by three parity-probe runs from a clean worktree at the commit the manifest pins. Its `measurement_environment.json` records that this harness pins no placement, because a residual bound does not depend on the allocation's shape — the one field a performance harness's evidence must carry and this one must not.
+      - `clean-certify-repeat.attestation.json` — TODO
+      - `clean-certify.attestation.json` — TODO
+      - `clean-screen.attestation.json` — TODO
+      - `control_sequence.json` — TODO
       - `gate_findings.json` — one record per registration gate: id, verdict and the reason in words.
       - `measurement_environment.json` — the registration commit, the captured environment, and the note that this harness pins NO placement — a residual bound does not depend on the allocation's shape, which is the one field a performance harness's evidence must carry and this one must not.
       - `multiple_run_stability.json` — three runs of a DETERMINISTIC verifier: there is no spread to measure, so what repeating establishes is that the answers are identical.
+      - `negative-interface-screen.attestation.json` — TODO
+      - `negative-screen.attestation.json` — TODO
       - `official_runner_parity.json` — the parity probe's four controls — the frozen reference, the wrong kernel that must fail on the residual bound, the correct-but-slow kernel that must PASS, and the extra-symbol kernel the object audit must refuse.
       - `registration_evidence.json` — the reviewed evidence bundle, pinning every artifact above by digest.
       - `registration_report.json` — the minted report: fifteen gates, each with its evidence digest.
+      - `resource_measurements.json` — TODO
+      - `logs/` — TODO
+        - `clean-certify-repeat-stderr.log` — TODO
+        - `clean-certify-repeat-stdout.log` — TODO
+        - `clean-certify-stderr.log` — TODO
+        - `clean-certify-stdout.log` — TODO
+        - `clean-screen-stderr.log` — TODO
+        - `clean-screen-stdout.log` — TODO
+        - `negative-interface-screen-stderr.log` — TODO
+        - `negative-interface-screen-stdout.log` — TODO
+        - `negative-screen-stderr.log` — TODO
+        - `negative-screen-stdout.log` — TODO
     - `hpc_gemm_performance/` — registration evidence for the native GEMM performance harness, produced by three parity-probe runs on an exclusive compute node from a clean worktree.
       - `gate_findings.json` — one record per registration gate: id, verdict, the reason in words, and a digest of the artifact the gate READ, so two registrations agree only if they read the same bytes.
       - `measurement_environment.json` — the node class and registration commit, recorded because a verdict is a statement about a machine: the same commit and the same clean worktree scored 15/15 on the aarch64 node and 13/15 on an exclusive x86 64-core node, where the clean control did not resolve.

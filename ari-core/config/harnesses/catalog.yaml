@@ -1,5 +1,5 @@
 schema_version: 1
-catalog_source_revision: ari-harness-catalog/1@2f8c458e64605e53a679151b08633d24e4172c33
+catalog_source_revision: ari-harness-catalog/1@096b873856a08be74f874f23d7caf63fd7de2364
 driver_protocol_version: ari.harness-driver/v1
 property_vocabulary_version: ari.assurance-properties/v1
 entries:
@@ -14,11 +14,11 @@ entries:
 - id: hpc/gemm-dense-fp64-problem-correctness
   manifest: builtin/hpc_gemm_problem_correctness.yaml
   registration_report: reports/hpc_gemm_dense_fp64_problem_correctness.registration.json
-  registration_report_digest: sha256:cda3124f6cfc80f76ee4eb5d48e5aedc4d8ae6417230e8bb7182885fbe8b2b87
+  registration_report_digest: sha256:ecf31a40327e8d6bd923667f89b7025e69eabfdb8685997a973a0821b5ea23ed
   registration_evidence: evidence/hpc_gemm_dense_fp64_problem_correctness/registration_evidence.json
-  registration_evidence_digest: sha256:08d376388c6db5e2a5d9858402e4f5950440f5ccd48bddb2fc4cc42d1c78e98d
+  registration_evidence_digest: sha256:4545b1ead879d17bdd57ccdb85c84d29410a9ff7ef9dd10ed019affc98509f3f
   promotion_approval: approvals/hpc_gemm_dense_fp64_problem_correctness.approval.json
-  promotion_approval_digest: sha256:8afcbc473d71d0ff546e443c7b2c21e2f5525928bc6a42748d7fd8c20b112be5
+  promotion_approval_digest: sha256:974e2ae57a8dbdc51485d50805d107b0bb648ad225886612531bb89b625a142d
 - id: hpc/gemm-performance
   manifest: builtin/hpc_gemm_performance.yaml
   registration_report: reports/hpc_gemm_performance.registration.json
