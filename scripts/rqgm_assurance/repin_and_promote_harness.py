@@ -159,50 +159,70 @@ def check(args) -> int:
 
 
 def promote(args) -> int:
-    path = BUILTIN / args.manifest
-    manifest = _load(path)
-    stale = stale_pins(manifest)
-    print(f"harness   : {manifest.id}")
-    for name, (pinned, computed) in sorted(stale.items()):
-        print(f"  re-pin  : {name}  {pinned[:26]}… -> {computed[:26]}…")
-    if not stale:
-        print("  pins    : already current")
+    """Re-pin, register and sign every named harness.
 
-    differs = _placement_mismatch(manifest)
-    if differs:
-        print(f"REFUSED: this is not the placement {manifest.id} pins: {differs}")
-        print("Its evidence describes that machine. Run this there.")
-        return 2
+    EVERY REGISTRATION RUNS BEFORE ANY WRITE, and that ordering is not tidiness.
+    ``register_harness`` refuses a dirty tree, and writing one harness's evidence
+    dirties the tree for the next -- so promoting three in sequence promoted the
+    first and refused the other two, which is a tool that silently does part of
+    what it was asked. Measured, on exactly that: gemm-correctness signed, spmm
+    and stencil raised. Gates first, writes second, so the batch is all or none.
+    """
+    loaded, needs_commit = [], []
+    for name in args.manifests:
+        path = BUILTIN / name
+        manifest = _load(path)
+        stale = stale_pins(manifest)
+        print(f"harness   : {manifest.id}")
+        for field, (pinned, computed) in sorted(stale.items()):
+            print(f"  re-pin  : {field}  {pinned[:26]}… -> {computed[:26]}…")
+        if not stale:
+            print("  pins    : already current")
+        differs = _placement_mismatch(manifest)
+        if differs:
+            print(f"REFUSED: this is not the placement {manifest.id} pins: {differs}")
+            print("Its evidence describes that machine. Run this there.")
+            return 2
+        repinned = repin(manifest)
+        if stale:
+            needs_commit.append((path, repinned))
+        loaded.append((name, repinned))
 
-    manifest = repin(manifest)
-    if stale and not args.dry_run:
-        path.write_text(yaml.safe_dump(manifest.model_dump(mode="json"),
-                                       sort_keys=True, default_flow_style=False),
-                        encoding="utf-8")
-        print(f"  manifest: {manifest.manifest_digest}")
-        print("Commit the manifest, then re-run: registration refuses a dirty tree.")
+    if needs_commit and not args.dry_run:
+        for path, manifest in needs_commit:
+            path.write_text(yaml.safe_dump(manifest.model_dump(mode="json"),
+                                           sort_keys=True, default_flow_style=False),
+                            encoding="utf-8")
+            print(f"  manifest: {manifest.id} -> {manifest.manifest_digest}")
+        print(f"Re-pinned {len(needs_commit)} manifest(s). Commit them, then re-run: "
+              f"registration refuses a dirty tree.")
         return 3
 
-    driver = builtin_driver_map()[manifest.driver.revision]
-    report = register_harness(manifest, driver, runs=args.runs,
-                              allow_dirty=False)
-    passed = sum(1 for gate in report.gates if gate.passed)
-    print(f"gates     : {passed}/{len(report.gates)}  decision={report.decision!r}")
-    for gate in report.gates:
-        if not gate.passed:
-            print(f"  FAIL {gate.gate_id}: {gate.detail[:96]}")
-    if report.decision != "eligible-for-verified":
-        print("REFUSED: nothing is written; a rejected registration is a result")
-        return 4
+    earned = []
+    for name, manifest in loaded:
+        driver = builtin_driver_map()[manifest.driver.revision]
+        report = register_harness(manifest, driver, runs=args.runs, allow_dirty=False)
+        passed = sum(1 for gate in report.gates if gate.passed)
+        print(f"gates     : {manifest.id}  {passed}/{len(report.gates)}  "
+              f"decision={report.decision!r}")
+        for gate in report.gates:
+            if not gate.passed:
+                print(f"  FAIL {gate.gate_id}: {gate.detail[:96]}")
+        if report.decision != "eligible-for-verified":
+            print("REFUSED: nothing is written for ANY harness in this batch; "
+                  "a rejected registration is a result")
+            return 4
+        earned.append((name, manifest, driver, report))
+
     if args.dry_run:
         print("dry run: gates pass; no evidence, approval or catalog row written")
         return 0
-
-    _write_promotion(manifest, driver, report, args)
+    for name, manifest, driver, report in earned:
+        _write_promotion(name, manifest, driver, report, args)
     return 0
 
 
-def _write_promotion(manifest, driver, report, args) -> None:
+def _write_promotion(manifest_name, manifest, driver, report, args) -> None:
     from ari.assurance.native_perf_common import (measurement_environment,
                                                   measurement_placement)
     from ari.orchestrator.node_summary_view import scrub_host_identity
@@ -280,7 +300,7 @@ def _write_promotion(manifest, driver, report, args) -> None:
     catalog_path = HARNESS_ROOT / "catalog.yaml"
     catalog = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
     entry = {"id": manifest.id,
-             "manifest": f"builtin/{args.manifest}",
+             "manifest": f"builtin/{manifest_name}",
              "registration_report": f"reports/{slug}.registration.json",
              "registration_report_digest": report.report_digest,
              "registration_evidence": f"evidence/{slug}/registration_evidence.json",
@@ -306,7 +326,11 @@ def main(argv: list[str] | None = None) -> int:
     checker.set_defaults(func=check)
 
     promoter = sub.add_parser("promote", help="re-pin, register and sign one harness")
-    promoter.add_argument("manifest", help="file name under config/harnesses/builtin/")
+    promoter.add_argument("manifests", nargs="+",
+                          help="file name(s) under config/harnesses/builtin/. "
+                               "Several may be given: every registration runs "
+                               "before any write, because writing one dirties "
+                               "the tree the next one refuses.")
     promoter.add_argument("--actor-id", required=True,
                           help="the human maintainer authorizing the promotion")
     promoter.add_argument("--authorization-basis", required=True,
