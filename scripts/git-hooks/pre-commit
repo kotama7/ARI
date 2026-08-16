@@ -81,9 +81,13 @@ if [ -z "${ARI_SKIP_PIN_CHECK:-}" ]; then
           echo "  A stale pin does not fail loudly. prepare() refuses the harness at run time" >&2
           echo "  with \"driver bytes drifted\", so it stays registered and signed and cannot run." >&2
           echo "" >&2
-          echo "  Re-pin and re-register:" >&2
-          echo "    scripts/rqgm_assurance/repin_and_promote_harness.py promote <manifest>.yaml \\" >&2
-          echo "      --actor-id <maintainer> --authorization-basis '<what you actually saw>'" >&2
+          echo "  Re-pin the manifest:" >&2
+          echo "    scripts/rqgm_assurance/repin_and_promote_harness.py repin <manifest>.yaml" >&2
+          echo "" >&2
+          echo "  That moves manifest_digest, so the evidence bundle and the signature over" >&2
+          echo "  it then have to be RE-EARNED by running the harness's controls. The re-pin" >&2
+          echo "  surface names the attesting surface for the family; it writes no evidence" >&2
+          echo "  itself, because it runs no controls." >&2
           echo "" >&2
           echo "  To commit anyway (the re-registration is a separate commit):" >&2
           echo "    ARI_SKIP_PIN_CHECK=1 git commit ..." >&2

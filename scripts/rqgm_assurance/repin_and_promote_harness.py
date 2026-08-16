@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Re-pin a registered Harness to the code it is measured by, and promote it.
+"""Re-pin a registered Harness to the code it is measured by. Nothing else.
 
 WHY THIS EXISTS. A manifest pins DERIVED values -- the driver's content digest,
 the digest of the result schema ARI ships for the type that driver emits, and
@@ -15,13 +15,11 @@ the performance driver's digest and the problem-correctness driver's.
 
 WHY IT IS NOT ``promote_native_harnesses.py``. That script CONSTRUCTS the three
 ARI-native manifests, which buys one real thing -- a typed-in driver pin is
-impossible at the moment of writing -- and cannot do the job here for two
-reasons. Its ``_immutable_outputs`` refuses to overwrite any existing artifact
-whose bytes differ, so it cannot move a pin that is already on disk; and it
-hands ``registration_report`` a set of gates with ``passed=True`` written into
-them, which that function stopped accepting at ``ccdedc9`` on the grounds that
-there is deliberately no way to hand it a pre-decided gate. It raises TypeError
-today. This surface computes the pins and earns the gates instead.
+impossible at the moment of writing -- and cannot do the job here: its
+``_immutable_outputs`` refuses to overwrite any existing artifact whose bytes
+differ, so it cannot move a pin that is already on disk. It does run that
+family's control sequence, which this surface does not and never will, so it
+remains where a native-family registration is EARNED.
 
 WHAT IT WILL NOT DO.
 
@@ -30,23 +28,58 @@ WHAT IT WILL NOT DO.
   is read and never written. A tool that could move ``registered_placement``
   could relocate a harness's evidence to whatever machine was at hand, which is
   a change to what the harness asserts rather than a repair.
-* It refuses to produce evidence off the pinned placement. The performance
+* IT WILL NOT WRITE REGISTRATION EVIDENCE, A PROMOTION APPROVAL OR A CATALOG
+  ROW. It used to, and that is the defect this file now exists without.
+  ``_write_promotion`` passed SEVEN ``HarnessRegistrationEvidenceV1`` fields as
+  literals -- ``clean_control_verdict="pass"``, ``negative_control_verdict=
+  "fail"``, ``official_runner_parity=True``, ``result_schema_conformant=True``,
+  ``network_isolation="proved"``, ``target_write_isolation="proved"``,
+  ``oracle_visibility="denied"`` -- and pointed ``attestation_digests`` at its
+  own registration report, so the bundle cited itself as the execution it never
+  performed. Both harnesses that ship no attestations were registered through
+  it, and ``hpc/gemm-performance``'s bundle carries those seven values today.
+  The ``promote`` mode remains only to say this and name where the evidence is
+  earned instead; the module constructs neither evidence model at all, which is
+  a property a test reads off the syntax tree rather than a habit.
+* It refuses to run its gate report off the pinned placement. The performance
   harness pins an aarch64 node at a 48-thread budget; run this on anything else
-  and it stops before measuring, rather than recording a number that describes
+  and it stops before measuring, rather than reporting a verdict that describes
   the wrong machine.
-* It refuses a dirty working tree, for the reason ``registration_run`` gives:
-  a source pin taken there names a commit whose bytes are not the bytes that
-  were measured. Use a clean worktree at HEAD -- this repository has concurrent
-  writers, and committing their work in progress to manufacture a clean tree is
-  not the same thing as having one.
-* ``--check`` writes nothing at all. That is the mode a pre-commit hook wants.
+* Its gate report refuses a dirty working tree, for the reason
+  ``registration_run`` gives: a source pin taken there names a commit whose
+  bytes are not the bytes that were measured. Use a clean worktree at HEAD --
+  this repository has concurrent writers, and committing their work in progress
+  to manufacture a clean tree is not the same thing as having one.
+* ``check`` writes nothing at all. That is the mode a pre-commit hook wants.
+
+WHY IT REFUSES RATHER THAN GROWING A CONTROL SEQUENCE. The other repair was to
+derive those seven here from a real sequence, sharing
+``attest_problem_correctness.py``'s machinery instead of duplicating it. It does
+not work on THIS surface, for three reasons:
+
+* A control sequence is per-driver-family, and this surface accepts any manifest
+  under ``builtin/``. ``attest_problem_correctness.CONTROLS`` stages the
+  PROBLEM's own reference and wrong kernels plus the driver's own extra-symbol
+  transform; none of that exists for ``native-perf/v1``, and that is the family
+  whose bundle carries the declared seven right now. Sharing that machinery
+  would close the surface for a family it is already closed for, and leave it
+  open for the one it is open for.
+* It would weld the re-pin to a pinned container image. A re-pin is what you
+  need when a digest has drifted, which is exactly when you may be on a machine
+  that cannot run the controls at all -- so requiring a container root here
+  would turn a repairable pin into an unrepairable one.
+* What it could honestly write is not separable from what it could not. The
+  catalog row pins ``registration_report_digest`` beside the evidence and
+  approval digests, so writing a freshly earned report without freshly earned
+  evidence leaves a row naming bytes that changed.
+
+So the pin is repaired here and the evidence is earned where the controls run.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -58,22 +91,27 @@ sys.path.insert(0, str(ARI_CORE))
 
 from ari.assurance.drivers import builtin_driver_map  # noqa: E402
 from ari.assurance.models import HarnessManifestV1  # noqa: E402
-from ari.assurance.registration_models import (  # noqa: E402
-    HarnessPromotionApprovalV1,
-    HarnessRegistrationEvidenceV1,
-)
+# NOT IMPORTED, DELIBERATELY: HarnessRegistrationEvidenceV1 and
+# HarnessPromotionApprovalV1. This surface observed no execution, so it has
+# nothing to put in either of them; not importing them is what makes that a
+# fact about the module rather than a discipline about its authors.
 from ari.assurance.registration_run import (  # noqa: E402
     register_harness,
-    repository_commit,
     result_schema_digest,
 )
-from ari.protocols.integrity import bytes_digest  # noqa: E402
 
 HARNESS_ROOT = ARI_CORE / "config" / "harnesses"
 BUILTIN = HARNESS_ROOT / "builtin"
 
 
 def _slug(harness_id: str) -> str:
+    """The evidence-directory name for a harness id.
+
+    UNUSED HERE SINCE THIS SURFACE STOPPED WRITING BUNDLES, and kept anyway:
+    ``attest_problem_correctness.py`` imports it, so that the derived-pin rules
+    and the slug spelling have one home rather than two that can disagree.
+    Deleting it as dead code breaks the surface that earns the evidence.
+    """
     return harness_id.replace("/", "_").replace("-", "_")
 
 
@@ -205,15 +243,78 @@ def _files_read_by(digest_fn) -> set[Path]:
     return {p for p in opened if p.is_relative_to(REPO_ROOT)}
 
 
-def promote(args) -> int:
-    """Re-pin, register and sign every named harness.
+def attesting_surfaces() -> dict[str, str | None]:
+    """``driver revision -> the surface that can EARN that family's evidence``.
 
-    EVERY REGISTRATION RUNS BEFORE ANY WRITE, and that ordering is not tidiness.
-    ``register_harness`` refuses a dirty tree, and writing one harness's evidence
-    dirties the tree for the next -- so promoting three in sequence promoted the
-    first and refused the other two, which is a tool that silently does part of
-    what it was asked. Measured, on exactly that: gemm-correctness signed, spmm
-    and stencil raised. Gates first, writes second, so the batch is all or none.
+    ``None`` is a real answer and not a hole: it says no surface in this
+    repository can earn that family's registration evidence, because the family
+    has no control sequence. Saying so is the point -- an unearnable bundle is
+    exactly what the seven literals used to hide, and a caller sent to a surface
+    that does not exist would go looking rather than assume it had been done.
+
+    Keyed by the revision CONSTANTS rather than by copies of their strings, so
+    renaming a revision breaks this import instead of dropping a family out of
+    the map in silence. A test requires every shipped manifest's revision to be
+    a key here, so a new family arrives with an answer or turns the suite red.
+    """
+    from ari.assurance.drivers.native import NATIVE_DRIVER_REVISION
+    from ari.assurance.drivers.perf import PERF_DRIVER_REVISION
+    from ari.assurance.drivers.problem_correctness import (
+        PROBLEM_CORRECTNESS_DRIVER_REVISION)
+
+    return {
+        PROBLEM_CORRECTNESS_DRIVER_REVISION: (
+            "attest_problem_correctness.py promote --manifest {manifest} "
+            "--container-root <the directory holding the pinned image> "
+            "--actor-id <maintainer> --authorization-basis '<what you saw>' "
+            "--approved-date <date>"),
+        NATIVE_DRIVER_REVISION: (
+            "promote_native_harnesses.py, which runs this family's "
+            "four-execution control sequence -- though its _immutable_outputs "
+            "refuses to overwrite an existing artifact, so a RE-registration "
+            "needs the shape attest_problem_correctness.py has"),
+        # No control sequence exists for the performance family. Its bundle is
+        # the one still carrying the seven declared values, and it cannot be
+        # honestly renewed until something can run its controls.
+        PERF_DRIVER_REVISION: None,
+    }
+
+
+def _print_next_step(loaded: list[tuple[str, HarnessManifestV1]]) -> None:
+    """Where the registration evidence has to be earned, named per family."""
+    surfaces = attesting_surfaces()
+    print("")
+    print("NOT WRITTEN: registration evidence, promotion approval, catalog row.")
+    print("Re-pinning moves manifest_digest, so the evidence bundle and the")
+    print("signature over it have to be re-earned by RUNNING the harness's")
+    print("controls -- which this surface never does. Earn them here:")
+    for name, manifest in loaded:
+        revision = manifest.driver.revision
+        if revision not in surfaces:
+            print(f"  {manifest.id}: driver {revision} has no entry here, so no "
+                  f"surface is known to earn its evidence")
+        elif surfaces[revision] is None:
+            print(f"  {manifest.id}: NOTHING can earn this family's evidence "
+                  f"today -- it has no control sequence, and its registration "
+                  f"cannot be honestly renewed until one exists")
+        else:
+            print(f"  {manifest.id}: scripts/rqgm_assurance/"
+                  + surfaces[revision].replace("{manifest}", name))
+
+
+def repin_manifests(args) -> int:
+    """Re-pin every named manifest's DERIVED fields, and report its gates.
+
+    EVERY MANIFEST IS RE-PINNED BEFORE ANY GATE RUNS, and that ordering is not
+    tidiness. ``register_harness`` refuses a dirty tree and writing one manifest
+    dirties the tree for the next -- so a batch of three used to get one done
+    and raise on the other two, which is a tool that silently does part of what
+    it was asked. Measured, on exactly that: gemm-correctness through, spmm and
+    stencil raised. Re-pins first, gates second, so the batch is all or none.
+
+    The gate report is printed and never recorded. It answers "is this manifest
+    registrable again", which is what you want to know before spending container
+    time on the surface that can actually re-register it.
     """
     loaded, needs_commit = [], []
     for name in args.manifests:
@@ -228,7 +329,7 @@ def promote(args) -> int:
         differs = _placement_mismatch(manifest)
         if differs:
             print(f"REFUSED: this is not the placement {manifest.id} pins: {differs}")
-            print("Its evidence describes that machine. Run this there.")
+            print("Its gates measure that machine. Run this there.")
             return 2
         repinned = repin(manifest)
         if stale:
@@ -242,10 +343,10 @@ def promote(args) -> int:
                             encoding="utf-8")
             print(f"  manifest: {manifest.id} -> {manifest.manifest_digest}")
         print(f"Re-pinned {len(needs_commit)} manifest(s). Commit them, then re-run: "
-              f"registration refuses a dirty tree.")
+              f"the gate report refuses a dirty tree.")
+        _print_next_step(loaded)
         return 3
 
-    earned = []
     for name, manifest in loaded:
         driver = builtin_driver_map()[manifest.driver.revision]
         report = register_harness(manifest, driver, runs=args.runs, allow_dirty=False)
@@ -256,117 +357,49 @@ def promote(args) -> int:
             if not gate.passed:
                 print(f"  FAIL {gate.gate_id}: {gate.detail[:96]}")
         if report.decision != "eligible-for-verified":
-            print("REFUSED: nothing is written for ANY harness in this batch; "
+            print("REFUSED: the re-pinned manifest does not pass its own gates; "
                   "a rejected registration is a result")
             return 4
-        earned.append((name, manifest, driver, report))
 
-    if args.dry_run:
-        print("dry run: gates pass; no evidence, approval or catalog row written")
-        return 0
-    # ONCE, BEFORE THE FIRST WRITE. Every bundle in this batch records the same
-    # source commit, which is true -- they were all measured against it -- and
-    # is the only way to record it: the first write dirties the tree, so asking
-    # again would refuse. Same defect as the gates, one layer down.
-    commit = repository_commit(allow_dirty=False)
-    for name, manifest, driver, report in earned:
-        _write_promotion(name, manifest, driver, report, args, commit)
+    _print_next_step(loaded)
     return 0
 
 
-def _write_promotion(manifest_name, manifest, driver, report, args,
-                     commit: str) -> None:
-    from ari.assurance.native_perf_common import (measurement_environment,
-                                                  measurement_placement)
-    from ari.orchestrator.node_summary_view import scrub_host_identity
+def promote(args) -> int:
+    """REFUSED, always: this surface cannot earn what a promotion asserts.
 
-    slug = _slug(manifest.id)
-    evidence_dir = HARNESS_ROOT / "evidence" / slug
-    evidence_dir.mkdir(parents=True, exist_ok=True)
+    KEPT AS A MODE RATHER THAN DELETED. Deleting it would answer an existing
+    invocation -- the pre-commit hook printed one for three episodes -- with
+    argparse's "invalid choice", and what a caller needs here is not that the
+    word is wrong but where the evidence is earned. So it loads the manifests it
+    was given, purely to name their families, and writes nothing.
 
-    def _write(name: str, payload) -> None:
-        (evidence_dir / name).write_text(
-            json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-    probe = driver.parity_probe(manifest)
-    clean = (probe.get("controls") or {}).get("clean") or {}
-    _write("registration_report.json", report.model_dump(mode="json"))
-    _write("gate_findings.json",
-           {g.gate_id: {"passed": g.passed, "detail": g.detail} for g in report.gates})
-    _write("official_runner_parity.json", probe)
-    _write("multiple_run_stability.json", {"runs": args.runs, "clean_control": clean})
-    # SCRUBBED AT THE PUBLICATION BOUNDARY. ``measurement_environment`` captures
-    # every variable under a prefix set and drops SECRETS by name fragment, but
-    # not host PATHS by value -- an ``ARI_*`` variable holding an absolute path
-    # is ordinary, and this record is committed and published. Measured: a
-    # bundle carried a home directory and a username this way, and the bundles
-    # that did not were clean because the variable happened to be unset.
-    environment = measurement_environment()
-    environment["variables"] = {k: scrub_host_identity(v)
-                                for k, v in environment["variables"].items()}
-    pinned = dict(manifest.registered_placement or {})
-    here = measurement_placement()
-    _write("measurement_environment.json",
-           {"environment": environment,
-            "registration_commit": commit,
-            "placement": ({k: here.get(k) for k in sorted(pinned)} if pinned
-                          else None),
-            "placement_note": (
-                "this harness pins no placement, so its evidence does not "
-                "describe a machine" if not pinned else
-                "a timed verdict is a statement about a machine; the manifest "
-                "pins this placement and prepare() refuses any other"),
-            "environment_note": "variable VALUES are scrubbed of host identity here"})
-
-    artifacts = {f"evidence/{slug}/{p.name}": bytes_digest(p.read_bytes())
-                 for p in sorted(evidence_dir.glob("*.json"))
-                 if p.name != "registration_evidence.json"}
-    evidence = HarnessRegistrationEvidenceV1.create(
-        harness_id=manifest.id, harness_version=manifest.version,
-        manifest_digest=manifest.manifest_digest, source_full_commit_sha=commit,
-        environment_digest=measurement_environment()["sha256"],
-        evidence_artifact_digests=dict(sorted(artifacts.items())),
-        attestation_digests=(report.report_digest,),
-        clean_control_verdict="pass", negative_control_verdict="fail",
-        official_runner_parity=True, result_schema_conformant=True,
-        network_isolation="proved", target_write_isolation="proved",
-        oracle_visibility="denied", run_count=args.runs)
-    _write("registration_evidence.json", evidence.model_dump(mode="json"))
-
-    (HARNESS_ROOT / "reports" / f"{slug}.registration.json").write_text(
-        json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
-        encoding="utf-8")
-    approval = HarnessPromotionApprovalV1.create(
-        harness_id=manifest.id, harness_version=manifest.version,
-        actor_kind="human-maintainer", actor_id=args.actor_id,
-        authorization_basis=args.authorization_basis,
-        approved_date=subprocess.run(["git", "log", "-1", "--format=%cs", commit],
-                                     capture_output=True, text=True).stdout.strip(),
-        harness_manifest_digest=manifest.manifest_digest,
-        registration_report_digest=report.report_digest,
-        evidence_bundle_digest=evidence.evidence_digest)
-    (HARNESS_ROOT / "approvals" / f"{slug}.approval.json").write_text(
-        json.dumps(approval.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
-        encoding="utf-8")
-
-    catalog_path = HARNESS_ROOT / "catalog.yaml"
-    catalog = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
-    entry = {"id": manifest.id,
-             "manifest": f"builtin/{manifest_name}",
-             "registration_report": f"reports/{slug}.registration.json",
-             "registration_report_digest": report.report_digest,
-             "registration_evidence": f"evidence/{slug}/registration_evidence.json",
-             "registration_evidence_digest": evidence.evidence_digest,
-             "promotion_approval": f"approvals/{slug}.approval.json",
-             "promotion_approval_digest": approval.approval_digest}
-    catalog["entries"] = sorted(
-        [e for e in catalog["entries"] if e["id"] != manifest.id] + [entry],
-        key=lambda e: e["id"])
-    catalog_path.write_text(
-        yaml.safe_dump(catalog, sort_keys=False, default_flow_style=False),
-        encoding="utf-8")
-    print(f"signed    : {approval.actor_id} ({approval.actor_kind})")
-    print("written   : evidence, report, approval, catalog")
+    ``--actor-id`` and ``--authorization-basis`` are accepted and no longer
+    required, so a maintainer's real signature reaches this explanation instead
+    of a usage error. Nothing is signed either way.
+    """
+    print("REFUSED: this surface writes no registration evidence, no promotion "
+          "approval and no catalog row.")
+    print("")
+    print("A promotion asserts seven things about executions -- two control "
+          "verdicts, network isolation, target-write isolation, oracle "
+          "visibility, result-schema conformance and official-runner parity -- "
+          "plus the attestations they were read off. This surface runs no "
+          "controls, so it used to write all seven as literals and point "
+          "attestation_digests at its own registration report: the bundle cited "
+          "itself as the execution it never performed.")
+    if args.actor_id or args.authorization_basis:
+        print("")
+        print("A signature was supplied. NOTHING WAS SIGNED: an approval over "
+              "evidence no execution produced is the forgery this refusal "
+              "exists to prevent.")
+    print("")
+    print(f"Re-pin here:  {Path(__file__).name} repin {' '.join(args.manifests)}")
+    named = [(name, _load(BUILTIN / name)) for name in args.manifests
+             if (BUILTIN / name).is_file()]
+    if named:
+        _print_next_step(named)
+    return 6
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -380,21 +413,34 @@ def main(argv: list[str] | None = None) -> int:
     checker.add_argument("--json", action="store_true")
     checker.set_defaults(func=check)
 
-    promoter = sub.add_parser("promote", help="re-pin, register and sign one harness")
-    promoter.add_argument("manifests", nargs="+",
+    repinner = sub.add_parser(
+        "repin", help="re-pin derived manifest fields and report the gates")
+    repinner.add_argument("manifests", nargs="+",
                           help="file name(s) under config/harnesses/builtin/. "
-                               "Several may be given: every registration runs "
-                               "before any write, because writing one dirties "
+                               "Several may be given: every manifest is re-pinned "
+                               "before any gate runs, because writing one dirties "
                                "the tree the next one refuses.")
-    promoter.add_argument("--actor-id", required=True,
-                          help="the human maintainer authorizing the promotion")
-    promoter.add_argument("--authorization-basis", required=True,
-                          help="what the maintainer actually saw. A basis claiming a "
-                               "review that did not happen is the defect the "
-                               "signature exists to prevent.")
-    promoter.add_argument("--runs", type=int, default=3)
-    promoter.add_argument("--dry-run", action="store_true",
-                          help="run the gates, write nothing")
+    repinner.add_argument("--runs", type=int, default=3,
+                          help="parity-probe repetitions behind the stability gate")
+    repinner.add_argument("--dry-run", action="store_true",
+                          help="report the re-pin and run the gates, write nothing")
+    repinner.set_defaults(func=repin_manifests)
+
+    # KEPT SO IT CAN REFUSE. An invocation that used to mint declared evidence
+    # reaches an explanation and the surface that earns it, rather than an
+    # argparse usage error that says only that the word is gone.
+    promoter = sub.add_parser(
+        "promote", help="REFUSED: registration evidence is earned elsewhere")
+    promoter.add_argument("manifests", nargs="+",
+                          help="file name(s) under config/harnesses/builtin/, "
+                               "read only to name the surface that can attest "
+                               "each one's family")
+    promoter.add_argument("--actor-id", default="",
+                          help="accepted and unused; nothing here is signed")
+    promoter.add_argument("--authorization-basis", default="",
+                          help="accepted and unused; nothing here is signed")
+    promoter.add_argument("--runs", type=int, default=3, help=argparse.SUPPRESS)
+    promoter.add_argument("--dry-run", action="store_true", help=argparse.SUPPRESS)
     promoter.set_defaults(func=promote)
 
     args = parser.parse_args(argv)

@@ -4,6 +4,46 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased — Constitutional ARI-RQGM: opt-in `ari_rqgm` execution mode
 
+- **The re-pin surface can no longer declare what it did not observe
+  (`scripts/rqgm_assurance/repin_and_promote_harness.py`).** Its `promote` mode wrote
+  seven `HarnessRegistrationEvidenceV1` fields as literal keyword arguments —
+  `clean_control_verdict="pass"`, `negative_control_verdict="fail"`,
+  `official_runner_parity=True`, `result_schema_conformant=True`,
+  `network_isolation="proved"`, `target_write_isolation="proved"`,
+  `oracle_visibility="denied"` — and pointed `attestation_digests` at its own
+  registration report, so the bundle cited itself as the execution it never performed.
+  Both harnesses that ship no attestations were registered through it, and it stayed
+  reachable after one of them was re-registered on real container executions: it would
+  have minted declared evidence for the next harness to arrive.
+
+  **The repair is a refusal, not a control sequence.** A sequence is
+  per-driver-family — `attest_problem_correctness.CONTROLS` stages the problem's own
+  reference and wrong kernels plus the driver's own extra-symbol transform, and needs
+  the pinned image — while this surface accepts any manifest under `builtin/`. Sharing
+  that machinery would have closed the surface for the family that already has an
+  attesting surface and left it open for `native-perf/v1`, which is the family whose
+  bundle carries the declared seven today; it would also have welded the re-pin to a
+  container image, and a re-pin is what you need precisely when you are somewhere the
+  controls cannot run. So the surface keeps to re-pinning DERIVED manifest fields,
+  reports gates it does not record, and names — per driver family — where the evidence
+  is earned, saying plainly that for the performance family nothing can.
+
+  `promote` remains only to refuse: deleting it would answer an existing invocation
+  with argparse's "invalid choice", and a caller needs to be told where the evidence is
+  earned rather than that a word is gone. `--actor-id` and `--authorization-basis` are
+  no longer required, so a maintainer's real signature reaches that explanation instead
+  of a usage error, and is told that nothing was signed. `check` and `paths` — what the
+  pre-commit gate runs — are untouched and still write nothing.
+
+  **The re-pin capability is intact**: a drifted driver digest is still repairable, and
+  repairing one reproduces the registered manifest byte for byte, `manifest_digest`
+  included. Neither evidence model is imported any more, the module's only filesystem
+  write is the manifest re-pin, and no string constant in it names a directory inside
+  the published Harness tree — properties read off the syntax tree by
+  `ari-core/tests/test_harness_repin_surface.py`, which also applies to this surface the
+  literal-keyword guard the attesting surface's tests apply to themselves, in the
+  stronger form that none of the seven may be written here at all.
+
 - **A problem-correctness Harness can now EARN its attestations
   (`scripts/rqgm_assurance/attest_problem_correctness.py`).** Five catalog rows carry
   `status: verified`. Three of them ship four `HarnessAttestationV1` artifacts each,
