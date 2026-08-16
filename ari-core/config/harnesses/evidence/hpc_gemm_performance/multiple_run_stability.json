@@ -1,8 +1,8 @@
 {
   "clean_control": {
-    "median_seconds": 0.005245194770395756,
-    "median_speedup": 0.9817451573468324,
-    "relative_spread": 0.041139271585057494,
+    "median_seconds": 0.010805046185851097,
+    "median_speedup": 0.9854770755992804,
+    "relative_spread": 0.026671986570708198,
     "resolution_note": "",
     "resolved": true,
     "verdict": "pass"

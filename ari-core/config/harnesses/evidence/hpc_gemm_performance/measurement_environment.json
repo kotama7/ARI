@@ -1,9 +1,10 @@
 {
   "environment": {
     "note": "recorded, not restricted; a variable outside this prefix set is neither captured nor known to be harmless",
-    "sha256": "sha256:5b211f5e44f185749bcdd244f09444ba5bfb657ec99e333716fd8e5d90846945",
+    "sha256": "sha256:6125a3e13e6455d1b2d245cb04875719423fdfdd2fbb2e9d779c662c6eace41a",
     "variables": {
-      "ARI_LETTA_SIF": "~/ARI/scripts/letta/letta.sif",
+      "ARI_HARNESS_CONTAINER_ROOT": "~/ARI/containers",
+      "ARI_PERF_THREADS": "16",
       "BLIS_NUM_THREADS": "1",
       "GOTO_NUM_THREADS": "1",
       "MKL_NUM_THREADS": "1",
@@ -14,9 +15,9 @@
   },
   "environment_note": "variable VALUES are scrubbed of host identity here",
   "placement": {
-    "machine": "aarch64",
-    "thread_budget": "48"
+    "machine": "x86_64",
+    "thread_budget": "16"
   },
   "placement_note": "a timed verdict is a statement about a machine; the manifest pins this placement and prepare() refuses any other",
-  "registration_commit": "2f8c458e64605e53a679151b08633d24e4172c33"
+  "registration_commit": "12b727bf626634a2a3f5fdc8d33205ab8a70ad29"
 }
