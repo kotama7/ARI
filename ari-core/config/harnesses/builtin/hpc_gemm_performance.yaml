@@ -7,8 +7,8 @@ credential_policy: none
 credential_scope_ids: []
 dataset:
   license: MIT
-  revision: native-perf-gemm-cases/v1@scored-2026q3-resolved
-  sha256: sha256:4273699e9db12168baa4d5b7c0aa713cdfabdac8e19e82683dbfd470286d35bf
+  revision: native-perf-gemm-cases/v1@scored-2026q3
+  sha256: sha256:17d6b66d3387670643f197c4e403816866fcfea208e886985bbe93f5b2fd0590
 description: ARI-native dense fp64 GEMM performance benchmark
 driver:
   license: MIT
@@ -23,7 +23,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: benchmark
 maintainer: ARI maintainers
-manifest_digest: sha256:d4a6ee7e10b2259b440718cd65447aaee4e05cbb6ca801f07a5b06f461d3bb79
+manifest_digest: sha256:40dafeeb03a45f8686f9e44649b449af11e62b9b627dc27a9f4abf152292579e
 model:
   license: not-applicable
   revision: not-applicable
