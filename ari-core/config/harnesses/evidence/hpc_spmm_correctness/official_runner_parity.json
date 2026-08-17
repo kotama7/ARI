@@ -1,50 +1,13 @@
 {
-  "controls": {
-    "clean": {
-      "note": "every registered family's reference passed its own oracle",
-      "relative_spread": 0.0,
-      "resolved": true,
-      "verdict": "pass"
-    },
-    "negatives": [
-      {
-        "detail": "gemm: corrupted reference output",
-        "name": "gemm-corrupted-output",
-        "verdict": "fail"
-      },
-      {
-        "detail": "spmm: corrupted reference output",
-        "name": "spmm-corrupted-output",
-        "verdict": "fail"
-      },
-      {
-        "detail": "stencil: corrupted reference output",
-        "name": "stencil-corrupted-output",
-        "verdict": "fail"
-      }
-    ]
-  },
+  "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
   "driver_digest": "sha256:ffa7b163f41254ec289529b02300a3953ddba7330bf02b71c59d5983edd08948",
-  "passed": true,
-  "results": {
-    "gemm": {
-      "negative_control_report_digest": "sha256:f791131fe0ab8d4d0d7e0a88a1198bdea6fd1c05f46b44580ed6c9be2e20997b",
-      "negative_control_verdict": "fail",
-      "reference_report_digest": "sha256:d559d733450e837acc8e7aea4b0d024e59ca5009dc83c4c3b16ddc0ac773b29c",
-      "reference_verdict": "pass"
-    },
-    "spmm": {
-      "negative_control_report_digest": "sha256:42232cb803271db275e4d749fc3e9b39e120c98d9e7e23c4b9d4f884b1175463",
-      "negative_control_verdict": "fail",
-      "reference_report_digest": "sha256:a59beed7131b4d724d71e43c857ac8f6abc1c6c4ec8416141fea2c333fb8bb6e",
-      "reference_verdict": "pass"
-    },
-    "stencil": {
-      "negative_control_report_digest": "sha256:92ce4d8b2911e76606fef1b43015eeabed977b6271dc777c8e733088e00ebf61",
-      "negative_control_verdict": "fail",
-      "reference_report_digest": "sha256:15a7b28a9e223d7e3fe8d61b5a3beb89d0e6f7236d184961a184208e219755f4",
-      "reference_verdict": "pass"
-    }
-  },
-  "schema_version": "ari.native-hpc-parity-report/v1"
+  "driver_revision": "ari.assurance.native-hpc/v1",
+  "kind": "spmm",
+  "negative_control_report_digest": "sha256:42232cb803271db275e4d749fc3e9b39e120c98d9e7e23c4b9d4f884b1175463",
+  "negative_control_verdict": "fail",
+  "official_runner_parity": true,
+  "reference_report_digest": "sha256:a59beed7131b4d724d71e43c857ac8f6abc1c6c4ec8416141fea2c333fb8bb6e",
+  "reference_verdict": "pass",
+  "report_digest": "sha256:b7d3ebeaf0df4c11772b029d01faee2d6508123a5f62ae5050edc14f2ab607de",
+  "schema_version": "ari.native-hpc-official-runner-parity/v1"
 }

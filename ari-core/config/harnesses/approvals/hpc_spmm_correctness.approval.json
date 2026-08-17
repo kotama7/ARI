@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:be2ef9fd304be6745000a92d1103c17338f591e0cb32f061a7bc45d40eca02bf",
-  "approved_date": "2026-08-16",
-  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of the registration evidence -- 15/15 gates each, clean and negative controls from the registered families -- not on independent inspection of the artifacts, which are pinned here for that purpose. Re-run after the result schema drifted under the pin taken at d303a4c.",
-  "evidence_bundle_digest": "sha256:bd75064866a6dd35b9ed34c6990b016fbfc74ccecb1820580ed7ff7be3ff4a80",
+  "approval_digest": "sha256:f921daca10589b1ff6fdf7faed18035e123caa1044a3e3cb14a96d0c8597f4ed",
+  "approved_date": "2026-08-17",
+  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of this re-registration -- not on independent inspection of the artifacts, which are pinned here for that purpose. Reported: four container executions per family from a clean worktree, clean-screen, clean-certify and clean-certify-repeat passing and negative-screen failing in all three, and fifteen gates each. WHY IT WAS RE-EARNED: the shipped bundles' attestation_digests named their own registration report rather than the four executions -- a wrong citation left when a surface that ran nothing rewrote half of each bundle -- and every previously-declared evidence field is now read off these runs.",
+  "evidence_bundle_digest": "sha256:5e3249f81c0b698ba1dff5fb4c499194aa90974f4e3407dec065e1795574eeb6",
   "from_status": "candidate",
   "harness_id": "hpc/spmm-correctness",
-  "harness_manifest_digest": "sha256:d33dfdc3b58d11024d0b1c6673b8d71113882adb6073cd5bcbca62c1a8cdd3d2",
+  "harness_manifest_digest": "sha256:b817dc5b1aaa90d016db6ffda558294f502cd8dd0c814b0d308a3f3f3e75de52",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:c466de267e4ceda43dcd762c1966e63d23d1fb413277f7fabdb0f02bc7ac5b33",
+  "registration_report_digest": "sha256:a33ff1b4667c6ebb87257c45ce3ecc5c9b775c84fd42ce9e33d4496930b09f75",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

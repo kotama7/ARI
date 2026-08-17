@@ -51,6 +51,7 @@ Shipped default config files (YAML) loaded by ari-core.
       - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic GEMM results.
       - `clean-certify.attestation.json` — clean authoritative GEMM certification attestation.
       - `clean-screen.attestation.json` — clean bounded GEMM screening attestation.
+      - `control_derivation.json` — required versus observed verdict for each of the four labelled container executions, each beside its own attestation digest, and the isolation findings DERIVED from what each request carried and what each run returned -- including the candidate's digest read back AFTER every run, which is held in no other artifact and is what makes `target_write_isolation` recomputable rather than merely derived.
       - `gate_findings.json` — one record per registration gate: id, verdict, the reason in words, and a digest of the artifact the gate READ, so two registrations agree only if they read the same bytes.
       - `measurement_environment.json` — the registration commit and the note that this is a DETERMINISTIC verifier: the parity probe ran three times and every clean-control answer was identical, which is what repeating establishes when there is no spread to measure.
       - `multiple_run_stability.json` — three runs, one distinct clean-control answer, relative spread 0.0, `kind: deterministic`. For a correctness verifier repetition proves identity rather than bounding noise.
@@ -82,7 +83,7 @@ Shipped default config files (YAML) loaded by ari-core.
       - `registration_evidence.json` — the reviewed evidence bundle, pinning every artifact above by digest.
       - `registration_report.json` — the minted report: fifteen gates, each with its evidence digest.
       - `resource_measurements.json` — one record per container execution: status, executor wall time and the resources the run was actually given, so the cost of a registration is a measurement rather than an estimate.
-      - `logs/` — the worker's stdout and stderr for each labelled run, tracked past the `logs/` ignore because this bundle PINS them in `evidence_artifact_digests`. The three native bundles ship logs without pinning them, so theirs could be swapped without the evidence noticing and these cannot.
+      - `logs/` — the worker's stdout and stderr for each labelled run, tracked past the `logs/` ignore because this bundle PINS them in `evidence_artifact_digests`. The three native bundles pin theirs too, since their re-registration; a log a bundle ships but does not pin could be swapped without the evidence noticing.
         - `clean-certify-repeat-stderr.log` — anything `clean-certify-repeat` wrote to stderr. Empty on a run that completed, and retained anyway: a silent stream is itself the evidence that nothing was reported outside the typed report.
         - `clean-certify-repeat-stdout.log` — the typed report the worker emitted for `clean-certify-repeat`: per-case verdicts and residual ratios, the toolchain that built the candidate, the pinned problem and dataset digests, and the placement the run was given.
         - `clean-certify-stderr.log` — anything `clean-certify` wrote to stderr. Empty on a run that completed, and retained anyway: a silent stream is itself the evidence that nothing was reported outside the typed report.
@@ -122,6 +123,7 @@ Shipped default config files (YAML) loaded by ari-core.
       - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic SpMM results.
       - `clean-certify.attestation.json` — clean authoritative SpMM certification attestation.
       - `clean-screen.attestation.json` — clean bounded SpMM screening attestation.
+      - `control_derivation.json` — required versus observed verdict for each of the four labelled container executions, each beside its own attestation digest, and the isolation findings DERIVED from what each request carried and what each run returned. This is the record that makes the registration evidence readable as observation rather than assertion.
       - `gate_findings.json` — one record per registration gate: id, verdict, the reason in words, and a digest of the artifact the gate READ, so two registrations agree only if they read the same bytes.
       - `measurement_environment.json` — the registration commit and the note that this is a DETERMINISTIC verifier: the parity probe ran three times and every clean-control answer was identical, which is what repeating establishes when there is no spread to measure.
       - `multiple_run_stability.json` — three runs, one distinct clean-control answer, relative spread 0.0, `kind: deterministic`. For a correctness verifier repetition proves identity rather than bounding noise.
@@ -143,6 +145,7 @@ Shipped default config files (YAML) loaded by ari-core.
       - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic stencil results.
       - `clean-certify.attestation.json` — clean authoritative stencil certification attestation.
       - `clean-screen.attestation.json` — clean bounded stencil screening attestation.
+      - `control_derivation.json` — required versus observed verdict for each of the four labelled container executions, each beside its own attestation digest, and the isolation findings DERIVED from what each request carried and what each run returned. This is the record that makes the registration evidence readable as observation rather than assertion.
       - `gate_findings.json` — one record per registration gate: id, verdict, the reason in words, and a digest of the artifact the gate READ, so two registrations agree only if they read the same bytes.
       - `measurement_environment.json` — the registration commit and the note that this is a DETERMINISTIC verifier: the parity probe ran three times and every clean-control answer was identical, which is what repeating establishes when there is no spread to measure.
       - `multiple_run_stability.json` — three runs, one distinct clean-control answer, relative spread 0.0, `kind: deterministic`. For a correctness verifier repetition proves identity rather than bounding noise.

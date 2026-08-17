@@ -48,7 +48,7 @@
     "passed": true
   },
   "source_revision_digest_pin": {
-    "detail": "pinned at 361a85d7fde8, an ancestor of 46382841af70",
+    "detail": "pinned at 4847884a274e, an ancestor of 4847884a274e",
     "passed": true
   },
   "target_oracle_test_isolation": {
