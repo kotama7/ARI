@@ -7,13 +7,13 @@ credential_policy: none
 credential_scope_ids: []
 dataset:
   license: MIT
-  revision: native-perf-gemm-cases/v1@scored-2026q3
-  sha256: sha256:17d6b66d3387670643f197c4e403816866fcfea208e886985bbe93f5b2fd0590
+  revision: native-perf-gemm-cases/v1@scored-2026q3-resolved
+  sha256: sha256:4273699e9db12168baa4d5b7c0aa713cdfabdac8e19e82683dbfd470286d35bf
 description: ARI-native dense fp64 GEMM performance benchmark
 driver:
   license: MIT
   revision: ari.assurance.native-perf/v1
-  sha256: sha256:9405367619a794c6d7995f5b3b9ba3dbabf29a6bda8679307e89cc38fb7b376a
+  sha256: sha256:b3d0ff07efa8d067981a0c9156e98312777f24fcf71f77be3ecd9a5b0979226a
 expected_result_schema: ari.native-perf-report/v1
 expected_result_schema_digest: sha256:ef43c2de17e2df72fa7350f83920f33d3c0cda212b1ae340358d1583d158e8ec
 filesystem_policy: isolated-readonly-target
@@ -23,7 +23,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: benchmark
 maintainer: ARI maintainers
-manifest_digest: sha256:d8f0a4c9690ef784551f6ed1b210488ebe5924d3b6862a147fbc177b58a9502c
+manifest_digest: sha256:d4a6ee7e10b2259b440718cd65447aaee4e05cbb6ca801f07a5b06f461d3bb79
 model:
   license: not-applicable
   revision: not-applicable
@@ -81,7 +81,6 @@ supported_architectures:
 supported_domains:
 - gemm
 supported_dtypes:
-- float32
 - float64
 supported_hardware:
 - cpu

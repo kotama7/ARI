@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -134,6 +135,14 @@ class _Asset:
         self.sha256 = sha256
 
 
+#: The image the fixtures agree on. ``prepare`` now refuses a request whose
+#: container identity is absent or is not the one the manifest pins, so the pair
+#: below has to name the same image for every OTHER refusal to be reachable --
+#: a fixture that left them disagreeing would make each of those tests pass on
+#: the container message instead of the one it was written for.
+_PINNED_IMAGE = "sha256:" + "a" * 64
+
+
 def _real_case_set(revision="native-perf-gemm-cases/v1@parity"):
     from ari.assurance.native_perf_common import load_case_set
     _set, digest = load_case_set(revision)
@@ -167,6 +176,8 @@ class _Manifest:
         here = measurement_placement()
         self.registered_placement = kw.get("registered_placement", {
             "machine": here["machine"], "thread_budget": here["thread_budget"]})
+        self.container = SimpleNamespace(
+            resolved_digest=kw.get("container_digest", _PINNED_IMAGE))
 
 
 class _Atom:
@@ -179,13 +190,16 @@ class _Atom:
 
 
 class _Exec:
-    network = "deny"
+    def __init__(self, container=_PINNED_IMAGE):
+        self.network = "deny"
+        self.container = (None if container is None
+                          else SimpleNamespace(digest=container))
 
 
 class _Request:
-    def __init__(self, atoms=None):
+    def __init__(self, atoms=None, container=_PINNED_IMAGE):
         self.property_atoms = tuple(atoms or (_Atom(),))
-        self.execution_request = _Exec()
+        self.execution_request = _Exec(container)
         self.run_id = "run"
 
 
@@ -205,6 +219,27 @@ def test_prepare_refuses_a_mismatched_pairing(manifest_kw, request_atoms, expect
     """A driver that accepted any manifest would make the pin decorative."""
     with pytest.raises(ValueError, match=expected):
         NativePerfDriver().prepare(_Manifest(**manifest_kw), _Request(request_atoms))
+
+
+@pytest.mark.parametrize("carried", [None, "sha256:" + "b" * 64],
+                         ids=["no-container", "another-image"])
+def test_prepare_refuses_a_request_that_did_not_name_the_pinned_image(carried):
+    """The image is part of what was registered, and nothing downstream re-asks.
+
+    ``runner`` stamps the attestation's ``container_digest`` from the MANIFEST
+    rather than from the execution, and its only cross-check asks that the
+    RESULT's container equals the REQUEST's -- a pair that agree with each other
+    however far both are from the manifest. So this refusal is the only place
+    the two can be compared, which is why both siblings have carried it since
+    they were written and why its absence here let a request run in any image,
+    or in none, and still produce an attestation naming the pinned one.
+
+    ``None`` is tested beside a wrong digest because the field is OPTIONAL: an
+    unset container is the reading that a bare ``!=`` comparison would have
+    let through as "no disagreement".
+    """
+    with pytest.raises(ValueError, match="pinned container identity"):
+        NativePerfDriver().prepare(_Manifest(), _Request(container=carried))
 
 
 def test_the_driver_does_not_decide_properties_it_cannot_measure():

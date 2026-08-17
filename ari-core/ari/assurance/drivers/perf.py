@@ -179,6 +179,28 @@ class NativePerfDriver:
                 "performance verifier must be credential-free and network-denied")
         if request.execution_request.network != "deny":
             raise ValueError("performance Harness request does not require isolation")
+        # WHICH IMAGE, and this driver had no such check while both siblings did
+        # -- ``native.py`` and ``problem_correctness.py`` each refuse a request
+        # whose container identity is absent or is not the one the manifest
+        # pins, and ``runner.py`` delegates rather than asking generically. So
+        # the word "container" did not appear in this file at all.
+        #
+        # IT MATTERS MORE HERE THAN THERE. ``runner.py`` stamps the
+        # attestation's ``container_digest`` from the MANIFEST, not from the
+        # request it just ran, and its own cross-check only asks that the
+        # RESULT's container matches the REQUEST's. So a request carrying
+        # another image -- or, since the field is optional, none at all --
+        # produces an attestation naming an image the measurement never entered,
+        # and every consistency check between the two agrees, because the pair
+        # they compare are each other. On a timed harness that is not a
+        # provenance nicety: what compiler and what libm the candidate was built
+        # and run against is most of what the number means, so an attestation
+        # naming the wrong image is a speed claim about a machine nobody can
+        # identify.
+        container = request.execution_request.container
+        if container is None or container.digest != manifest.container.resolved_digest:
+            raise ValueError(
+                "performance Harness request lacks the pinned container identity")
         # WHICH QUESTION is part of what was registered. A problem definition is
         # PINNED BUT NOT APPROVED -- anyone may add one, no signature -- so this
         # check is what the whole arrangement rests on: an unapproved problem may

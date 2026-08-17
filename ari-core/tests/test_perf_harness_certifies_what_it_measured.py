@@ -21,6 +21,14 @@ placement is the placement the manifest pins. The third test below is the reason
 the second condition does not hold on a host whose physical core count differs
 from the pinned budget: the placement gate is enforced on the host, and the
 measurement happens on the other side of a ``--cleanenv`` wall.
+
+TWO OF THE THREE ARE NOW LIVE INVARIANTS. ``supported_dtypes`` and the missing
+container assertion were repaired together, in ONE re-registration -- separately
+would have re-signed the same harness twice for one moved digest -- and both
+tests are asserted rather than expected to fail. Their xfails were STRICT, so
+each turned red the moment its repair landed, which is the whole reason they
+were written that way; what removes them here is the registration that earned
+the evidence for the manifest they now describe. The third stands.
 """
 
 from __future__ import annotations
@@ -39,25 +47,29 @@ def _perf_manifest_document() -> dict:
     return yaml.safe_load(PERF.read_text())
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "supported_dtypes still carries float32, the other half of the gemm-c-abi/v1 "
-    "shared library (ari_gemm_f32 AND ari_gemm_f64) this Harness stopped "
-    "consuming. Correcting the interface contract moved one field and left this "
-    "one behind. Fixing it moves manifest_digest, so it is a re-registration."))
 def test_the_dtypes_it_admits_are_the_dtypes_its_property_covers():
     """A declaration it accepts must be one its only property has a scope for.
 
-    The manifest advertises float32 and float64. Its single property,
-    ``performance-regression``, declares ``dtype: [float64]``, its problem is
-    ``gemm-dense-fp64``, and its sibling over that identical problem advertises
-    float64 alone. So a float32 candidate is admitted by
-    ``harness_inapplicability`` and then measured against an fp64 problem, and
-    the attestation carries a property whose tested scope does not contain the
-    dtype the declaration named.
+    FIXED AND RE-REGISTERED; kept as the invariant. The manifest advertised
+    float32 AND float64 -- the two halves of the ``gemm-c-abi/v1`` shared
+    library (``ari_gemm_f32`` and ``ari_gemm_f64``) this Harness stopped
+    consuming; correcting the interface contract moved one field and left this
+    one behind. Its single property, ``performance-regression``, declares
+    ``dtype: [float64]``, its problem is ``gemm-dense-fp64``, and its sibling
+    over that identical problem advertises float64 alone.
 
-    This is not hypothetical plumbing: ``supported_dtypes[0]`` is what a
-    declaration builder reaches for first, so float32 is the DEFAULT choice, not
-    an exotic one.
+    MEASURED BEFORE THE FIX, because a defect nobody reached is a different
+    finding from one that was live: ``harness_inapplicability`` returned ``''``
+    -- applicable -- for a float32 declaration identical in every other field,
+    and ``request.py:89`` is the ONLY reader of ``declaration.dtype`` anywhere
+    in the assurance package, so nothing further down asked again. The float32
+    candidate was admitted, measured against an fp64 problem whose measurement
+    path reads every buffer as ``np.float64``, and the attestation carried a
+    property whose tested scope did not contain the dtype the declaration named.
+
+    This was not hypothetical plumbing: ``supported_dtypes[0]`` is what a
+    declaration builder reaches for first, so float32 was the DEFAULT choice,
+    not an exotic one.
     """
     from ari.assurance.models import HarnessManifestV1, HarnessTargetDeclarationV1
     from ari.assurance.request import harness_inapplicability
@@ -84,18 +96,15 @@ def test_the_dtypes_it_admits_are_the_dtypes_its_property_covers():
         f"property scopes to {sorted(covered)}")
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "NativePerfDriver.prepare never reads request.execution_request.container. "
-    "Both sibling drivers do. Fixing it edits perf.py, which is inside "
-    "perf_driver_digest(), so it is a re-registration."))
 def test_prepare_refuses_a_request_that_runs_in_another_container():
     """The pinned image must be asserted on the request, as the siblings assert it.
 
-    ``NativeHPCDriver.prepare`` and ``ProblemCorrectnessDriver.prepare`` both
-    raise "lacks the pinned container identity" when the request names an image
-    other than ``manifest.container.resolved_digest``. The performance driver
-    checks driver bytes, the problem, the case set, both policies and the
-    placement -- and never the container.
+    FIXED AND RE-REGISTERED; kept as the invariant. ``NativeHPCDriver.prepare``
+    and ``ProblemCorrectnessDriver.prepare`` both raise "lacks the pinned
+    container identity" when the request names an image other than
+    ``manifest.container.resolved_digest``. The performance driver checked
+    driver bytes, the problem, the case set, both policies and the placement --
+    and never the container; the word did not occur in ``perf.py`` at all.
 
     It matters more here than for either sibling, not less. ``runner`` stamps the
     attestation's ``container_digest`` from the MANIFEST rather than from the
