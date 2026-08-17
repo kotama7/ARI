@@ -301,7 +301,16 @@ def _observed(attestation: Any) -> str:
                 f"{tolerance.get('worst_relative_spread')!r}, "
                 f"min_speedup={measurements.get('min_speedup')!r}, "
                 f"seconds_by_case={measurements.get('credited_seconds_by_case')!r}, "
-                f"threshold={tolerance.get('regression_threshold')!r}")
+                f"threshold={tolerance.get('regression_threshold')!r}, "
+                # THE GROUND'S OWN INPUTS. A refusal that says the ground was
+                # None sends the reader back to the container to find out
+                # whether the cases disagreed or whether there were no cases --
+                # which are opposite findings. An empty map here means the run
+                # produced no case at all, so the verdict was not this
+                # instrument's to give.
+                f"correct_by_case={measurements.get('correct_by_case')!r}, "
+                f"complete_by_case={measurements.get('complete_by_case')!r}, "
+                f"measurement_keys={sorted(measurements)!r}")
     return "no result for this property"
 
 
@@ -358,7 +367,8 @@ def check_control_sequence(attestations: dict[str, Any]) -> dict[str, Any]:
                 f"{control.label} was refused on {observed!r} where the "
                 f"sequence requires {control.ground!r}: {control.why}. A "
                 f"negative that fails for the wrong reason certifies nothing "
-                f"about the reason it was written for")
+                f"about the reason it was written for. "
+                f"{_observed(attestations[control.label])}")
         grounds[control.label] = observed
 
     if len(set(grounds.values())) < 2:
