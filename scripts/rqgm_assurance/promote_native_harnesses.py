@@ -5,6 +5,24 @@ This is an authenticated human-maintainer surface, not an agent tool.  It
 requires a committed source revision, an immutable private SIF, all clean and
 negative controls, two certify executions, and exact evidence persistence
 before it updates the production catalog.
+
+WHAT THE REGISTRATION EVIDENCE RESTS ON. This surface really does run its
+controls -- four container executions per family, below -- and it used to throw
+the answer away: ``HarnessRegistrationEvidenceV1.create`` was handed
+``clean_control_verdict="pass"``, ``negative_control_verdict="fail"``,
+``official_runner_parity=True``, ``result_schema_conformant=True``,
+``network_isolation="proved"``, ``target_write_isolation="proved"`` and
+``oracle_visibility="denied"`` as literal keyword arguments, so the bundle said
+the same seven things whatever the executions returned. The refusals above the
+call meant the record happened to be true, which is a different property from
+being read: weaken one refusal and the record keeps its claim. Every one of the
+seven is now derived -- the two control verdicts by role from the attestations,
+the four isolation and schema fields by the sibling surface's
+``isolation_findings`` over what each ``ExecutionRequest`` carried and what each
+run returned, and parity from this family's own probe result. This was the last
+surface still declaring them; ``d85d9768`` closed the same defect in
+``repin_and_promote_harness.py`` by refusing instead, because that surface runs
+nothing it could read.
 """
 
 from __future__ import annotations
@@ -21,7 +39,7 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import yaml
 
@@ -29,7 +47,24 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ARI_CORE = REPO_ROOT / "ari-core"
 sys.path.insert(0, str(ARI_CORE))
+# The sibling attestation surface, for the derivations this file must not grow a
+# second copy of. Inserted at import time, the same way that file reaches
+# ``repin_and_promote_harness`` and ``attest_gemm_performance`` reaches this one.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# THE DERIVATIONS, NOT A SECOND IMPLEMENTATION OF THEM. ``isolation_findings``
+# already reads ``network_isolation``, ``target_write_isolation``,
+# ``oracle_visibility`` and ``result_schema_conformant`` off what each request
+# carried and what each run returned, and it resolves the driver from
+# ``manifest.driver.revision`` rather than from a family constant -- so it is
+# correct for ``NativeHPCDriver`` without an edit. ``_single`` is the honest
+# collapse of a group of control verdicts, returning ``not_available`` when they
+# disagree instead of picking one. Writing either afresh here would put the same
+# claim in two places, free to drift apart.
+from attest_problem_correctness import (  # noqa: E402
+    _single,
+    isolation_findings,
+)
 from ari.assurance.catalog import build_harness_catalog_snapshot  # noqa: E402
 from ari.assurance.drivers.native import (  # noqa: E402
     NATIVE_DRIVER_REVISION,
@@ -111,6 +146,36 @@ KIND_CONFIG = {
         "description": "ARI-native 7-point Stencil shared-library correctness verifier",
     },
 }
+
+
+class RegistrationControl(NamedTuple):
+    """One labelled execution, the artifact its role stages, and its own verdict.
+
+    ``role`` does two jobs on purpose. It selects which library is copied into
+    the candidate workspace, AND it decides which of the two registration-
+    evidence verdicts that run counts toward. One field for both means the group
+    a verdict lands in cannot disagree with the ``.so`` that produced it -- which
+    is the only thing that makes ``clean_control_verdict`` a reading rather than
+    a restatement of the label it was written beside.
+    """
+
+    label: str
+    role: str
+    tier: str
+    retry_index: int
+    verdict: str
+
+
+#: THE FOUR EXECUTIONS a native family is registered on. The expected verdicts
+#: used to be a second dict spelling the same four labels out again beside the
+#: run table; with one table a label cannot be checked for and never run, or run
+#: and never checked.
+REGISTRATION_CONTROLS: tuple[RegistrationControl, ...] = (
+    RegistrationControl("clean-screen", "reference", "screen", 0, "pass"),
+    RegistrationControl("clean-certify", "reference", "certify", 0, "pass"),
+    RegistrationControl("clean-certify-repeat", "reference", "certify", 1, "pass"),
+    RegistrationControl("negative-screen", "negative-control", "screen", 0, "fail"),
+)
 
 DOCKER_LICENSE_OVERRIDES = {
     "docker-buildx-plugin": {
@@ -577,6 +642,16 @@ def _run_registration(
             "attestation_digest": attestation.attestation_digest,
             "completed_at": result.completed_at,
             "container_digest": manifest.container.resolved_digest,
+            # WHAT THE REQUEST ACTUALLY CARRIED, not what the manifest asked
+            # for. ``container_digest`` above is copied off the manifest, so it
+            # says the same thing whether or not a run honoured it; these two
+            # are read from the reviewed ``ExecutionRequest`` the executor was
+            # handed, which is what lets ``isolation_findings`` derive
+            # ``network_isolation`` instead of the caller asserting it.
+            "container_identity_digest": (
+                request.execution_request.container.digest
+                if request.execution_request.container is not None else None),
+            "network": request.execution_request.network,
             "cpu_core_seconds": wall * manifest.resources.cpu_cores,
             "execution_identity": result.execution_identity,
             "execution_result_digest": canonical_digest(result),
@@ -606,23 +681,24 @@ def _run_registration(
         executor=PinnedContainerExecutor(package_root=ARI_CORE),
         execution_observer=observe,
     )
+    libraries = {"reference": clean_library, "negative-control": negative_library}
     previous_root = os.environ.get("ARI_HARNESS_CONTAINER_ROOT")
     os.environ["ARI_HARNESS_CONTAINER_ROOT"] = str(container_root)
     attestations = {}
+    #: ``label -> (digest declared before the run, digest read after it)``.
+    #: ``FixedVerifier`` refuses to mint an attestation when they differ, so this
+    #: is recorded rather than inferred: ``target_write_isolation`` then names an
+    #: observation a reader can recompute from the bundle.
+    target_digests: dict[str, tuple[str, str]] = {}
     try:
-        runs = (
-            ("clean-screen", clean_library, "screen", 0),
-            ("clean-certify", clean_library, "certify", 0),
-            ("clean-certify-repeat", clean_library, "certify", 1),
-            ("negative-screen", negative_library, "screen", 0),
-        )
-        for label, library, tier, retry in runs:
+        for control in REGISTRATION_CONTROLS:
+            label, tier, retry = control.label, control.tier, control.retry_index
             candidate_root = working_root / kind / label / "candidate"
             execution_root = working_root / kind / label / "verification"
             candidate_root.mkdir(parents=True)
             execution_root.mkdir(parents=True)
             target = candidate_root / "candidate.so"
-            shutil.copyfile(library, target)
+            shutil.copyfile(libraries[control.role], target)
             workspace = WorkspaceRefV1(root=str(candidate_root))
             declaration = HarnessTargetDeclarationV1.create(
                 logical_name="candidate.so",
@@ -660,17 +736,14 @@ def _run_registration(
                 ),
                 producer_epoch_id="registration-epoch",
             )
+            target_digests[label] = (
+                declaration.target_digest, workspace.file_digest("candidate.so"))
     finally:
         if previous_root is None:
             os.environ.pop("ARI_HARNESS_CONTAINER_ROOT", None)
         else:
             os.environ["ARI_HARNESS_CONTAINER_ROOT"] = previous_root
-    expected = {
-        "clean-screen": "pass",
-        "clean-certify": "pass",
-        "clean-certify-repeat": "pass",
-        "negative-screen": "fail",
-    }
+    expected = {control.label: control.verdict for control in REGISTRATION_CONTROLS}
     actual = {label: value.verdict for label, value in attestations.items()}
     if actual != expected:
         raise RuntimeError(f"native {kind} registration controls failed: {actual}")
@@ -678,6 +751,30 @@ def _run_registration(
         raise RuntimeError(f"native {kind} registration had an incomplete execution")
     if any(value.nondeterminism_observations for value in attestations.values() if value.verdict == "pass"):
         raise RuntimeError(f"native {kind} clean control was nondeterministic")
+
+    # THE FIELDS registration evidence used to be handed as literals, taken
+    # instead off the four executions above. The refusals before this point are
+    # what make the derivation worth anything -- a run whose controls did not
+    # discriminate never reaches here -- but they are not a substitute for it:
+    # the previous shape ran the same four executions and then wrote "pass",
+    # "fail", "proved", "proved", "denied" and two ``True``s regardless of what
+    # came back, so the record was true only by coincidence of the guard above
+    # it, and any weakening of that guard would have gone unrecorded.
+    controls = {
+        "clean_control_verdict": _single(
+            [actual[control.label] for control in REGISTRATION_CONTROLS
+             if control.role == "reference"]),
+        "negative_control_verdict": _single(
+            [actual[control.label] for control in REGISTRATION_CONTROLS
+             if control.role != "reference"]),
+    }
+    isolation = isolation_findings(
+        manifest,
+        executions=executions,
+        target_digests=target_digests,
+        attestations=attestations,
+    )
+
     artifacts: dict[str, bytes] = {}
     for label, attestation in attestations.items():
         artifacts[f"{label}.attestation.json"] = _json_bytes(attestation)
@@ -696,12 +793,55 @@ def _run_registration(
     }
     measurement["measurement_digest"] = canonical_digest(measurement)
     artifacts["resource_measurements.json"] = _json_bytes(measurement)
+
+    # AND THE DERIVATION IS PUBLISHED, not only its answer. Most of it is
+    # recomputable from bytes this bundle already pins -- the attestations, and
+    # the per-execution ``network`` and ``container_identity_digest`` above --
+    # but the digest of the candidate AFTER each run is held in no artifact at
+    # all, so ``target_write_isolation`` would have been derived and still
+    # unauditable, which is only one step better than the literal it replaces.
+    # ``isolation["basis"]`` carries it, beside what each of the other claims
+    # rests on. ``official_runner_parity`` is the one field absent here, and on
+    # purpose: it comes from the parity probe, which this bundle already
+    # publishes whole as ``official_runner_parity.json``.
+    derivation = {
+        "schema_version": "ari.harness-registration-control-derivation/v1",
+        "harness_id": manifest.id,
+        "harness_version": manifest.version,
+        "manifest_digest": manifest.manifest_digest,
+        "runs": [
+            {
+                "label": control.label,
+                "role": control.role,
+                "tier": control.tier,
+                "retry_index": control.retry_index,
+                "required_verdict": control.verdict,
+                "observed_verdict": actual[control.label],
+                "attestation_digest": attestations[
+                    control.label].attestation_digest,
+            }
+            for control in REGISTRATION_CONTROLS
+        ],
+        "clean_control_verdict": controls["clean_control_verdict"],
+        "negative_control_verdict": controls["negative_control_verdict"],
+        "isolation": isolation,
+        "verdict_source": (
+            "read back off HarnessAttestationV1 artifacts minted from container "
+            "executions and off the ExecutionRequest each run carried; no field "
+            "in this record was asserted"),
+    }
+    derivation["derivation_digest"] = canonical_digest(derivation)
+    artifacts["control_derivation.json"] = _json_bytes(derivation)
+
     return {
         "environment": environment,
         "contract": contract,
         "baseline": baseline,
         "attestations": attestations,
         "measurement": measurement,
+        "controls": controls,
+        "isolation": isolation,
+        "derivation": derivation,
     }, artifacts
 
 
@@ -837,13 +977,24 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
                 environment_digest=run["environment"].identity_digest,
                 evidence_artifact_digests=dict(sorted(artifact_digests.items())),
                 attestation_digests=attestation_digests,
-                clean_control_verdict="pass",
-                negative_control_verdict="fail",
-                official_runner_parity=True,
-                result_schema_conformant=True,
-                network_isolation="proved",
-                target_write_isolation="proved",
-                oracle_visibility="denied",
+                # OBSERVED, NOT DECLARED. Every one of the seven below was a
+                # literal on this surface: "pass", "fail", True, True, "proved",
+                # "proved", "denied", written whatever the four executions
+                # returned. They now come from the runs -- the two control
+                # verdicts by role from the attestations, the four isolation and
+                # schema fields from ``isolation_findings`` over what each request
+                # carried and what each run returned, and parity from THIS kind's
+                # probe result rather than the whole-probe boolean, because this
+                # evidence is about this kind's manifest.
+                clean_control_verdict=run["controls"]["clean_control_verdict"],
+                negative_control_verdict=run["controls"][
+                    "negative_control_verdict"],
+                official_runner_parity=bool(parity["official_runner_parity"]),
+                result_schema_conformant=run["isolation"][
+                    "result_schema_conformant"],
+                network_isolation=run["isolation"]["network_isolation"],
+                target_write_isolation=run["isolation"]["target_write_isolation"],
+                oracle_visibility=run["isolation"]["oracle_visibility"],
                 run_count=len(run["attestations"]),
             )
             evidence_relative = f"{evidence_prefix}/registration_evidence.json"

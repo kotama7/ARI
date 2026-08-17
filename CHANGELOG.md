@@ -4,6 +4,42 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased — Constitutional ARI-RQGM: opt-in `ari_rqgm` execution mode
 
+- **The native promotion surface now reads its registration evidence off its own runs
+  (`scripts/rqgm_assurance/promote_native_harnesses.py`).** It was the last surface still
+  declaring the seven `HarnessRegistrationEvidenceV1` fields as literal keyword
+  arguments — `clean_control_verdict="pass"`, `negative_control_verdict="fail"`,
+  `official_runner_parity=True`, `result_schema_conformant=True`,
+  `network_isolation="proved"`, `target_write_isolation="proved"`,
+  `oracle_visibility="denied"` — and unlike the re-pin surface beside it, this one
+  genuinely runs four container executions per family. The refusals above the call
+  meant the record happened to be true, which is a different property from being read:
+  weaken one refusal, or add a fifth run, and the seven stay exactly as written.
+
+  **So the repair here is derivation rather than refusal.** The two control verdicts
+  come from the attestations, grouped by the role that also chose which `.so` was
+  staged, through the sibling's `_single` — one field for both, so the group a verdict
+  lands in cannot disagree with the artifact that produced it. The four isolation and
+  schema fields come from `attest_problem_correctness.isolation_findings`, reused
+  rather than reimplemented: it resolves the driver from `manifest.driver.revision`
+  rather than from the family it was written for, so it answers about `NativeHPCDriver`
+  without an edit. Parity comes from this family's own probe result rather than the
+  whole-probe boolean, because the evidence is about one family's manifest.
+
+  Two facts the derivation reads were not being recorded at all, and are now: each
+  execution's record carries the `network` and container identity the reviewed
+  `ExecutionRequest` actually carried (the `container_digest` beside them is copied off
+  the manifest, so it says the same thing whether or not a run honoured the pin), and
+  the candidate's digest is re-read from the workspace after every run. The bundle
+  gains `control_derivation.json`, so the answer is published beside what it rests on —
+  the after-run digest is in no other artifact, and a derived
+  `target_write_isolation` that nothing in the bundle can recompute is only one step
+  better than the literal it replaces. `attestation_digests` was already fed the runs
+  and is unchanged. `ari-core/tests/test_native_promotion_surface.py` pins all of it,
+  including the AST guard the two attesting surfaces already apply to themselves, run
+  against nine mutations of this file — each of the seven fields restored one at a
+  time, the whole declared block restored verbatim, and the whole block deleted — to
+  confirm it discriminates rather than passing on anything.
+
 - **The re-pin surface can no longer declare what it did not observe
   (`scripts/rqgm_assurance/repin_and_promote_harness.py`).** Its `promote` mode wrote
   seven `HarnessRegistrationEvidenceV1` fields as literal keyword arguments —
