@@ -108,22 +108,44 @@ def test_a_case_records_how_long_it_was_timed_for():
     assert "median_seconds" in PerfCaseResultV1.model_fields
 
 
-def test_the_resolving_floor_is_where_the_measured_spread_bound_breaks():
-    """Derived, not chosen. At 4.8 ms the measured spread was 0.105, just over
-    the 0.1 a clean control may show; the floor sits at 5 ms so it refuses
-    nothing the spread bound was not already refusing, and names the cause."""
+#: WHAT THE FLOOR IS DERIVED FROM. The clean control is the frozen reference
+#: scored against itself, so its right answer is 1.0 and any departure is the
+#: instrument's own error at that duration. Forty runs per thread budget on an
+#: idle exclusive x86 node, one case, timed at ten durations: ``seconds ->
+#: worst |1 - ratio| over the forty``.
+#:
+#: The old floor was set from a six-point sweep of the SPREAD and landed at
+#: 5 ms, inside the region where this error is 0.11-0.18 -- so a run at 5-10 ms
+#: was told it was on a noisy machine when the answer was that its case is too
+#: small for the machine. Those are opposite instructions.
+MEASURED_DEVIATION_BY_DURATION = {
+    0.0035: 0.2569, 0.0047: 0.1480, 0.0059: 0.1795, 0.0075: 0.1122,
+    0.0107: 0.0901, 0.0138: 0.0826, 0.0209: 0.0444, 0.0273: 0.0431,
+    0.0408: 0.0078, 0.0809: 0.0128,
+}
+
+
+def test_the_resolving_floor_is_where_the_clean_control_re_enters_the_band():
+    """Derived, not chosen, and derived from the quantity it labels.
+
+    Below the floor the clean control must be OUT of the band the instrument is
+    trusted at -- otherwise the floor calls a good measurement too short. Above
+    it the control must be IN the band at every longer duration -- otherwise the
+    floor calls a measurement resolved that the instrument's own bound does not.
+    """
     from ari.assurance.drivers.perf import _MAX_CLEAN_SPREAD, _MIN_RESOLVING_SECONDS
 
-    assert _MIN_RESOLVING_SECONDS == 0.005
+    assert _MIN_RESOLVING_SECONDS == 0.010
     assert _MAX_CLEAN_SPREAD == 0.1
-    # The measured pairs either side of the floor, as a regression on the claim.
-    measured = {0.0810: 0.0012, 0.0209: 0.0057, 0.0063: 0.0656,
-                0.0048: 0.1052, 0.0033: 0.2144, 0.0088: 0.0186}
-    for seconds, spread in measured.items():
+    for seconds, deviation in sorted(MEASURED_DEVIATION_BY_DURATION.items()):
         if seconds < _MIN_RESOLVING_SECONDS:
-            assert spread > _MAX_CLEAN_SPREAD, (
-                f"{seconds}s measured {spread}, so the floor is above a duration "
-                f"that still resolved and would refuse a good measurement")
+            assert deviation > _MAX_CLEAN_SPREAD, (
+                f"{seconds}s strayed {deviation}, inside the trusted band, so a "
+                f"floor above it labels a measurement that resolved as too short")
+        else:
+            assert deviation <= _MAX_CLEAN_SPREAD, (
+                f"{seconds}s strayed {deviation}, outside the trusted band, so a "
+                f"floor below it labels an unresolved measurement as merely noisy")
 
 
 def _perf_manifest():

@@ -24,6 +24,9 @@ performance harness from a stopwatch.
 
 from __future__ import annotations
 
+import contextlib
+import os
+import platform
 from pathlib import Path
 
 from ari.assurance.models import (
@@ -69,13 +72,75 @@ _MAX_CLEAN_SPREAD = MAX_TRUSTED_SPREAD
 #: out, the instrument's own jitter is 0.1-0.7 ms and grows only slowly; the
 #: spread is dominated by the shrinking denominator.
 #:
-#: 0.005 s is where that sweep first breaches ``_MAX_CLEAN_SPREAD`` (4.8 ms gave
-#: 0.105). So this refuses nothing the spread bound was not already refusing --
-#: it names the CAUSE. "Did not resolve" read as noise from somewhere
-#: unspecified; below this the answer is that the measurement was too short to
-#: hold the instrument's own overhead, and a reader who knows that reaches for a
-#: bigger case rather than a quieter node.
-_MIN_RESOLVING_SECONDS = 0.005
+#: RE-MEASURED, because 0.005 was set from a five-point sweep of the SPREAD and
+#: pointed the reader the wrong way over half its range. The quantity this
+#: labels is how far the clean control -- the frozen reference scored against
+#: itself, whose right answer is 1.0 -- can stray at a given duration. Forty
+#: runs per budget on an idle exclusive x86 node, one case, varying only the
+#: thread budget so the same work was timed at ten durations:
+#:
+#:     3.5 ms  0.257      10.7 ms  0.090
+#:     4.7 ms  0.148      13.8 ms  0.083
+#:     5.9 ms  0.180      20.9 ms  0.044
+#:     7.5 ms  0.112      27.3 ms  0.043
+#:                        40.8 ms  0.008
+#:                        80.9 ms  0.013
+#:
+#: The worst deviation first falls inside ``_MAX_CLEAN_SPREAD`` at 10.7 ms and
+#: stays inside at every longer duration. At 5-10 ms it is 0.11-0.18 -- outside
+#: the band, and the old floor called that region resolved-if-noisy. A run there
+#: was told it was on a noisy machine when the answer was that its case is too
+#: small for this one, which is the opposite instruction: quieten the node
+#: versus enlarge the case.
+#:
+#: STILL A LABEL AND NOT A BOUND. ``resolved`` is decided by the measured spread
+#: alone; this only chooses which of the two explanations ``resolution_note``
+#: gives. It refuses nothing the spread bound was not already refusing. And it
+#: is an absolute duration standing in for a ratio, so it is a proxy: on a host
+#: with much faster cores the same 10 ms buys more work and the crossing moves.
+#: The number is honest about the machine it was measured on and no other.
+_MIN_RESOLVING_SECONDS = 0.010
+
+@contextlib.contextmanager
+def _at_pinned_placement(placement: dict | None):
+    """Measure the controls at the placement the MANIFEST pins, not the shell's.
+
+    THE PROBE READ THE AMBIENT BUDGET. ``measurement_thread_regime`` takes
+    ``ARI_PERF_THREADS`` from the environment, so the gate that certifies a
+    manifest measured at whatever width the operator happened to have exported.
+    That the pin was honoured at all was a property of two CALL SITES --
+    ``repin_and_promote_harness`` and ``attest_gemm_performance`` both compare
+    the ambient placement to the pin and refuse first -- rather than of this
+    probe. ``promote_native_harnesses`` compares nothing, and is harmless today
+    only because the family it serves pins an empty placement. The enforcement
+    belongs to the probe, so every caller inherits it.
+
+    WHY THE ENVIRONMENT AND NOT AN ARGUMENT. The budget is read TWICE per run:
+    once by ``run_timed`` to size the timed child, and once by
+    ``measurement_placement`` to record what was measured. Threading a parameter
+    to one and not the other is the same defect this repairs, in mirror image --
+    a record that describes a width the run did not use. One process, one
+    source, so the two cannot disagree.
+
+    MEASURED, and this is why it matters: at the ambient width of a 96-core host
+    the parity case ran 3.4 ms and the frozen reference scored against itself
+    read as low as 0.7497 over forty runs; at the two threads this manifest pins
+    it ran 80.9 ms and never left 0.99-1.01. Same instrument, same case.
+    """
+    budget = str((placement or {}).get("thread_budget") or "").strip()
+    if not budget:
+        yield None
+        return
+    previous = os.environ.get("ARI_PERF_THREADS")
+    os.environ["ARI_PERF_THREADS"] = budget
+    try:
+        yield budget
+    finally:
+        if previous is None:
+            os.environ.pop("ARI_PERF_THREADS", None)
+        else:
+            os.environ["ARI_PERF_THREADS"] = previous
+
 
 #: The controls used to be gemm source embedded here, which was fine while gemm
 #: was the only problem and wrong the moment the probe started probing the
@@ -439,18 +504,31 @@ class NativePerfDriver:
         # at. Imported, so the controls certify the instrument at exactly the
         # figure a scored run is decided by.
         threshold = DEFAULT_REGRESSION_THRESHOLD
-        clean = verify_native_perf(
-            problem, reference_source(problem), tier="validate",
-            dataset_revision=parity_set, candidate_flags=flags,
-            regression_threshold=threshold)
-        slow = verify_native_perf(
-            problem, problem.path(scaffolding.negative_control_slow),
-            tier="screen", dataset_revision=parity_set,
-            candidate_flags=flags, regression_threshold=threshold)
-        wrong = verify_native_perf(
-            problem, problem.path(scaffolding.negative_control_wrong),
-            tier="screen", dataset_revision=parity_set,
-            candidate_flags=flags, regression_threshold=threshold)
+        # THE MACHINE HALF OF THE PIN, CHECKED HERE SO EVERY CALLER INHERITS IT.
+        # A timed verdict is a statement about a machine. Two surfaces compared
+        # this before calling; a third did not, and nothing in the probe itself
+        # did -- so a promotion routed through that third surface would have
+        # certified a manifest on hardware it does not name, with 15/15 gates
+        # and no field recording the substitution.
+        pinned = dict(manifest.registered_placement or {})
+        if pinned.get("machine") and pinned["machine"] != platform.machine():
+            return _refused(
+                f"{manifest.id} pins machine {pinned['machine']!r} and this is "
+                f"{platform.machine()!r}; its evidence describes that machine, "
+                f"and controls timed here would attest to a different one")
+        with _at_pinned_placement(pinned):
+            clean = verify_native_perf(
+                problem, reference_source(problem), tier="validate",
+                dataset_revision=parity_set, candidate_flags=flags,
+                regression_threshold=threshold)
+            slow = verify_native_perf(
+                problem, problem.path(scaffolding.negative_control_slow),
+                tier="screen", dataset_revision=parity_set,
+                candidate_flags=flags, regression_threshold=threshold)
+            wrong = verify_native_perf(
+                problem, problem.path(scaffolding.negative_control_wrong),
+                tier="screen", dataset_revision=parity_set,
+                candidate_flags=flags, regression_threshold=threshold)
         slow_detail = slow.case_results[0].detail if slow.case_results else ""
         wrong_detail = wrong.case_results[0].detail if wrong.case_results else ""
         clean_spread = (clean.case_results[0].relative_spread
@@ -488,6 +566,12 @@ class NativePerfDriver:
             # driver could be read as evidence about a harness it never ran.
             "problem": definition.revision,
             "problem_digest": problem.digest,
+            # WHERE THESE CONTROLS WERE TIMED, read back from the run rather
+            # than from the pin. The probe now enforces the pinned budget, so
+            # the report has to say what it enforced -- a probe that sets a
+            # placement and reports only the pin would be indistinguishable
+            # from one that set nothing and got lucky.
+            "placement": clean.placement,
             # The common view the gates read; the detail below stays.
             "controls": {
                 "clean": {"verdict": clean.verdict,

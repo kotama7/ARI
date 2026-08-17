@@ -9,6 +9,8 @@ is exercised there; everything here runs anywhere.
 from __future__ import annotations
 
 import json
+import os
+import platform
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -600,6 +602,49 @@ def test_prepare_refuses_a_host_that_is_not_the_registered_placement(monkeypatch
     with pytest.raises(ValueError, match="not the placement"):
         NativePerfDriver().prepare(
             _Manifest(registered_placement={"thread_budget": "3"}), _Request())
+
+
+def test_the_probe_times_its_controls_at_the_placement_the_manifest_pins(monkeypatch):
+    """THE GATE READ THE SHELL. ``measurement_thread_regime`` takes the budget
+    from ``ARI_PERF_THREADS``, so the probe that certifies a manifest measured
+    at whatever width the caller happened to export. That the pin was honoured
+    was a property of two call sites that compare and refuse first; a third
+    promotion surface compares nothing. It belongs to the probe.
+
+    MEASURED, why it matters: at a 96-core host's ambient width the parity case
+    ran 3.4 ms and the frozen reference against itself read as low as 0.7497
+    over forty runs; at two threads it ran 80.9 ms and stayed inside 0.99-1.01.
+    """
+    monkeypatch.setenv("ARI_PERF_THREADS", "7")
+    report = NativePerfDriver().parity_probe(
+        _Manifest(registered_placement={
+            "machine": platform.machine(), "thread_budget": "3"}))
+    assert report["placement"]["thread_budget"] == "3", (
+        "the probe certified at the ambient budget, not the pinned one")
+    assert os.environ["ARI_PERF_THREADS"] == "7", (
+        "the probe left its own budget behind in the caller's environment")
+
+
+def test_the_probe_refuses_a_machine_the_manifest_does_not_name():
+    """The other half of a placement, and the half no surface checked in the
+    probe: a promotion routed through a surface that compares nothing would
+    certify a manifest on hardware it does not name, 15/15, with no field
+    recording the substitution."""
+    report = NativePerfDriver().parity_probe(
+        _Manifest(registered_placement={"machine": "not-this-machine",
+                                        "thread_budget": "2"}))
+    assert report["passed"] is False
+    assert "pins machine" in report["reason"]
+
+
+def test_a_manifest_that_pins_no_budget_leaves_the_ambient_one_alone(monkeypatch):
+    """Only the perf family pins a placement today. A probe that forced a
+    budget on the families that pin none would be changing what they measure to
+    fix a defect they do not have."""
+    monkeypatch.setenv("ARI_PERF_THREADS", "5")
+    report = NativePerfDriver().parity_probe(
+        _Manifest(registered_placement={"machine": platform.machine()}))
+    assert report["placement"]["thread_budget"] == "5"
 
 
 def test_prepare_refuses_a_case_set_that_cannot_support_a_verdict():

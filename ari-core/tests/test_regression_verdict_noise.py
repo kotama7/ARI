@@ -320,12 +320,21 @@ def test_the_parity_probe_certifies_at_the_figure_a_scored_run_is_judged_at(monk
 
     def _capture(problem, source, **kwargs):
         thresholds.append(kwargs["regression_threshold"])
+        # ``placement`` because the probe records the placement it MEASURED at
+        # rather than the one the manifest pins -- a probe that echoed the pin
+        # could not be told apart from one that set nothing and got lucky.
         return SimpleNamespace(verdict="pass", case_results=(),
+                               placement=None,
                                report_digest="sha256:" + "0" * 64)
 
     monkeypatch.setattr(perf_driver, "verify_native_perf", _capture)
+    # An EMPTY placement, deliberately: the probe now times its controls at the
+    # budget the manifest pins, and this test is about the threshold alone. A
+    # manifest that pins none leaves the ambient regime untouched, which is the
+    # path that keeps this isolated to the one question it asks.
     perf_driver.NativePerfDriver().parity_probe(
-        SimpleNamespace(oracle=SimpleNamespace(revision=PROBLEM)))
+        SimpleNamespace(oracle=SimpleNamespace(revision=PROBLEM),
+                        id="hpc/gemm-performance", registered_placement={}))
     assert thresholds == [DEFAULT_REGRESSION_THRESHOLD] * 3
 
 
