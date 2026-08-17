@@ -1,5 +1,5 @@
 schema_version: 1
-catalog_source_revision: ari-harness-catalog/1@b156092342aa9ddea81fa8578c1f8519c0f721cf
+catalog_source_revision: ari-harness-catalog/1@7be41f8059c8655d518d6cfc8f858a7368e83856
 driver_protocol_version: ari.harness-driver/v1
 property_vocabulary_version: ari.assurance-properties/v1
 entries:

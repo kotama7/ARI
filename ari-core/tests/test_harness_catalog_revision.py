@@ -54,9 +54,9 @@ LIVE_CATALOG = HARNESS_ROOT / "catalog.yaml"
 # `config/harnesses/catalog.yaml` to name the new catalog, then record the new
 # pairing here. Editing only this pair to make the test green re-uses one label
 # for two catalogs, which is the defect this file exists to catch.
-PINNED_REVISION = "ari-harness-catalog/1@b156092342aa9ddea81fa8578c1f8519c0f721cf"
+PINNED_REVISION = "ari-harness-catalog/1@7be41f8059c8655d518d6cfc8f858a7368e83856"
 PINNED_SNAPSHOT_DIGEST = (
-    "sha256:9977ecc1fde5326d80a68c8eb8f7d326d6c4695be959d46d36df22b4ff3ce505"
+    "sha256:53d4bf365b32a5f63d486027be27b62469b823cdff78c07880533fa67ad6643f"
 )
 
 
