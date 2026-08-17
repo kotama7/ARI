@@ -62,6 +62,35 @@ PARITY_EVIDENCE = (pathlib.Path(__file__).resolve().parents[1] / "config"
                    / "official_runner_parity.json")
 
 
+#: THESE TESTS TIME A KERNEL, so they must time it where this instrument says
+#: it can read one. Left to the ambient budget they take one thread per physical
+#: core, and on a wide host the parity case then runs BELOW the driver's own
+#: ``_MIN_RESOLVING_SECONDS`` floor -- where the frozen reference scored against
+#: itself is not reliably 1.0 and this file's first assertion is a coin flip.
+#:
+#: MEASURED on an idle exclusive 96-core host, the reference against itself at
+#: screen tier, forty runs per budget:
+#:
+#:   budget  case      worst ratio   verdicts
+#:   96      3.4 ms    0.7497        24 pass, 13 inconclusive, 3 FAIL
+#:   24      7.5 ms    0.7780        38 pass,  1 inconclusive, 1 FAIL
+#:    8     20.8 ms    0.9764        40 pass
+#:    2     80.9 ms    0.9908        40 pass
+#:
+#: So it failed about one full-suite run in three, on an idle machine, with no
+#: order dependence and no competing load -- adding load made it PASS, because
+#: load lengthened the timed region. Two is pinned for the headroom: sixteen
+#: times the floor, so a host with much faster cores stays resolved. What is
+#: under test here is the VERDICT RULE, and the rule is only observable where
+#: the measurement it reads is one.
+MEASUREMENT_BUDGET = "2"
+
+
+@pytest.fixture(autouse=True)
+def _resolved_measurement(monkeypatch):
+    monkeypatch.setenv("ARI_PERF_THREADS", MEASUREMENT_BUDGET)
+
+
 @pytest.fixture(scope="module")
 def problem():
     return load_problem(PROBLEM)
