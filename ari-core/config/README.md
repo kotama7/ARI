@@ -30,6 +30,7 @@ Shipped default config files (YAML) loaded by ari-core.
     - `hpc_stencil_correctness.yaml` — native seven-point stencil correctness harness manifest.
   - `case_sets/` — the pinned answer to WHICH PROBLEMS a performance harness measures on. A manifest names a revision and pins the file's bytes, so a size is chosen by naming a registered set and never by passing shapes through a request, and changing a size is a re-registration. Each set declares the family its case tuples are meaningful for, so a set cannot be handed to the wrong oracle, and `resolves: false` marks in data the sets that are too cheap to carry a verdict.
     - `gemm-parity.yaml` — where the GEMM registration parity probe measures: one shape at the scored size. Separate from the scored set so a probe can be cheap, but not cheap here — at a small shape the probe's clean control would be indistinguishable from its negative controls inside the noise.
+    - `gemm-scored-2026q3-resolved.yaml` — the same three GEMM ratios as the 2026q3 set, each enlarged to the largest instance the timed run's 64 MiB scratch admits, so the credited region is 33-74 ms rather than 14-44 ms at the registered thread budget and clears the driver's 5 ms resolution floor by 6.6x at worst instead of 2.8x. A set BESIDE the 2026q3 one, not a re-cut of it: those bytes are pinned by registrations, and pointing a harness at this file is a registration of its own.
     - `gemm-scored-2026q3.yaml` — the scored GEMM shapes: one 1000-cube and two rectangles, large enough that the timed kernel dominates. Fixed, because a shape a candidate could choose is a shape it could choose to be easy; a theme needing other sizes adds a set beside this one rather than editing it.
     - `gemm-smoke.yaml` — a cheap 256-cube for wiring checks; declares `resolves: false`, because a single stall of tens of milliseconds dominates a sub-millisecond kernel there. It can say a candidate built and was right; it cannot support a regression verdict.
     - `spmm-parity.yaml` — where the SpMM parity probe certifies: one uniform matrix, large enough that the timed kernel dominates.
@@ -68,37 +69,44 @@ Shipped default config files (YAML) loaded by ari-core.
         - `negative-screen-stderr.log` — stderr from invalid GEMM screening.
         - `negative-screen-stdout.log` — stdout from invalid GEMM screening.
     - `hpc_gemm_dense_fp64_problem_correctness/` — registration evidence for the problem-pinned GEMM correctness harness, produced by three parity-probe runs from a clean worktree at the commit the manifest pins. Its `measurement_environment.json` records that this harness pins no placement, because a residual bound does not depend on the allocation's shape — the one field a performance harness's evidence must carry and this one must not.
-      - `clean-certify-repeat.attestation.json` — TODO
-      - `clean-certify.attestation.json` — TODO
-      - `clean-screen.attestation.json` — TODO
-      - `control_sequence.json` — TODO
+      - `clean-certify-repeat.attestation.json` — a second, independently seeded certify instance of the same clean candidate. The two certify runs draw different seeds from their attempt ids, so their report digests legitimately differ; what the repeat shows is that the VERDICT is stable across instances.
+      - `clean-certify.attestation.json` — the problem's own reference kernel at the certify tier. Here a tier buys REPETITIONS per pinned case (screen 1, validate 3, certify 5), not a wider case set: the cases are pinned data and do not grow.
+      - `clean-screen.attestation.json` — the frozen reference scored against ITSELF at the screen tier, which is the one candidate whose answer is known: anything but a pass here means the instrument called its own denominator a regression.
+      - `control_sequence.json` — required versus observed outcome for every labelled run, the ground each negative failed on, and the isolation findings DERIVED from what each request carried and what each run returned. This is the record that makes the registration evidence readable as observation rather than assertion.
       - `gate_findings.json` — one record per registration gate: id, verdict and the reason in words.
       - `measurement_environment.json` — the registration commit, the captured environment, and the note that this harness pins NO placement — a residual bound does not depend on the allocation's shape, which is the one field a performance harness's evidence must carry and this one must not.
       - `multiple_run_stability.json` — three runs of a DETERMINISTIC verifier: there is no spread to measure, so what repeating establishes is that the answers are identical.
-      - `negative-interface-screen.attestation.json` — TODO
-      - `negative-screen.attestation.json` — TODO
+      - `negative-interface-screen.attestation.json` — the driver's own file-scope-global transform of the problem's seed candidate, caught by the object audit BEFORE any case runs. It exists because `wrong_gemm.c` keeps the contract perfectly, so without this run `interface-conformance` would be registered as verified having never once been observed to fail.
+      - `negative-screen.attestation.json` — `wrong_gemm.c`, caught by the ORACLE alone: it builds, it conforms, and it writes every expected element, so neither the build, the audit nor an element-count check is what rejected it — only the residual bound.
       - `official_runner_parity.json` — the parity probe's four controls — the frozen reference, the wrong kernel that must fail on the residual bound, the correct-but-slow kernel that must PASS, and the extra-symbol kernel the object audit must refuse.
       - `registration_evidence.json` — the reviewed evidence bundle, pinning every artifact above by digest.
       - `registration_report.json` — the minted report: fifteen gates, each with its evidence digest.
-      - `resource_measurements.json` — TODO
-      - `logs/` — TODO
-        - `clean-certify-repeat-stderr.log` — TODO
-        - `clean-certify-repeat-stdout.log` — TODO
-        - `clean-certify-stderr.log` — TODO
-        - `clean-certify-stdout.log` — TODO
-        - `clean-screen-stderr.log` — TODO
-        - `clean-screen-stdout.log` — TODO
-        - `negative-interface-screen-stderr.log` — TODO
-        - `negative-interface-screen-stdout.log` — TODO
-        - `negative-screen-stderr.log` — TODO
-        - `negative-screen-stdout.log` — TODO
+      - `resource_measurements.json` — one record per container execution: status, executor wall time and the resources the run was actually given, so the cost of a registration is a measurement rather than an estimate.
+      - `logs/` — the worker's stdout and stderr for each labelled run, tracked past the `logs/` ignore because this bundle PINS them in `evidence_artifact_digests`. The three native bundles ship logs without pinning them, so theirs could be swapped without the evidence noticing and these cannot.
+        - `clean-certify-repeat-stderr.log` — anything `clean-certify-repeat` wrote to stderr. Empty on a run that completed, and retained anyway: a silent stream is itself the evidence that nothing was reported outside the typed report.
+        - `clean-certify-repeat-stdout.log` — the typed report the worker emitted for `clean-certify-repeat`: per-case verdicts and residual ratios, the toolchain that built the candidate, the pinned problem and dataset digests, and the placement the run was given.
+        - `clean-certify-stderr.log` — anything `clean-certify` wrote to stderr. Empty on a run that completed, and retained anyway: a silent stream is itself the evidence that nothing was reported outside the typed report.
+        - `clean-certify-stdout.log` — the typed report the worker emitted for `clean-certify`: per-case verdicts and residual ratios, the toolchain that built the candidate, the pinned problem and dataset digests, and the placement the run was given.
+        - `clean-screen-stderr.log` — anything `clean-screen` wrote to stderr. Empty on a run that completed, and retained anyway: a silent stream is itself the evidence that nothing was reported outside the typed report.
+        - `clean-screen-stdout.log` — the typed report the worker emitted for `clean-screen`: per-case verdicts and residual ratios, the toolchain that built the candidate, the pinned problem and dataset digests, and the placement the run was given.
+        - `negative-interface-screen-stderr.log` — anything `negative-interface-screen` wrote to stderr. Empty on a run that completed, and retained anyway: a silent stream is itself the evidence that nothing was reported outside the typed report.
+        - `negative-interface-screen-stdout.log` — the typed report the worker emitted for `negative-interface-screen`: per-case verdicts and residual ratios, the toolchain that built the candidate, the pinned problem and dataset digests, and the placement the run was given.
+        - `negative-screen-stderr.log` — anything `negative-screen` wrote to stderr. Empty on a run that completed, and retained anyway: a silent stream is itself the evidence that nothing was reported outside the typed report.
+        - `negative-screen-stdout.log` — the typed report the worker emitted for `negative-screen`: per-case verdicts and residual ratios, the toolchain that built the candidate, the pinned problem and dataset digests, and the placement the run was given.
     - `hpc_gemm_performance/` — registration evidence for the native GEMM performance harness, produced by three parity-probe runs on an exclusive compute node from a clean worktree.
+      - `clean-screen.attestation.json` — the same reference kernel at the screen tier, one repetition per case. The cheap end of the ladder, kept so the sequence exercises both tiers a candidate can be judged at.
+      - `clean-validate-repeat.attestation.json` — a second, independently seeded validate instance. Its report digest legitimately differs from the first (the seed derives from the attempt id); what it demonstrates is that the VERDICT is stable across instances, not that the bytes repeat.
+      - `clean-validate.attestation.json` — the same clean control at the validate tier. For a stopwatch a tier buys REPETITIONS, not more cases, and one repetition has no spread and therefore neither resolves nor explains — so the clean controls run where a spread exists.
+      - `control_sequence.json` — required versus observed outcome for every labelled run, the ground each negative failed on, and the isolation findings DERIVED from what each request carried and what each run returned. The whole sequence is refused unless the observed verdicts match in both directions.
       - `gate_findings.json` — one record per registration gate: id, verdict, the reason in words, and a digest of the artifact the gate READ, so two registrations agree only if they read the same bytes.
       - `measurement_environment.json` — the node class and registration commit, recorded because a verdict is a statement about a machine: the same commit and the same clean worktree scored 15/15 on the aarch64 node and 13/15 on an exclusive x86 64-core node, where the clean control did not resolve.
       - `multiple_run_stability.json` — the three clean-control speedups and their relative spread (0.0141), which is what turns stability from a claim into a measurement.
+      - `negative-slow-screen.attestation.json` — `slow_gemm.c`, which is CORRECT and slow. It must fail on the RATIO with every repetition passing the oracle; a failure here on correctness would mean the instrument is scoring the wrong thing.
+      - `negative-wrong-screen.attestation.json` — `wrong_gemm.c`, which is FAST and wrong. It must fail on the residual bound while writing every expected element, so neither the NaN poison nor an element-count check can be what caught it. Two negatives failing the same way would certify a stopwatch wearing a benchmark label; these two failing on different grounds is the separation claim this family exists to make.
       - `official_runner_parity.json` — the parity probe on the `@parity` case set: the clean control's median speedup and spread beside both negative controls, each with its report digest, plus the problem and driver digests the probe ran against. This is the evidence that the instrument can tell a wrong answer from a slow one.
       - `registration_evidence.json` — the bundle the gates are computed from: manifest digest, clean and negative control verdicts, oracle visibility, network isolation, environment digest, and a digest per evidence artifact.
       - `registration_report.json` — the minted report: every gate with its evidence digest, and the resulting `eligible-for-verified` decision. Minted from evidence rather than handed a decision.
+      - `resource_measurements.json` — one record per container execution: status, executor wall time and the resources the run was actually given, so the cost of a registration is a measurement rather than an estimate.
     - `hpc_spmm_correctness/` — promotion evidence for the native SpMM correctness harness.
       - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic SpMM results.
       - `clean-certify.attestation.json` — clean authoritative SpMM certification attestation.
