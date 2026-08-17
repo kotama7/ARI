@@ -32,6 +32,8 @@ import json
 import platform
 import shlex
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -397,28 +399,72 @@ class TargetABIMismatch(RuntimeError):
     """The built artifact does not implement the contract it would declare."""
 
 
+#: How long the out-of-process symbol audit may take.
+#:
+#: A dlopen plus a handful of dlsym calls is milliseconds. This bounds the
+#: candidate whose ELF constructor never returns -- which, in-process, hung the
+#: scorer itself and took every unrelated node down with it.
+_ABI_PROBE_TIMEOUT = 60.0
+
+
 def _missing_abi_symbols(library: Path, required: tuple[str, ...]) -> list[str]:
     """Which required symbols the built library does not resolve.
 
-    Resolved through ctypes, the same way the verifier resolves them, so this
-    check and the check that matters cannot disagree about what "exported"
-    means.
+    Resolved through ctypes -- dlopen, then dlsym -- the same way the verifier
+    resolves them, so this check and the check that matters cannot disagree
+    about what "exported" means. IN A CHILD PROCESS, because dlopen runs the
+    candidate's ELF constructors and this audit runs inside the SCORER.
+
+    Measured: a candidate declaring ``-Ofast`` links ``crtfastmath.o``, whose
+    constructor sets MXCSR FTZ/DAZ process-wide and irreversibly; ``5e-324 *
+    1.0`` gave ``5e-324`` before this call and ``0.0`` after it, so a candidate
+    could change how every LATER evaluation in the process rounds -- including
+    the spmm oracle's bound of exactly 0.0 for an empty row. The flags are not
+    the mechanism: the same flush was measured from a ``-O2`` candidate with its
+    own ``__attribute__((constructor))`` calling ``_MM_SET_FLUSH_ZERO_MODE``.
+    See ``abi_probe`` for why a process boundary rather than an FP save/restore.
     """
     if not required:
         return []
-    import ctypes
-
-    try:
-        handle = ctypes.CDLL(str(library))
-    except OSError as exc:
-        raise TargetABIMismatch(f"built library will not load: {exc}") from exc
-    missing = []
+    package_root = Path(__file__).resolve().parents[2]
+    argv = [sys.executable, "-m", "ari.evaluator.abi_probe",
+            "--library", str(library)]
     for name in required:
+        argv.extend(["--symbol", name])
+    # Inherited on purpose. The library was linked moments ago by THIS process,
+    # so its dependencies have to resolve the same way here; scrubbing the
+    # environment would make the audit refuse artifacts that load perfectly well
+    # for the verifier. The isolation being bought is the process, not the view.
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(package_root), *([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])])
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    with tempfile.TemporaryDirectory() as scratch:
+        envelope_path = Path(scratch) / "abi_probe.json"
         try:
-            getattr(handle, name)
-        except AttributeError:
-            missing.append(name)
-    return missing
+            completed = subprocess.run(
+                [*argv, "--out", str(envelope_path)],
+                capture_output=True, text=True, check=False,
+                timeout=_ABI_PROBE_TIMEOUT, env=env)
+        except subprocess.TimeoutExpired as exc:
+            raise TargetABIMismatch(
+                f"built library will not load: its initialisation did not "
+                f"finish within {_ABI_PROBE_TIMEOUT:g}s") from exc
+        try:
+            envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            # The child died inside the candidate's constructor -- a segfault or
+            # an exit() that, in-process, would have taken the scorer with it.
+            # It is the same answer as an unloadable library, and it is the
+            # candidate's, so it is reported rather than raised as an outage.
+            raise TargetABIMismatch(
+                f"built library will not load: its symbol probe did not report "
+                f"(exit={completed.returncode}) "
+                f"{completed.stderr.strip()[:500]}") from exc
+    if not envelope.get("ok"):
+        raise TargetABIMismatch(
+            f"built library will not load: {envelope.get('error')}")
+    return [str(name) for name in envelope.get("missing", [])]
 
 
 def declare_target(work_dir: str | Path,

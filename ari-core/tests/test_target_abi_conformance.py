@@ -8,6 +8,7 @@ never entered. The declaration was a claim with nothing behind it.
 """
 import ctypes.util
 import subprocess
+import sys
 
 import pytest
 
@@ -56,3 +57,112 @@ def test_an_unloadable_library_is_a_mismatch_not_a_crash(tmp_path):
     bad.write_bytes(b"not an ELF object")
     with pytest.raises(TargetABIMismatch, match="will not load"):
         _missing_abi_symbols(bad, ("ari_gemm_f64",))
+
+
+# --------------------------------------------------------------------------
+# The audit must not give the candidate a constructor slot in the SCORER.
+#
+# `dlopen` runs the object's ELF constructors. While the audit called it
+# in-process, a candidate could run code inside the process that goes on to
+# score every later node. Measured: `5e-324 * 1.0` returned `5e-324` before the
+# audit and `0.0` after it, because `-Ofast` links `crtfastmath.o` whose
+# constructor sets MXCSR FTZ/DAZ process-wide with no matching unset. Oracles
+# whose guarantee depends on denormals -- the spmm bound of exactly 0.0 for an
+# empty row -- then answer differently for every subsequent candidate, and
+# nothing in the evidence records that it happened.
+#
+# These fail against the in-process audit. The first two fail loudly; the last
+# one takes the whole session down, which is precisely the point being made.
+# --------------------------------------------------------------------------
+
+#: The smallest positive double. Only representable while denormals are kept.
+_TINY = float.fromhex("0x0.0000000000001p-1022")
+
+
+def _multiply(a: float, b: float) -> float:
+    """Kept out of line so the product is computed, not constant-folded."""
+    return a * b
+
+
+def _denormals_survive() -> bool:
+    return _multiply(_TINY, 1.0) != 0.0
+
+
+#: Opens a library in-process and reports whether that flushed denormals. Run
+#: in a subprocess: asking the question in the test process would answer it by
+#: poisoning the test process.
+#: Each observation is reduced to a BOOL before the next step. DAZ makes the
+#: hardware read an already-stored denormal as zero, so `before != 0.0`
+#: evaluated after the dlopen answers about the new mode, not the old one --
+#: which is how this check first reported "intact" for a library that flushes.
+_INPROCESS_FLUSH_CHECK = """
+import ctypes, sys
+tiny = float.fromhex("0x0.0000000000001p-1022")
+mul = lambda a, b: a * b
+before = mul(tiny, 1.0) != 0.0
+ctypes.CDLL(sys.argv[1])
+after = mul(tiny, 1.0) != 0.0
+sys.stdout.write("flushed" if before and not after else "intact")
+"""
+
+#: Two routes to the same effect. The flags are not the mechanism: the second
+#: reaches it from a plain -O2 build, so a screen over flag spellings closes the
+#: spelling and leaves the escape.
+_FTZ_CANDIDATES = {
+    "declared -Ofast, no constructor of its own": (
+        ["-Ofast"],
+        "double gemm(void){return 1.0;}\n",
+    ),
+    "plain -O2, its own constructor": (
+        ["-O2"],
+        "#include <xmmintrin.h>\n"
+        "#include <pmmintrin.h>\n"
+        "static void __attribute__((constructor)) arm(void){\n"
+        "  _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);\n"
+        "  _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);\n"
+        "}\n"
+        "double gemm(void){return 1.0;}\n",
+    ),
+}
+
+
+def _build_candidate(tmp_path, flags, source):
+    """Build with candidate-chosen flags, skipping if THIS toolchain cannot."""
+    src = tmp_path / "c.c"
+    src.write_text(source, encoding="utf-8")
+    lib = tmp_path / "c.so"
+    proc = subprocess.run(["cc", "-shared", "-fPIC", *flags, str(src), "-o", str(lib)],
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        pytest.skip(f"toolchain will not build this candidate: {proc.stderr[:200]}")
+    return lib
+
+
+@pytest.mark.parametrize("route", sorted(_FTZ_CANDIDATES))
+def test_the_audit_cannot_change_the_scorers_rounding(tmp_path, route):
+    lib = _build_candidate(tmp_path, *_FTZ_CANDIDATES[route])
+    # Only meaningful where this toolchain and architecture actually produce the
+    # escape; establish that first, in a process we are willing to lose.
+    check = subprocess.run([sys.executable, "-c", _INPROCESS_FLUSH_CHECK, str(lib)],
+                           capture_output=True, text=True)
+    if check.stdout.strip() != "flushed":
+        pytest.skip(f"opening this object in-process does not flush denormals here "
+                    f"({check.stdout.strip() or check.stderr[:120]!r})")
+
+    assert _denormals_survive(), "the test process already had denormals flushed"
+    assert _missing_abi_symbols(lib, ("gemm",)) == []
+    assert _denormals_survive(), (
+        f"auditing a candidate ({route}) flushed denormals in the SCORER: "
+        f"every later evaluation in this process now rounds differently")
+
+
+def test_a_constructor_that_kills_its_process_does_not_kill_the_scorer(tmp_path):
+    # The reason the fix is a process boundary and not an FP save/restore: an FP
+    # restore would hand back the MXCSR bits and still let this one through.
+    lib = _build_candidate(tmp_path, ["-O2"],
+                           "#include <unistd.h>\n"
+                           "static void __attribute__((constructor)) boom(void)"
+                           "{_exit(9);}\n"
+                           "double gemm(void){return 1.0;}\n")
+    with pytest.raises(TargetABIMismatch, match="will not load"):
+        _missing_abi_symbols(lib, ("gemm",))
