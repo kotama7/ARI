@@ -290,6 +290,21 @@ def _ground_of(attestation: Any) -> str | None:
     return None
 
 
+def _observed(attestation: Any) -> str:
+    """The measured quantities behind a verdict, for a refusal to name."""
+    for result in attestation.property_results:
+        if result.property_id != PROPERTY:
+            continue
+        tolerance = result.tolerance_evidence or {}
+        measurements = result.measurements or {}
+        return (f"observed worst_relative_spread="
+                f"{tolerance.get('worst_relative_spread')!r}, "
+                f"min_speedup={measurements.get('min_speedup')!r}, "
+                f"seconds_by_case={measurements.get('credited_seconds_by_case')!r}, "
+                f"threshold={tolerance.get('regression_threshold')!r}")
+    return "no result for this property"
+
+
 def check_control_sequence(attestations: dict[str, Any]) -> dict[str, Any]:
     """Refuse unless the controls discriminated. Nothing else decides this.
 
@@ -314,9 +329,14 @@ def check_control_sequence(attestations: dict[str, Any]) -> dict[str, Any]:
     for control in CONTROLS:
         attestation = attestations[control.label]
         if attestation.verdict != control.verdict:
+            # WITH THE NUMBER IT REFUSED ON. A sequence that says only which
+            # verdict it wanted sends the reader back to the container to find
+            # out why; the two quantities that decide a timed verdict are
+            # already in the attestation it is holding.
             raise ControlSequenceError(
                 f"{control.label} returned {attestation.verdict!r} where the "
-                f"sequence requires {control.verdict!r}: {control.why}")
+                f"sequence requires {control.verdict!r}: {control.why}. "
+                f"{_observed(attestation)}")
         verdicts = property_map(attestation)
         if verdicts.get(PROPERTY) != control.verdict:
             raise ControlSequenceError(

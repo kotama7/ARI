@@ -9,6 +9,7 @@ infrastructure accounting never conflates the two.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from ari.assurance.native_perf import (DEFAULT_REGRESSION_THRESHOLD,
@@ -50,9 +51,28 @@ def main(argv: list[str] | None = None) -> int:
     # from the one the registration evidence was established at.
     parser.add_argument("--regression-threshold", type=float,
                         default=DEFAULT_REGRESSION_THRESHOLD)
+    #: THE THREAD BUDGET, CARRIED RATHER THAN AMBIENT.
+    #:
+    #: measurement_thread_regime() reads ARI_PERF_THREADS from the environment,
+    #: and PinnedContainerExecutor launches with --cleanenv, passing only
+    #: PYTHONPATH. So a budget set beside a governed run never reached the timed
+    #: child: it used the whole machine while the manifest's registered
+    #: placement recorded the host-side number, and the pin described something
+    #: the run did not do.
+    #:
+    #: MEASURED, the same clean control on one exclusive node: the pinned 8
+    #: threads gave 18.2 ms and a spread of 0.024 when the budget reached the
+    #: worker, and 3.2 ms with a spread of 0.164 when it did not -- the second
+    #: being the machine's full width, at which this case is too short to
+    #: resolve. Passed here, it is in the reviewed argv like the network flags.
+    parser.add_argument("--threads", default=None,
+                        help="OMP team size for the timed child; the placement "
+                             "the manifest pins, carried into the container")
     parser.add_argument("--run-timeout", type=float, default=300.0)
     parser.add_argument("--negative-control", action="store_true")
     args = parser.parse_args(argv)
+    if args.threads:
+        os.environ["ARI_PERF_THREADS"] = str(args.threads)
     report = verify_native_perf(
         args.problem, args.candidate, tier=args.tier, seed=args.seed,
         candidate_compiler=args.compiler, candidate_flags=args.flags,

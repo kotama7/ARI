@@ -189,6 +189,24 @@ def _worker_argv(manifest, declaration, *, tier: str, seed: int) -> list[str]:
             "--tier", tier,
             "--seed", str(seed),
             "--dataset-revision", manifest.dataset.revision,
+            # THE PINNED THREAD BUDGET, CARRIED RATHER THAN AMBIENT.
+            #
+            # measurement_thread_regime() reads ARI_PERF_THREADS from the
+            # environment, and the container executor launches with --cleanenv
+            # passing only PYTHONPATH, so a budget set beside a governed run
+            # never reached the timed child. The manifest recorded the host-side
+            # number while the child used the whole machine: the pin described
+            # something the run did not do.
+            #
+            # MEASURED, one exclusive node, the same clean control -- 18.2 ms at
+            # a spread of 0.024 with the pinned 8 threads reaching the worker,
+            # and 3.2 ms at a spread of 0.164 without them, the latter being the
+            # machine's full width, at which this case is too short to resolve.
+            # In the argv, like the network flags, so a reviewer reads what was
+            # enforced rather than what the caller happened to be exporting.
+            *(("--threads", str(manifest.registered_placement["thread_budget"]))
+              if (manifest.registered_placement or {}).get("thread_budget")
+              else ()),
             # Doubly load-bearing here. Without the declared compiler this path
             # can never cross a compiler boundary, so the MATCHED reference --
             # the second denominator built the candidate's way, which exists so

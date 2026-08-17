@@ -22,7 +22,12 @@ count and the budget and nothing about cores. It writes both now.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
+import yaml
+
+from ari.assurance.models import HarnessManifestV1
+from ari.assurance.request import _worker_argv
 from ari.assurance.native_perf_common import (
     allowed_cpus,
     measurement_placement,
@@ -119,3 +124,74 @@ def test_the_resolving_floor_is_where_the_measured_spread_bound_breaks():
             assert spread > _MAX_CLEAN_SPREAD, (
                 f"{seconds}s measured {spread}, so the floor is above a duration "
                 f"that still resolved and would refuse a good measurement")
+
+
+def _perf_manifest():
+    path = (Path(__file__).resolve().parents[1] / "config" / "harnesses"
+            / "builtin" / "hpc_gemm_performance.yaml")
+    return HarnessManifestV1.model_validate(yaml.safe_load(
+        path.read_text(encoding="utf-8")))
+
+
+def test_the_pinned_budget_travels_in_the_argv():
+    """THE DEFECT. The budget was ambient, and the container drops ambient.
+
+    ``measurement_thread_regime`` reads ``ARI_PERF_THREADS`` from the
+    environment. The container executor launches with ``--cleanenv`` and passes
+    exactly one variable through, so a budget exported beside a governed run did
+    not arrive: the manifest recorded the host-side number and the timed child
+    ran the machine's full width. MEASURED on one exclusive node, the same clean
+    control read 18.2 ms at a spread of 0.024 with the pinned budget in force
+    and 3.2 ms at a spread of 0.164 without it -- the case being too short to
+    resolve at full width. The pin described something the run did not do.
+    """
+    manifest = _perf_manifest()
+    budget = manifest.registered_placement["thread_budget"]
+    argv = _worker_argv(manifest, _Declaration(), tier="validate", seed=1)
+    assert "--threads" in argv, (
+        "the pinned placement's thread budget does not reach the worker; the "
+        "container drops the environment, so an argv without it measures at a "
+        "width the manifest does not pin")
+    assert argv[argv.index("--threads") + 1] == str(budget)
+
+
+def test_the_worker_applies_the_budget_it_is_handed(monkeypatch):
+    """Carried is not enforced until something sets the regime from it.
+
+    ``verify_native_perf`` does not take a thread count; the regime is read from
+    the environment inside the measurement. So the worker's job is to put the
+    carried number where that read will find it, before the measurement starts.
+    """
+    from ari.assurance.drivers import perf_worker
+
+    seen = {}
+
+    def capture(*args, **kwargs):
+        seen["threads"] = os.environ.get("ARI_PERF_THREADS")
+        raise _Stop()
+
+    monkeypatch.setattr(perf_worker, "verify_native_perf", capture)
+    monkeypatch.delenv("ARI_PERF_THREADS", raising=False)
+    try:
+        perf_worker.main([
+            "--problem", "gemm-dense-fp64/v1@2026q3",
+            "--candidate", "candidate_gemm.c",
+            "--tier", "screen", "--seed", "1",
+            "--dataset-revision", "native-perf-gemm-cases/v1@scored-2026q3",
+            "--threads", "4",
+        ])
+    except _Stop:
+        pass
+    assert seen.get("threads") == "4", (
+        "the worker took the budget and did not put it where "
+        "measurement_thread_regime looks, so the flag is decoration")
+
+
+class _Stop(Exception):
+    """Stops the worker once the environment it built has been observed."""
+
+
+class _Declaration:
+    logical_name = "candidate_gemm.c"
+    compiler = None
+    compile_flags = None
