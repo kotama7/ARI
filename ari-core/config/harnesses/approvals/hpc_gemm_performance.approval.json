@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:1da40dbcf0444f5421a646835b16bc00c99cad8fb534036d4e255405652e762b",
+  "approval_digest": "sha256:498a1addb9b48e4b41dec75ce33dafd1edd4a3ddbab2ece024239ecaa5b78492",
   "approved_date": "2026-08-17",
-  "authorization_basis": "Re-registration authorized by the maintainer on 2026-08-17 ('kotama'). The instrument moved again and the manifest's driver pin followed. The change being registered is NOT all mine: another author corrected the noise rule I had added, where a measured spread widened the PASS region -- measured, a candidate at 0.5x of the reference passed at a spread of 1.509, and a repeat put a candidate 3.6x slower than the denominator inside the pass band. Noise now widens 'inconclusive' only. The same commit gave the regression threshold one home at 0.95, the figure the registered evidence beside this manifest was earned at, instead of three call sites that disagreed between 0.95 and 1.0. Placement is unchanged at {x86_64, 16 threads}, where the clean control resolves. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
-  "evidence_bundle_digest": "sha256:9fc34a854392a97b91c5c04f3c753d66fef798300100a1ebc053a0da3e59cdee",
+  "authorization_basis": "The maintainer authorized re-registration and signature for this family in this session. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts. Reported: five executions of the pinned image at the registered placement (x86_64, thread_budget 2) on an exclusive x86 compute node; three clean controls passing at worst relative spreads 0.029 and 0.031 against a bound of 0.1; the correct-but-slow negative refused on the RATIO at 0.082x of the frozen reference; the fast-but-wrong negative refused on the ORACLE; distinct negative grounds, which is what separates this instrument from a stopwatch; and the fifteen registration gates this run reports. Also reported, and the reason the placement moved: at the previously pinned budget of 8 the clean control read 0.104 and 0.120 and returned inconclusive, and at 4 it read 0.100 on the same node.",
+  "evidence_bundle_digest": "sha256:3772ef37eca33c8f5b76c943f2041db59825c15909d9cc2137bf60525cfd1b2d",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-performance",
-  "harness_manifest_digest": "sha256:62b378844e33355d4285da3b05eeaa4bf10f328ced7c338d2fc98d2f53f8058e",
+  "harness_manifest_digest": "sha256:d8f0a4c9690ef784551f6ed1b210488ebe5924d3b6862a147fbc177b58a9502c",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:990e6c521ff9df962dd41f4c1ace11102bbe57115087bcfc2a92110df3d7b920",
+  "registration_report_digest": "sha256:ec569e9347a6eae97054e89abad165a69f813e2ffaccdaefb355cce6445b8bf8",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

@@ -1,10 +1,9 @@
 {
   "environment": {
     "note": "recorded, not restricted; a variable outside this prefix set is neither captured nor known to be harmless",
-    "sha256": "sha256:6125a3e13e6455d1b2d245cb04875719423fdfdd2fbb2e9d779c662c6eace41a",
+    "sha256": "sha256:ad6ae9f8dc273c11c66a1cd0cacd6d3a6afe36c20391a8651cc5bad2c0281a58",
     "variables": {
-      "ARI_HARNESS_CONTAINER_ROOT": "~/ARI/containers",
-      "ARI_PERF_THREADS": "16",
+      "ARI_PERF_THREADS": "2",
       "BLIS_NUM_THREADS": "1",
       "GOTO_NUM_THREADS": "1",
       "MKL_NUM_THREADS": "1",
@@ -16,8 +15,8 @@
   "environment_note": "variable VALUES are scrubbed of host identity here",
   "placement": {
     "machine": "x86_64",
-    "thread_budget": "16"
+    "thread_budget": "2"
   },
-  "placement_note": "a timed verdict is a statement about a machine; the manifest pins this placement and prepare() refuses any other",
-  "registration_commit": "b156092342aa9ddea81fa8578c1f8519c0f721cf"
+  "placement_note": "a timed verdict is a statement about a machine; these are the keys the manifest pins, read from the machine the controls ran on, and the sequence refused before its first launch unless they matched",
+  "registration_commit": "7be41f8059c8655d518d6cfc8f858a7368e83856"
 }
