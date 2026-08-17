@@ -35,10 +35,23 @@ guard covers in one place. What is here is the control set, the check that
 decides whether they discriminated, and the loop that runs them through this
 driver.
 
+THE TWO MODES, AND WHY THEY ARE TWO. ``controls`` runs the sequence into a
+scratch directory: it writes nothing into the repository and needs no human
+identity, so building the capability stays separate from exercising it.
+``promote`` runs the same sequence, earns the registration gates and signs the
+re-registration, and it is the only surface in this repository that can
+re-register this family at all -- ``repin_and_promote_harness.py``'s ``promote``
+was closed for declaring evidence it never ran, and a re-pin without a
+re-registration leaves the report, the evidence and the approval naming a
+manifest digest that has moved, which is a catalog that will not load.
+
 WHAT IT WILL NOT DO. It will not author a control kernel. Every candidate is a
 file the problem already ships, because a kernel written into this script is one
 the registration could not point at, and a weakened one would be
-indistinguishable from a strengthened instrument.
+indistinguishable from a strengthened instrument. It will not declare a control
+outcome, an isolation finding or a schema-conformance claim: every field
+``registration_evidence.json`` carries is read back off what a request carried
+or what a run returned, and a promotion whose gates refuse writes nothing.
 """
 
 from __future__ import annotations
@@ -64,6 +77,7 @@ from attest_problem_correctness import (  # noqa: E402
     HARNESS_ROOT,
     ControlSequenceError,
     _json_bytes,
+    _single,
     _wall_seconds,
     _write_bundle,
     build_declaration,
@@ -71,6 +85,7 @@ from attest_problem_correctness import (  # noqa: E402
     isolation_findings,
     _tolerance_ref,
     property_map,
+    published_artifacts,
     refuse_host_identity,
 )
 from ari.assurance.catalog import build_harness_catalog_snapshot  # noqa: E402
@@ -86,6 +101,14 @@ from ari.assurance.models import (  # noqa: E402
 )
 from ari.assurance.native_perf_common import measurement_placement  # noqa: E402
 from ari.assurance.problems import load_problem  # noqa: E402
+from ari.assurance.registration_models import (  # noqa: E402
+    HarnessPromotionApprovalV1,
+    HarnessRegistrationEvidenceV1,
+)
+from ari.assurance.registration_run import (  # noqa: E402
+    register_harness,
+    repository_commit,
+)
 from ari.assurance.request import build_native_harness_run_request  # noqa: E402
 from ari.assurance.resolver import (  # noqa: E402
     mint_baseline_harness_lock,
@@ -378,9 +401,25 @@ def check_control_sequence(attestations: dict[str, Any]) -> dict[str, Any]:
             f"the instrument refuses things, not that it can tell a wrong "
             f"answer from a slow one")
 
+    # READ BACK OFF THE ATTESTATIONS, never written down. These two were the
+    # literals ``"pass"`` and ``"fail"`` here -- unreachable while every check
+    # above refuses first, and therefore never wrong, and therefore exactly the
+    # shape of the defect this family's bundle carries today: a value that is
+    # correct because someone typed the correct one. ``registration_evidence``
+    # reads them, so a promotion built on them would be declaring its control
+    # outcomes with more steps. ``_single`` is the sibling surface's, and returns
+    # ``not_available`` -- a real value in the evidence model -- when a group of
+    # controls disagrees.
+    observed = {control.label: attestations[control.label].verdict
+                for control in CONTROLS}
     return {
-        "clean_control_verdict": "pass",
-        "negative_control_verdict": "fail",
+        "clean_control_verdict": _single(
+            [observed[item.label] for item in CONTROLS
+             if item.role == "reference"]),
+        "negative_control_verdict": _single(
+            [observed[item.label] for item in CONTROLS
+             if item.role != "reference"]),
+        "observed_verdicts": dict(sorted(observed.items())),
         "negative_control_grounds": dict(sorted(grounds.items())),
         "distinct_negative_grounds": sorted(set(grounds.values())),
     }
@@ -654,16 +693,229 @@ def controls(args: argparse.Namespace) -> int:
     return 0
 
 
+def promote(args: argparse.Namespace) -> int:
+    """Run the sequence, earn the gates, and sign the re-registration.
+
+    WHY THE FAMILY HAD NOTHING LIKE THIS. ``repin_and_promote_harness.py``'s
+    ``promote`` was closed because it declared evidence it never ran, and the
+    surface above only ever wrote a scratch bundle -- so nothing in this
+    repository could RE-register ``hpc/gemm-performance``, and its catalog row
+    could not be renewed after a re-pin moved its manifest digest. This is that
+    surface, and it is the same shape as
+    ``attest_problem_correctness.promote``: the differences below are the ones
+    the performance family forces, and nothing else.
+
+    AN AUTHENTICATED HUMAN-MAINTAINER SURFACE. ``--actor-id`` and
+    ``--authorization-basis`` are a person's identity and what they actually
+    saw; an agent that supplies them is forging both. The capability is
+    ``controls``.
+
+    THE ORDER IS THE ARGUMENT, not tidiness:
+
+    * the stale-pin question is asked FIRST, because a manifest pinning bytes
+      this repository no longer has cannot be re-registered at all and the
+      answer costs nothing -- asked after the container work it arrives five
+      executions late;
+    * the sequence runs SECOND, so the gates are asked about an instrument that
+      was just seen to discriminate;
+    * the gates run THIRD and refuse a dirty tree, and the parity probe behind
+      them refuses a node its own clean control did not resolve on;
+    * NOTHING is written until both have passed, because the first write dirties
+      the tree ``repository_commit`` takes the source pin from.
+
+    AND EVERY PUBLISHED BYTE GOES THROUGH ONE GUARD AND ONE WRITE. The evidence
+    bundle, the registration evidence, the registration report, the promotion
+    approval and the catalog are one map, guarded once by
+    ``refuse_host_identity`` and written once -- so the guard's coverage is a
+    property of this function's shape rather than of the order of its
+    statements.
+
+    A REJECTED REGISTRATION WRITES NOTHING and is reported as a result. On this
+    family that is the expected outcome on a machine whose cases are too small
+    to resolve: the instrument refusing to certify a measurement it could not
+    make is the instrument working.
+    """
+    from ari.assurance.drivers import builtin_driver_map
+    from ari.assurance.native_perf_common import measurement_environment
+    from ari.orchestrator.node_summary_view import scrub_host_identity
+    from repin_and_promote_harness import _slug, stale_pins
+
+    manifest = load_manifest(BUILTIN / args.manifest)
+    stale = stale_pins(manifest)
+    if stale:
+        print(f"REFUSED: {manifest.id} pins {sorted(stale)} the code no longer "
+              f"has. Re-pin with repin_and_promote_harness.py, commit, re-run.")
+        return 3
+
+    with tempfile.TemporaryDirectory(prefix="ari-gemm-performance-") as scratch:
+        result, artifacts = run_control_sequence(
+            manifest=manifest,
+            container_root=args.container_root.resolve(strict=True),
+            working_root=Path(scratch) / "runs",
+        )
+
+    driver = builtin_driver_map()[manifest.driver.revision]
+    report = register_harness(manifest, driver, runs=args.runs, allow_dirty=False)
+    for gate in report.gates:
+        if not gate.passed:
+            print(f"  FAIL {gate.gate_id}: {gate.detail[:96]}")
+    if report.decision != "eligible-for-verified":
+        print("REFUSED: nothing is written; a rejected registration is a result")
+        return 4
+    commit = repository_commit(allow_dirty=False)
+
+    probe = driver.parity_probe(manifest)
+    environment = measurement_environment()
+    environment["variables"] = {key: scrub_host_identity(value)
+                                for key, value in environment["variables"].items()}
+    sequence = result["sequence"]
+    artifacts["registration_report.json"] = _json_bytes(report)
+    artifacts["gate_findings.json"] = _json_bytes(
+        {gate.gate_id: {"passed": gate.passed, "detail": gate.detail}
+         for gate in report.gates})
+    artifacts["official_runner_parity.json"] = _json_bytes(probe)
+    artifacts["multiple_run_stability.json"] = _json_bytes(
+        {"runs": args.runs, "clean_control": (probe.get("controls") or {}).get("clean")})
+    # THE PLACEMENT IS READ FROM THIS MACHINE, on the keys the manifest pins.
+    # A timed verdict is a statement about a machine, so unlike the correctness
+    # sibling -- which pins none and says so -- this record has one to make, and
+    # ``run_control_sequence`` refused before the first launch unless every
+    # pinned key matched here. Both the value and the note are derived, because
+    # a perf manifest that pinned nothing would otherwise ship a sentence
+    # claiming a machine its evidence never described.
+    pinned = sequence["registered_placement"]
+    here = measurement_placement()
+    artifacts["measurement_environment.json"] = _json_bytes({
+        "environment": environment,
+        "registration_commit": commit,
+        "placement": {key: here.get(key) for key in sorted(pinned)} or None,
+        "placement_note": (
+            "a timed verdict is a statement about a machine; these are the keys "
+            "the manifest pins, read from the machine the controls ran on, and "
+            "the sequence refused before its first launch unless they matched"
+            if pinned else
+            "this harness pins no placement, so its evidence does not describe "
+            "a machine"),
+        "environment_note": "variable VALUES are scrubbed of host identity here",
+    })
+    harness_root = args.harness_root.resolve()
+    slug = _slug(manifest.id)
+    evidence_dir = harness_root / "evidence" / slug
+
+    digests = {f"evidence/{slug}/{name}": bytes_digest(payload)
+               for name, payload in artifacts.items()}
+    evidence = HarnessRegistrationEvidenceV1.create(
+        harness_id=manifest.id,
+        harness_version=manifest.version,
+        manifest_digest=manifest.manifest_digest,
+        source_full_commit_sha=commit,
+        environment_digest=sequence["environment_digest"],
+        evidence_artifact_digests=dict(sorted(digests.items())),
+        # THE REAL ATTESTATIONS. The bundle on disk today points this field at
+        # its own registration report's digest -- one entry, citing itself as
+        # the execution it never performed. These are five container runs.
+        attestation_digests=tuple(sorted(
+            item.attestation_digest for item in result["attestations"].values())),
+        # OBSERVED, every one of them. The seven values this family's bundle
+        # carries today were typed: two control verdicts, parity, schema
+        # conformance and three isolation claims. Here the two verdicts come
+        # from ``check_control_sequence``'s read of the attestations, parity
+        # from the probe this call ran, and the remaining four from
+        # ``isolation_findings``' derivation over what each request carried and
+        # what each run returned.
+        clean_control_verdict=sequence["clean_control_verdict"],
+        negative_control_verdict=sequence["negative_control_verdict"],
+        official_runner_parity=bool(probe.get("passed")),
+        result_schema_conformant=sequence["result_schema_conformant"],
+        network_isolation=sequence["network_isolation"],
+        target_write_isolation=sequence["target_write_isolation"],
+        oracle_visibility=sequence["oracle_visibility"],
+        run_count=len(result["attestations"]),
+    )
+    approval = HarnessPromotionApprovalV1.create(
+        harness_id=manifest.id,
+        harness_version=manifest.version,
+        actor_kind="human-maintainer",
+        actor_id=args.actor_id,
+        authorization_basis=args.authorization_basis,
+        approved_date=args.approved_date,
+        harness_manifest_digest=manifest.manifest_digest,
+        registration_report_digest=report.report_digest,
+        evidence_bundle_digest=evidence.evidence_digest,
+    )
+    catalog_path = harness_root / "catalog.yaml"
+    catalog = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
+    entry = {
+        "id": manifest.id,
+        "manifest": f"builtin/{args.manifest}",
+        "registration_report": f"reports/{slug}.registration.json",
+        "registration_report_digest": report.report_digest,
+        "registration_evidence": f"evidence/{slug}/registration_evidence.json",
+        "registration_evidence_digest": evidence.evidence_digest,
+        "promotion_approval": f"approvals/{slug}.approval.json",
+        "promotion_approval_digest": approval.approval_digest,
+    }
+    catalog["entries"] = sorted(
+        [item for item in catalog["entries"] if item["id"] != manifest.id] + [entry],
+        key=lambda item: item["id"])
+
+    # NOTHING HAS BEEN WRITTEN YET. Everything above is computation, so the
+    # guard below sees the complete set of bytes this mode puts into a published
+    # tree. It refuses rather than scrubs: a scrub leaves a clean-looking bundle
+    # and no way to tell which artifact leaked, and the leak recurs next run.
+    published = published_artifacts(
+        slug=slug, artifacts=artifacts, evidence=evidence, report=report,
+        approval=approval, catalog=catalog)
+    refuse_host_identity(published)
+    _write_bundle(harness_root, published)
+
+    print(f"attested  : {len(result['attestations'])} container executions")
+    print(f"grounds   : {sequence['distinct_negative_grounds']}")
+    print(f"signed    : {approval.actor_id} ({approval.actor_kind})")
+    print(f"written   : {evidence_dir}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="mode", required=True)
-    run = sub.add_parser("controls", help="run the sequence, write a bundle")
+    run = sub.add_parser(
+        "controls",
+        help="run the control sequence and write its attestations; no signature")
     run.add_argument("--manifest", default="hpc_gemm_performance.yaml")
     run.add_argument("--container-root", type=Path, required=True)
     run.add_argument("--output-dir", type=Path, required=True)
     run.set_defaults(func=controls)
+
+    promoter = sub.add_parser(
+        "promote",
+        help="run the sequence, earn the gates and sign the re-registration")
+    promoter.add_argument("--container-root", type=Path, required=True,
+                          help="the private directory holding the pinned SIF")
+    promoter.add_argument("--manifest", default="hpc_gemm_performance.yaml")
+    promoter.add_argument("--actor-id", required=True,
+                          help="the human maintainer authorizing the promotion")
+    promoter.add_argument("--authorization-basis", required=True,
+                          help="what the maintainer actually saw. A basis "
+                               "claiming a review that did not happen is the "
+                               "defect the signature exists to prevent.")
+    promoter.add_argument("--approved-date", required=True)
+    promoter.add_argument("--runs", type=int, default=3,
+                          help="parity-probe repetitions behind the stability "
+                               "gate; fewer than two cannot show stability")
+    promoter.add_argument("--harness-root", type=Path, default=HARNESS_ROOT,
+                          help="where the bundle, report, approval and catalog "
+                               "row are written. Defaults to the repository's "
+                               "config/harnesses; point it at a copy to "
+                               "rehearse the write path first.")
+    promoter.set_defaults(func=promote)
+
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except ControlSequenceError as exc:
+        print(f"REFUSED: {exc}")
+        return 5
 
 
 if __name__ == "__main__":

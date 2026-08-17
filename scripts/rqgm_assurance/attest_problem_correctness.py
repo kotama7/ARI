@@ -728,20 +728,38 @@ def isolation_findings(
       the weakest of the four and is labelled as such: it is a statement about
       what the manifest DECLARES, not a measurement of what the candidate could
       reach. A stronger claim would need an execution that tried.
-    * RESULT SCHEMA. The driver's emitted schema version and its digest must be
-      the ones the manifest pins, AND every run's stdout must have parsed into
-      that typed report -- which is exactly what ``normalize_result`` did, since
-      a malformed report degrades the run to ``infrastructure_error``.
+    * RESULT SCHEMA. The emitted schema version of THE DRIVER THIS MANIFEST PINS
+      and its digest must be the ones the manifest pins, AND every run's stdout
+      must have parsed into that typed report -- which is exactly what
+      ``normalize_result`` did, since a malformed report degrades the run to
+      ``infrastructure_error``.
     """
+    from ari.assurance.drivers import builtin_driver_map
     from ari.assurance.registration_run import result_schema_digest
 
     networks = {item.get("network") for item in executions}
     containers = {item.get("container_identity_digest") for item in executions}
     unchanged = {label: before == after
                  for label, (before, after) in target_digests.items()}
-    emitted = ProblemCorrectnessDriver().report_schema_version
-    schema_matches = (
-        manifest.expected_result_schema == emitted
+    # THE MANIFEST'S OWN DRIVER, not this file's family. This read
+    # ``ProblemCorrectnessDriver()`` -- hard-coded -- inside a helper that both
+    # promotion surfaces call. Against the PERFORMANCE manifest it therefore
+    # compared that manifest's ``ari.native-perf-report/v1`` pin with the
+    # correctness driver's schema and could only disagree, so
+    # ``result_schema_conformant`` came back False for a harness whose pin is
+    # exactly right: a false claim in the single field that says the driver
+    # emitted what the manifest registered. Resolved from
+    # ``manifest.driver.revision`` the answer is unchanged for the family this
+    # file was written for, and correct for the other.
+    #
+    # A revision with no driver, or a driver that publishes no schema version,
+    # yields False rather than an exception: "this was not shown" is the honest
+    # answer for a field that means "it was".
+    driver = builtin_driver_map().get(manifest.driver.revision)
+    emitted = getattr(driver, "report_schema_version", None)
+    schema_matches = bool(
+        emitted
+        and manifest.expected_result_schema == emitted
         and manifest.expected_result_schema_digest == result_schema_digest(emitted))
     parsed = all(getattr(item, "infrastructure_status", "") == "ready"
                  for item in attestations.values())
