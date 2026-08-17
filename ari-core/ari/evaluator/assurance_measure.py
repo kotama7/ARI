@@ -30,14 +30,14 @@ from __future__ import annotations
 import os
 import json
 import platform
-import shlex
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from ari.assurance.native_perf_common import PerfBuildError, PerfInfrastructureError
+from ari.assurance.native_perf_common import (PerfBuildError, PerfInfrastructureError,
+                                             resolve_compiler, screen_flags)
 from ari.assurance.native_perf_measure import (DEFAULT_REGRESSION_THRESHOLD,
                                                verify_performance)
 from ari.assurance.problems import LoadedProblemV1, ProblemError, load_problem, materialize
@@ -491,11 +491,33 @@ def declare_target(work_dir: str | Path,
             f"cannot declare a Harness target: {candidate.name} is not in the "
             f"work dir, so there is no candidate to build")
     header = root / definition.scaffolding.contract_header
-    compiler = _declared_text(root, CANDIDATE_COMPILER_FILE) or os.environ.get(
-        "ARI_PERF_CC") or "cc"
-    flags = shlex.split(_declared_text(root, CANDIDATE_FLAGS_FILE) or "")
+    # THROUGH THE SAME TWO SCREENS THE TIMED BUILD USES, for two reasons that
+    # point the same way.
+    #
+    # This build ran the candidate's declared compiler by name and split its
+    # declared flags straight into the argv, so `-B<dir>` reached it -- which
+    # substitutes the compiler's own subprograms and is, in this module's own
+    # words beside FLAG_ALLOW_PATTERN, "the one thing a compiler allowlist
+    # exists to prevent". Measured: a candidate shipping a file named `as` and
+    # declaring `-B.` had that file executed by this link. `-I` is the same
+    # shape of defect one step quieter, landing before the pinned
+    # `-I<contract header>` so a candidate-supplied header wins.
+    #
+    # And even with no attacker, an unscreened build here builds a DIFFERENT
+    # program from the one that was timed: the timed path accepts only what
+    # `screen_flags` admits, so the two agree only if this one screens too.
+    # Screening is what makes the docstring's promise -- the candidate's own
+    # compiler and flags -- true rather than approximately true.
+    #
+    # The declaration below still carries the RAW declared text, because the
+    # worker re-screens it and a Harness must see what was asked for, not what
+    # this side happened to allow.
+    _compiler_status, compiler = resolve_compiler(
+        _declared_text(root, CANDIDATE_COMPILER_FILE))
+    accepted_flags, _rejected_flags = screen_flags(
+        _declared_text(root, CANDIDATE_FLAGS_FILE))
     library = root / _TARGET_LIBRARY
-    argv = [compiler, "-shared", "-fPIC", *flags,
+    argv = [compiler, "-shared", "-fPIC", *accepted_flags,
             f"-I{header.parent}", str(candidate), "-o", str(library)]
     completed = subprocess.run(argv, capture_output=True, text=True, timeout=300)
     if completed.returncode != 0:

@@ -166,3 +166,82 @@ def test_a_constructor_that_kills_its_process_does_not_kill_the_scorer(tmp_path)
                            "double gemm(void){return 1.0;}\n")
     with pytest.raises(TargetABIMismatch, match="will not load"):
         _missing_abi_symbols(lib, ("gemm",))
+
+
+# --- the declare-time build goes through the instrument's two screens --------
+#
+# `declare_target` builds the scored candidate a SECOND time, as a shared
+# library, and it used to run the candidate's declared compiler by name and
+# `shlex.split` its declared flags straight into that argv. Neither screen the
+# timed build applies was reachable from there, so `-B<dir>` -- which this
+# repository's own comment beside FLAG_ALLOW_PATTERN calls "the one thing a
+# compiler allowlist exists to prevent" -- landed in a compile the scorer runs.
+#
+# The security reading is the loud one. The quiet one matters as much: an
+# unscreened build here builds a DIFFERENT program from the one that was timed,
+# so the declaration would describe a binary nobody scored.
+
+def _declare_build_argv(tmp_path, monkeypatch, *, flags: str, compiler: str):
+    """Run `declare_target` and return the argv of the shared-library link."""
+    from ari.assurance.problems import load_problem
+    from ari.evaluator import assurance_measure as am
+
+    problem = load_problem("gemm-dense-fp64/v1@2026q3")
+    am.seed_work_dir(tmp_path, problem)
+    (tmp_path / am.CANDIDATE_FLAGS_FILE).write_text(flags, encoding="utf-8")
+    (tmp_path / am.CANDIDATE_COMPILER_FILE).write_text(compiler, encoding="utf-8")
+
+    seen: list[list[str]] = []
+    real_run = am.subprocess.run
+
+    def spy(argv, *args, **kwargs):
+        if isinstance(argv, (list, tuple)):
+            seen.append([str(item) for item in argv])
+        return real_run(argv, *args, **kwargs)
+
+    monkeypatch.setattr(am.subprocess, "run", spy)
+    am.declare_target(tmp_path, problem)
+    links = [argv for argv in seen if "-shared" in argv]
+    assert links, f"no shared-library link was run; saw {seen}"
+    return links[0]
+
+
+def test_a_candidate_cannot_put_its_own_toolchain_into_the_declare_build(
+    tmp_path, monkeypatch
+):
+    marker = tmp_path / "PWNED"
+    fake = tmp_path / "fake"
+    fake.mkdir()
+    (fake / "as").write_text(f"#!/bin/sh\ntouch {marker}\nexec /usr/bin/as \"$@\"\n")
+    (fake / "as").chmod(0o755)
+
+    argv = _declare_build_argv(
+        tmp_path, monkeypatch,
+        flags=f"-O2 -B{fake} -I{tmp_path}/evil -L{tmp_path} -lm", compiler="cc")
+
+    assert not marker.exists(), (
+        "the candidate's own binary was executed by the declare-time build")
+    assert "-O2" in argv, "the screen must still admit an ordinary optimisation flag"
+    for token in argv:
+        assert not token.startswith("-B"), f"a -B reached the link: {token}"
+        assert not token.startswith("-L"), f"a -L reached the link: {token}"
+        assert not token.startswith("-l"), f"a -l reached the link: {token}"
+    # The pinned contract-header include is the instrument's own and must stay;
+    # the candidate's must not.
+    assert f"-I{tmp_path}/evil" not in argv
+    assert any(token.startswith("-I") for token in argv), (
+        "the pinned contract header include was dropped along with the rest")
+
+
+def test_the_declare_build_will_not_run_a_compiler_the_allowlist_refuses(
+    tmp_path, monkeypatch
+):
+    impostor = tmp_path / "my_compiler"
+    impostor.write_text("#!/bin/sh\nexit 0\n")
+    impostor.chmod(0o755)
+
+    argv = _declare_build_argv(tmp_path, monkeypatch,
+                               flags="-O2", compiler=str(impostor))
+
+    assert argv[0] != str(impostor), (
+        "the candidate named its own compiler and the declare build ran it")
