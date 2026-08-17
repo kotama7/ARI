@@ -47,12 +47,27 @@ EXCLUDE_DIRS = {"tests", "test", "__pycache__", "node_modules", ".git",
 
 
 def _iter_source_files() -> Iterable[Path]:
-    """Yield repo source files, skipping tests, GUI writer, and heavy dirs."""
+    """Yield repo source files, skipping tests, GUI writer, and heavy dirs.
+
+    EXCLUSIONS ARE RELATIVE TO THE CHECKOUT, not matched against every component
+    of an absolute path. ``EXCLUDE_DIRS`` holds ``workspace`` and
+    ``checkpoints``, and this repository's own convention puts scratch
+    checkouts under ``workspace/checkpoints/<stamp>/tree`` -- so a checkout
+    living there matched its own location and excluded EVERY file in itself.
+    Measured: the same commit yielded 434 files from the main checkout and 0
+    from a linked worktree, and 0 files means no reader is ever found, so all
+    27 parametrisations reported "set by the GUI launcher but has no reader
+    anywhere" -- a finding produced by having looked nowhere.
+
+    That is the shape this suite exists to catch, one level up: a check whose
+    silence is indistinguishable from a clean result.
+    """
     for root in SEARCH_ROOTS:
         if not root.exists():
             continue
         for p in root.rglob("*.py"):
-            if any(part in EXCLUDE_DIRS for part in p.parts):
+            if any(part in EXCLUDE_DIRS
+                   for part in p.relative_to(REPO_ROOT).parts):
                 continue
             if p.name.startswith("test_") or p.name == "api_experiment.py":
                 continue
