@@ -858,6 +858,14 @@ def promote(args: argparse.Namespace) -> int:
     catalog["entries"] = sorted(
         [item for item in catalog["entries"] if item["id"] != manifest.id] + [entry],
         key=lambda item: item["id"])
+    # THE LABEL MOVES WITH THE CONTENT IT NAMES. catalog_source_revision is read
+    # verbatim and compared against nothing, so it moved only when a human
+    # retyped it -- and a promotion that rewrites four digests under an unchanged
+    # label leaves one revision string naming two catalogs, which is exactly what
+    # test_harness_catalog_revision.py was written after finding on this tree.
+    # promote_native_harnesses.py already mints it this way; this is the same
+    # act, performed by the surface that actually cuts the new catalog.
+    catalog["catalog_source_revision"] = f"ari-harness-catalog/1@{commit}"
 
     # NOTHING HAS BEEN WRITTEN YET. Everything above is computation, so the
     # guard below sees the complete set of bytes this mode puts into a published
