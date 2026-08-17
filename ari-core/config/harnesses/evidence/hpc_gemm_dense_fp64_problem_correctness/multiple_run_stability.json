@@ -2,7 +2,7 @@
   "clean_control": {
     "note": "the problem's frozen reference passed its own family oracle, and a correct-but-slow kernel passed with it",
     "relative_spread": 0.0,
-    "report_digest": "sha256:e991aa649e496be3ce5e8ae597ccc1bb8963786dd5c298112717ec589c8ea6bf",
+    "report_digest": "sha256:f8709465bc6a816633ef74610b7559ea80bc9e5ee8023f5cf189b5659d89cf6e",
     "resolved": true,
     "verdict": "pass"
   },

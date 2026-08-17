@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:974e2ae57a8dbdc51485d50805d107b0bb648ad225886612531bb89b625a142d",
+  "approval_digest": "sha256:63b32fb9ea363430c9427be05566a52c7841c3d4d903f42eb8ad3f2fec7b5f87",
   "approved_date": "2026-08-17",
-  "authorization_basis": "reviewed the five-execution control sequence and its discrimination evidence",
-  "evidence_bundle_digest": "sha256:4545b1ead879d17bdd57ccdb85c84d29410a9ff7ef9dd10ed019affc98509f3f",
+  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of the control sequence -- the frozen reference passing, the wrong kernel failing on the residual bound, the correct-but-slow kernel PASSING, and the extra-symbol kernel refused by the object audit -- not on independent inspection of the artifacts, which are pinned here for that purpose. Re-run after sandbox.py entered the driver digest.",
+  "evidence_bundle_digest": "sha256:bdec49b102653510e23798c5bda14ec89de9128dc03939e7f45b0bc62016c7c2",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-dense-fp64-problem-correctness",
-  "harness_manifest_digest": "sha256:42931413275cdf788a65dedbfa8c1e72476f3d61745b379ee2affd5fda5d773d",
+  "harness_manifest_digest": "sha256:85f70dc1ac3c1464a24db98ca3c9b331fddc65871509c47945fb153f9315cdbc",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:ecf31a40327e8d6bd923667f89b7025e69eabfdb8685997a973a0821b5ea23ed",
+  "registration_report_digest": "sha256:140585db9eb6cb6cd056af6021b6dc378fcde9ffe4c3bc954ddc664db2bdbf18",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

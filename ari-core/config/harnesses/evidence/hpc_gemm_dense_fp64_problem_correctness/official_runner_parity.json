@@ -4,7 +4,7 @@
     "clean": {
       "note": "the problem's frozen reference passed its own family oracle, and a correct-but-slow kernel passed with it",
       "relative_spread": 0.0,
-      "report_digest": "sha256:e991aa649e496be3ce5e8ae597ccc1bb8963786dd5c298112717ec589c8ea6bf",
+      "report_digest": "sha256:f8709465bc6a816633ef74610b7559ea80bc9e5ee8023f5cf189b5659d89cf6e",
       "resolved": true,
       "verdict": "pass"
     },
@@ -21,28 +21,28 @@
       }
     ]
   },
-  "driver_digest": "sha256:abb0f0efc33db25dd3071b0814c9d066cd047c8e1f3574f640155b22e905eb9d",
+  "driver_digest": "sha256:de2e1b958c3a34119cca3796e5c7dd549852fa1b8fa1ee9307ba3e661431bf31",
   "passed": true,
   "problem": "gemm-dense-fp64/v1@2026q3",
   "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
   "reason": null,
   "results": {
     "clean_control": {
-      "report_digest": "sha256:e991aa649e496be3ce5e8ae597ccc1bb8963786dd5c298112717ec589c8ea6bf",
+      "report_digest": "sha256:f8709465bc6a816633ef74610b7559ea80bc9e5ee8023f5cf189b5659d89cf6e",
       "verdict": "pass"
     },
     "negative_control_extra_symbol": {
       "detail": "candidate kernel exports symbols other than 'gemm': ['ari_problem_correctness_probe_symbol']",
-      "report_digest": "sha256:87ece338ff4d89ad73e0ba2fce9dc7eebbe3c8893f308e31dc4c832fcfaba002",
+      "report_digest": "sha256:761ba9e10cb07c53837fd716938e4363131aaf4cc522305c434ecb33b872e620",
       "verdict": "fail"
     },
     "negative_control_wrong": {
       "detail": "candidate output failed the residual bound (2.79e+11x)",
-      "report_digest": "sha256:4ff4600b53947691990b7f97eb6de5ca58dec847dca91ce0ee1f9c05cae13530",
+      "report_digest": "sha256:1443beac2f63d622a4e39e7c211cfe6e30a68d560796b2e51599ee5df9d8da51",
       "verdict": "fail"
     },
     "specificity_control_slow": {
-      "report_digest": "sha256:82acb88e413491e16a01350e46733496059a13414fb81e808190e2df53e2ac36",
+      "report_digest": "sha256:32e7b436b9fa7f5890f03ff99c9544896a0feabe76aef1434db00e0c4a9576a9",
       "verdict": "pass"
     }
   },

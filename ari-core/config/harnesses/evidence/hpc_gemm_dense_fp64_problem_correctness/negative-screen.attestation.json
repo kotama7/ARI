@@ -1,17 +1,17 @@
 {
-  "active_harness_lock_digest": "sha256:f7fd4c0da9435735250e1a4ca9d51844be7ff737eac3c8111108478bf1e5f9a5",
-  "attempt_id": "har-71ab9a69e5124b0bbba7ea012e2d46c7-0",
-  "attestation_digest": "sha256:e2fed4fd9f19d8f36a51e5501e7f49688144ad4f5f9ec104a039a97753e2ebd4",
-  "baseline_harness_lock_digest": "sha256:f7fd4c0da9435735250e1a4ca9d51844be7ff737eac3c8111108478bf1e5f9a5",
+  "active_harness_lock_digest": "sha256:f4ec4c9584edb3efb41268455c04aad1628fb97715f21451fb3f75272d833032",
+  "attempt_id": "har-bc3f9be3affefbd2d2daea148d948883-0",
+  "attestation_digest": "sha256:34b907b5ce35732ead28dc4b5d755ab8f0d77ba33ff5fbcc055ffd6a04ff050a",
+  "baseline_harness_lock_digest": "sha256:f4ec4c9584edb3efb41268455c04aad1628fb97715f21451fb3f75272d833032",
   "capability_binding_lock_digest": "sha256:194df4714255447584ae860c72eda00149f947de24df6dcc1812e4fe9acc6980",
   "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
   "dataset_digest": "sha256:17d6b66d3387670643f197c4e403816866fcfea208e886985bbe93f5b2fd0590",
-  "driver_digest": "sha256:abb0f0efc33db25dd3071b0814c9d066cd047c8e1f3574f640155b22e905eb9d",
+  "driver_digest": "sha256:de2e1b958c3a34119cca3796e5c7dd549852fa1b8fa1ee9307ba3e661431bf31",
   "epoch_id": "registration-epoch",
   "evidence_artifact_refs": [
     {
-      "digest": "sha256:1ea9a84434a3572c916df02d6adfec4c81f262e4274d9670cf86695df3097177",
-      "logical_name": ".ari-execution/1ea9a84434a3572c916df02d6adfec4c81f262e4274d9670cf86695df3097177.stdout.log",
+      "digest": "sha256:5def6b230450f1aea9efb597098c7898436566d01af5e8d7ead6e4e4698d59a4",
+      "logical_name": ".ari-execution/5def6b230450f1aea9efb597098c7898436566d01af5e8d7ead6e4e4698d59a4.stdout.log",
       "media_type": "text/plain; charset=utf-8",
       "role": "harness-stdout",
       "schema_version": "ari.research-artifact-ref/v1",
@@ -26,9 +26,9 @@
       "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
     }
   ],
-  "execution_identity": "sha256:2cdb734a3af1c10bc85a82a972f5607af1f0c5f931b02387b90781b831b82be6",
-  "execution_result_digest": "sha256:1b6be90616affdfd9d79dec18c74fece214f487973da66413d07f32aaae3df84",
-  "harness_manifest_digest": "sha256:42931413275cdf788a65dedbfa8c1e72476f3d61745b379ee2affd5fda5d773d",
+  "execution_identity": "sha256:9084524a3412b7e9e1ec9b36f45c84f001b8650d65deebff91ce92323c905f48",
+  "execution_result_digest": "sha256:08ed249e047f9dd18185bbf80f6208c68c744af1a91e73cc193f3c901ca2f3f4",
+  "harness_manifest_digest": "sha256:85f70dc1ac3c1464a24db98ca3c9b331fddc65871509c47945fb153f9315cdbc",
   "infrastructure_status": "ready",
   "knowledge_skill_use_digest": "sha256:8e2a116b1daea019352a9ed94735fc604385b48c7d554ce13a812255068422da",
   "node_id": "registration-negative-screen",
@@ -45,8 +45,8 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:1ea9a84434a3572c916df02d6adfec4c81f262e4274d9670cf86695df3097177",
-          "logical_name": ".ari-execution/1ea9a84434a3572c916df02d6adfec4c81f262e4274d9670cf86695df3097177.stdout.log",
+          "digest": "sha256:5def6b230450f1aea9efb597098c7898436566d01af5e8d7ead6e4e4698d59a4",
+          "logical_name": ".ari-execution/5def6b230450f1aea9efb597098c7898436566d01af5e8d7ead6e4e4698d59a4.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -78,11 +78,11 @@
             "written": 1000000
           }
         },
-        "worst_residual_ratio": 723785762413.8441,
+        "worst_residual_ratio": 718022744127.709,
         "worst_residual_ratio_by_case": {
-          "1000x1000x1000": 272723882386.23727,
-          "1500x600x1500": 595651716057.9104,
-          "2000x500x500": 723785762413.8441
+          "1000x1000x1000": 275013162740.157,
+          "1500x600x1500": 617483950091.9766,
+          "2000x500x500": 718022744127.709
         }
       },
       "method": "interface-check",
@@ -99,7 +99,7 @@
         "oracle": "gemm-family-residual-bound",
         "problem": "gemm-dense-fp64/v1@2026q3",
         "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
-        "report_digest": "sha256:867ced458ad073719c638ac206d5032c17094cd4d54dec5764fa3c53d5f2df6d"
+        "report_digest": "sha256:e81c137c62fe0f55d912a1407ca60a6cb097c1d31afd026d1ba192fb20390018"
       },
       "property_id": "interface-conformance",
       "tested_scope": {
@@ -131,8 +131,8 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:1ea9a84434a3572c916df02d6adfec4c81f262e4274d9670cf86695df3097177",
-          "logical_name": ".ari-execution/1ea9a84434a3572c916df02d6adfec4c81f262e4274d9670cf86695df3097177.stdout.log",
+          "digest": "sha256:5def6b230450f1aea9efb597098c7898436566d01af5e8d7ead6e4e4698d59a4",
+          "logical_name": ".ari-execution/5def6b230450f1aea9efb597098c7898436566d01af5e8d7ead6e4e4698d59a4.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -164,11 +164,11 @@
             "written": 1000000
           }
         },
-        "worst_residual_ratio": 723785762413.8441,
+        "worst_residual_ratio": 718022744127.709,
         "worst_residual_ratio_by_case": {
-          "1000x1000x1000": 272723882386.23727,
-          "1500x600x1500": 595651716057.9104,
-          "2000x500x500": 723785762413.8441
+          "1000x1000x1000": 275013162740.157,
+          "1500x600x1500": 617483950091.9766,
+          "2000x500x500": 718022744127.709
         }
       },
       "method": "differential-testing",
@@ -185,7 +185,7 @@
         "oracle": "gemm-family-residual-bound",
         "problem": "gemm-dense-fp64/v1@2026q3",
         "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
-        "report_digest": "sha256:867ced458ad073719c638ac206d5032c17094cd4d54dec5764fa3c53d5f2df6d"
+        "report_digest": "sha256:e81c137c62fe0f55d912a1407ca60a6cb097c1d31afd026d1ba192fb20390018"
       },
       "property_id": "numerical-equivalence",
       "tested_scope": {
@@ -212,7 +212,7 @@
       "verdict": "fail"
     }
   ],
-  "research_contract_digest": "sha256:fd8719ae8c8bca2d8f289141e6ae18e552eb14b91bcd2a157f15d5d2fe6bdfe0",
+  "research_contract_digest": "sha256:b72444e30973d6d089c7ff09ef71f62939a1fe8875ce00bcab47fffe8e0fd197",
   "retry_index": 0,
   "run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness",
   "schema_version": "ari.harness-attestation/v1",
@@ -220,5 +220,5 @@
   "target_kind": "benchmark-submission",
   "target_logical_name": "candidate_gemm.c",
   "verdict": "fail",
-  "verification_contract_digest": "sha256:1e2820e737c414b34243b2af29a39c25a38847e3773d15890f00794e1b527ea7"
+  "verification_contract_digest": "sha256:677c667bb31ae4e4b59e110f6de00383a294d55f9dee820b1dfbb6f93c9eda2e"
 }

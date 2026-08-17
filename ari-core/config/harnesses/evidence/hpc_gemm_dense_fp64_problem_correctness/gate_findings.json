@@ -48,7 +48,7 @@
     "passed": true
   },
   "source_revision_digest_pin": {
-    "detail": "pinned at a8bb13a200ef, an ancestor of 096b873856a0",
+    "detail": "pinned at a8bb13a200ef, an ancestor of 4a24470ab651",
     "passed": true
   },
   "target_oracle_test_isolation": {
