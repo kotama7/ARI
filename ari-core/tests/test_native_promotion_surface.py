@@ -578,12 +578,14 @@ def test_a_bundle_this_run_did_not_produce_whole_is_refused(
         tmp_path: Path) -> None:
     """ALL-OR-NOTHING. One survivor is one directory describing two runs.
 
-    This is not hypothetical: the shipped native bundles carry four artifacts
-    -- ``gate_findings.json``, ``measurement_environment.json``,
-    ``multiple_run_stability.json`` and ``registration_report.json`` -- that
-    this surface's run does not produce. Replacing the rest around them would
-    leave a bundle whose attestations came from today and whose gate findings
-    came from another writer on another day, with nothing in it saying so.
+    This is not hypothetical, and ``gate_findings.json`` is the file it happened
+    to. ``01c87015`` rewrote it, ``measurement_environment.json``,
+    ``multiple_run_stability.json``, ``registration_report.json`` and the
+    registration evidence, and left the four attestations from an earlier day
+    untouched -- one bundle, two runs, and nothing in it saying so. The rule
+    below is why that cannot recur; ``_BUNDLE_ARTIFACTS_THIS_RUN_PRODUCES``
+    below is why it is satisfiable, since a rule no run can meet is a rule that
+    gets passed a flag instead.
     """
     bundle, first, _ = _staged_bundle(tmp_path, "a")
     _put(first)
@@ -767,3 +769,189 @@ def test_the_re_registration_path_did_not_restore_a_declared_field() -> None:
     assert "report" not in fed["attestation_digests"], (
         "the shipped bundles point this at their own registration report; the "
         "surface that regenerates them must not")
+
+
+# --------------------------------------------------------------------------
+# the run produces the WHOLE bundle
+#
+# The all-or-nothing rule above and the artifact set this surface writes are one
+# question asked twice. Every shipped native bundle carries four artifacts that
+# were written by ``repin_and_promote_harness.py``'s promote -- a surface that
+# ran nothing, closed at ``d85d9768`` -- while the attestations beside them came
+# from a real run on another day. So the bundle could not be reproduced by the
+# surface that owns it, and the rule that refuses a partial replacement would
+# have refused every honest re-registration for ever.
+# --------------------------------------------------------------------------
+
+#: What the three shipped bundles hold, minus the artifacts named per control.
+#: Read off the tree rather than typed, so a bundle that grows a file makes this
+#: fail rather than silently leaving it outside the guard.
+_BUNDLE_ARTIFACTS_THIS_RUN_PRODUCES = (
+    "registration_report.json",
+    "gate_findings.json",
+    "multiple_run_stability.json",
+    "measurement_environment.json",
+    "resource_measurements.json",
+    "control_derivation.json",
+    "official_runner_parity.json",
+    "registration_evidence.json",
+)
+
+
+def _promote_body() -> ast.FunctionDef:
+    tree = ast.parse(SOURCE)
+    functions = [node for node in ast.walk(tree)
+                 if isinstance(node, ast.FunctionDef) and node.name == "promote"]
+    assert len(functions) == 1
+    return functions[0]
+
+
+def _first_call_line(scope: ast.AST, name: str) -> int:
+    """Where ``name`` is first called inside ``scope``. Order is the subject."""
+    lines = [node.lineno for node in ast.walk(scope)
+             if isinstance(node, ast.Call)
+             and ((isinstance(node.func, ast.Name) and node.func.id == name)
+                  or (isinstance(node.func, ast.Attribute)
+                      and node.func.attr == name))]
+    assert lines, f"{name} is not called here"
+    return min(lines)
+
+
+def test_the_bundle_this_surface_writes_is_the_bundle_that_is_on_disk() -> None:
+    """Every file of a shipped bundle is one this run stages.
+
+    Checked against the tree, not against a list in this file: the three
+    directories are the thing the replacement rule walks, so if one of them
+    holds a name the surface never writes, ``--re-register`` refuses and the
+    stale citation stays. Per-control artifacts are excluded because their names
+    come from ``REGISTRATION_CONTROLS`` and the logs from what each run emitted.
+    """
+    labels = {control.label for control in promotion.REGISTRATION_CONTROLS}
+    staged = set(_BUNDLE_ARTIFACTS_THIS_RUN_PRODUCES)
+    for name in staged:
+        # Two shapes: a plain key, and an f-string that prefixes the evidence
+        # directory onto it. Both are writes, so the name alone is the question.
+        assert name in SOURCE, f"{name} is in no shipped bundle write"
+
+    root = REPO_ROOT / "ari-core" / "config" / "harnesses" / "evidence"
+    for slug in ("hpc_gemm_correctness", "hpc_spmm_correctness",
+                 "hpc_stencil_correctness"):
+        bundle = root / slug
+        if not bundle.is_dir():  # pragma: no cover - unregistered checkout
+            pytest.skip(f"{slug} is not registered in this checkout")
+        unaccounted = sorted(
+            path.relative_to(bundle).as_posix()
+            for path in bundle.rglob("*")
+            if path.is_file()
+            and path.parent != bundle / "logs"
+            and path.name not in staged
+            and path.name not in {f"{label}.attestation.json" for label in labels}
+        )
+        assert not unaccounted, (
+            f"{slug} holds {unaccounted}, which this surface's run does not "
+            f"produce; --re-register would refuse the bundle whole")
+
+
+def test_the_registration_report_is_earned_before_the_evidence_pins_it() -> None:
+    """Order, because the evidence can only pin artifacts that already exist.
+
+    ``registration_report.json`` is inside the bundle and inside
+    ``evidence_artifact_digests``. Built before the report is earned, the
+    evidence would pin every artifact except the report the approval it is
+    signed beside names -- which is the shape the shipped bundles have.
+    """
+    promote = _promote_body()
+    earned = _first_call_line(promote, "register_harness")
+    pinned = _first_call_line(promote, "create")
+    assert earned < pinned, (
+        "the registration evidence is built before the report it must pin")
+
+    tree = ast.parse(SOURCE)
+    staged = [node for node in ast.walk(tree) if isinstance(node, ast.Assign)
+              and any(isinstance(t, ast.Subscript)
+                      and isinstance(t.slice, ast.Constant)
+                      and t.slice.value == "registration_report.json"
+                      for t in node.targets)]
+    assert len(staged) == 1, "the report is staged into the bundle nowhere, or twice"
+    assert ast.unparse(staged[0].value) == "_json_bytes(report)", (
+        "the bundle's copy of the report must be the report this run earned")
+
+
+def test_the_gate_findings_are_read_off_the_report_and_not_stamped() -> None:
+    """The defect ``ccdedc9`` removed, checked where it would come back.
+
+    A dict comprehension over ``report.gates`` cannot say ``passed`` about a
+    gate that did not pass; a literal beside a gate id can, and that is exactly
+    what this surface used to hand ``registration_report``.
+    """
+    tree = ast.parse(SOURCE)
+    staged = [node for node in ast.walk(tree) if isinstance(node, ast.Assign)
+              and any(isinstance(t, ast.Subscript)
+                      and isinstance(t.slice, ast.Constant)
+                      and t.slice.value == "gate_findings.json"
+                      for t in node.targets)]
+    assert len(staged) == 1
+    built = ast.unparse(staged[0].value)
+    assert "for gate in report.gates" in built, "the findings are not a reading"
+    assert "gate.passed" in built and "gate.gate_id" in built
+    assert "True" not in built, "a stamped verdict is back"
+
+
+def test_the_environment_is_read_before_any_run_can_put_a_site_path_in_it() -> None:
+    """``_run_registration`` exports ``ARI_HARNESS_CONTAINER_ROOT``.
+
+    ``measurement_environment`` captures by prefix, so that variable's VALUE --
+    a site path -- is inside the capture for exactly as long as a run lasts.
+    Read before the first run it cannot be, which is a property of where the
+    call sits and of nothing else.
+    """
+    promote = _promote_body()
+    read = _first_call_line(promote, "measurement_environment")
+    ran = _first_call_line(promote, "_run_registration")
+    assert read < ran, (
+        "the measurement environment is captured while a run has a site path "
+        "exported into it")
+
+    tree = ast.parse(SOURCE)
+    scrubbed = [node for node in ast.walk(tree) if isinstance(node, ast.Assign)
+                and any(isinstance(t, ast.Subscript)
+                        and isinstance(t.slice, ast.Constant)
+                        and t.slice.value == "variables"
+                        for t in node.targets)]
+    assert len(scrubbed) == 1
+    assert "scrub_host_identity" in ast.unparse(scrubbed[0].value)
+
+
+def test_every_published_byte_passes_the_host_identity_guard_before_the_write(
+) -> None:
+    """One call, over the whole output map, above the only write.
+
+    The sibling surface learned this as a shape rather than as more guard calls:
+    four published artifacts were written past a guard that covered the evidence
+    bundle only. Here there is one map and one write, so the coverage is
+    structural.
+    """
+    promote = _promote_body()
+    guarded = _first_call_line(promote, "refuse_host_identity")
+    written = _first_call_line(promote, "_immutable_outputs")
+    assert guarded < written, "the guard runs after the write"
+
+    calls = [node for node in ast.walk(promote) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Name)
+             and node.func.id == "refuse_host_identity"]
+    assert len(calls) == 1, "a second guard call is a second answer about coverage"
+    fed = ast.unparse(calls[0].args[0])
+    assert "outputs.items()" in fed, (
+        "the guard must see every published byte, not one bundle's worth")
+
+
+def test_the_host_identity_guard_actually_refuses_this_surfaces_outputs() -> None:
+    """The guard is imported, not reimplemented, and it fires on a real term."""
+    assert promotion.refuse_host_identity.__module__ == "attest_problem_correctness"
+    home = str(Path.home())
+    with pytest.raises(Exception, match="host identity"):
+        promotion.refuse_host_identity(
+            {"evidence/x/measurement_environment.json":
+             f'{{"variables": {{"ARI_X": "{home}/thing"}}}}'.encode("utf-8")})
+    promotion.refuse_host_identity(
+        {"evidence/x/measurement_environment.json": b'{"variables": {}}'})

@@ -52,6 +52,23 @@ already perform for their families.
   written carry those runs' own digests. Permission to overwrite is therefore a
   RECEIPT for executions that happened, not a flag;
 * the signature is unchanged and still required.
+
+AND THE RUN PRODUCES THE WHOLE BUNDLE, which is what makes the all-or-nothing
+rule satisfiable rather than merely strict. The three shipped bundles carry four
+artifacts this surface used to leave to another writer -- ``registration_report``
+, ``gate_findings``, ``multiple_run_stability`` and ``measurement_environment``
+-- and that is how they came to describe two runs at once: ``01c87015`` rewrote
+exactly those four and the registration evidence beside attestations minted on a
+different day, and it is the run that never happened there whose digest ended up
+in ``attestation_digests``. All four are derived from things this surface already
+computes -- the registration report it earns, the gates that report carries, the
+parity probe's own clean-control record, and the process environment -- so it
+writes them itself, and ``register_harness`` is therefore called BEFORE the
+registration evidence is built rather than after, so the evidence can pin the
+report the approval signs. The last published byte then passes
+``refuse_host_identity``: ``measurement_environment`` captures variable VALUES,
+which is the artifact measured elsewhere in this repository to have carried a
+home directory and a username into a committed bundle.
 """
 
 from __future__ import annotations
@@ -93,6 +110,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from attest_problem_correctness import (  # noqa: E402
     _single,
     isolation_findings,
+    refuse_host_identity,
 )
 from ari.assurance.catalog import build_harness_catalog_snapshot  # noqa: E402
 from ari.assurance.drivers.native import (  # noqa: E402
@@ -1003,6 +1021,12 @@ def _immutable_outputs(
 
 
 def promote(args: argparse.Namespace) -> dict[str, Any]:
+    # Imported here, the way the sibling surface imports them: both pull in
+    # subpackages this module otherwise never touches, and the AST tests over
+    # this file parse it without executing it.
+    from ari.assurance.native_perf_common import measurement_environment
+    from ari.orchestrator.node_summary_view import scrub_host_identity
+
     source_commit, repository = _source_identity()
     # ASKED FIRST, BECAUSE IT COSTS NOTHING. A mistyped harness id arrives twelve
     # container executions late if it is read where it is used. Absent, this is
@@ -1062,6 +1086,19 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
     )
     if not parity_all["passed"]:
         raise RuntimeError("ARI-native official runner parity failed")
+    # WHAT THE MEASUREMENTS WERE TAKEN UNDER, read ONCE and read HERE. The
+    # capture is by prefix, so it takes any ``ARI_*`` variable's value --
+    # and ``_run_registration`` sets ``ARI_HARNESS_CONTAINER_ROOT`` to a site
+    # path for the duration of its executions. Read before the first run it
+    # cannot be captured; read after one it would be, restored or not, and a
+    # published bundle would name this machine's filesystem. Values are scrubbed
+    # of host identity as the sibling surface scrubs them, and every published
+    # byte is checked again below.
+    environment_record = measurement_environment()
+    environment_record["variables"] = {
+        key: scrub_host_identity(value)
+        for key, value in environment_record["variables"].items()
+    }
     outputs: dict[Path, bytes] = {}
     inventory_relative = "evidence/native_container_license_inventory.json"
     outputs[CONFIG_ROOT / inventory_relative] = inventory_bytes
@@ -1116,6 +1153,74 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
             )
             slug = f"hpc_{kind}_correctness"
             evidence_prefix = f"evidence/{slug}"
+            # THE GATES ARE EARNED, NOT ASSERTED. This block used to map each
+            # gate id to some artifact digest, stamp passed=True on all fifteen
+            # with the detail "passed by immutable native promotion evidence",
+            # and hand the set to registration_report. That is precisely the
+            # shape ccdedc9 removed -- its docstring says there is deliberately
+            # no way to hand this function a pre-decided gate -- and the call
+            # has raised TypeError ever since, so this promotion surface has
+            # been dead code rather than a checked one.
+            #
+            # The evidence above is not discarded: the container executions,
+            # the attestations, the licence inventory and the resource
+            # measurements are still written and still pinned by
+            # registration_evidence. What changed is that the VERDICT now comes
+            # from a probe this call ran, through the same driver-agnostic path
+            # every other harness uses. A promotion that cannot pass its own
+            # gates now fails here instead of recording that it passed.
+            #
+            # IT RUNS BEFORE THE BUNDLE IS STAGED, not after, because the bundle
+            # PINS the report: an evidence record built first can only pin the
+            # artifacts that already exist, which is how a bundle ends up citing
+            # a registration report it does not contain. Nothing has been
+            # written at this point -- every output lands in one map and is
+            # flushed once at the end -- so the clean-tree requirement this call
+            # makes is still asked of the tree the source pin was taken from.
+            report = register_harness(
+                manifest, driver, runs=args.probe_runs, allow_dirty=False)
+            if report.decision != "eligible-for-verified":
+                failed = [g.gate_id for g in report.gates if not g.passed]
+                raise RuntimeError(
+                    f"{manifest.id}: registration rejected on {failed}; nothing "
+                    f"is promoted. A rejected registration is a result.")
+            # AND WHAT THE GATES FOUND IS PUBLISHED BESIDE THE RUNS. These four
+            # are in every shipped bundle and were written by a surface that ran
+            # nothing, which is exactly how one evidence directory came to hold
+            # today's attestations and another day's findings. Every one of them
+            # is a reading of something this run did: the report it just earned,
+            # that report's own gate list, the clean-control record the parity
+            # probe returned, and the environment read before the first
+            # execution.
+            run_artifacts["registration_report.json"] = _json_bytes(report)
+            run_artifacts["gate_findings.json"] = _json_bytes(
+                {gate.gate_id: {"passed": gate.passed, "detail": gate.detail}
+                 for gate in report.gates})
+            run_artifacts["multiple_run_stability.json"] = _json_bytes(
+                {"runs": args.probe_runs,
+                 "clean_control": (parity_all.get("controls") or {}).get("clean")})
+            run_artifacts["measurement_environment.json"] = _json_bytes({
+                "environment": environment_record,
+                "registration_commit": source_commit,
+                "placement": None,
+                "placement_note": ("this harness pins no placement, so its "
+                                   "evidence does not describe a machine"),
+                "environment_note": ("variable VALUES are scrubbed of host "
+                                     "identity here"),
+            })
+            # SAID WHILE IT IS STILL RUNNING, on stderr so stdout stays the one
+            # machine-readable summary. Twelve container executions and three
+            # gate sweeps behind a single JSON line at the end is a surface that
+            # cannot be watched, and a run that ends in a refusal -- the ordinary
+            # outcome of a promotion whose bundles are already on disk -- would
+            # otherwise report none of what it established on the way there.
+            print(f"{manifest.id:<24} "
+                  f"clean={run['controls']['clean_control_verdict']:<4} "
+                  f"negative={run['controls']['negative_control_verdict']:<4} "
+                  f"runs={len(run['attestations'])} "
+                  f"gates={sum(1 for gate in report.gates if gate.passed)}"
+                  f"/{len(report.gates)}",
+                  file=sys.stderr, flush=True)
             parity_relative = f"{evidence_prefix}/official_runner_parity.json"
             outputs[CONFIG_ROOT / parity_relative] = _json_bytes(parity)
             # EVERY PATH THIS RUN WROTE FOR THIS HARNESS, accumulated as it is
@@ -1169,29 +1274,6 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
             evidence_relative = f"{evidence_prefix}/registration_evidence.json"
             outputs[CONFIG_ROOT / evidence_relative] = _json_bytes(evidence)
             produced.add(CONFIG_ROOT / evidence_relative)
-            # THE GATES ARE EARNED, NOT ASSERTED. This block used to map each
-            # gate id to some artifact digest, stamp passed=True on all fifteen
-            # with the detail "passed by immutable native promotion evidence",
-            # and hand the set to registration_report. That is precisely the
-            # shape ccdedc9 removed -- its docstring says there is deliberately
-            # no way to hand this function a pre-decided gate -- and the call
-            # has raised TypeError ever since, so this promotion surface has
-            # been dead code rather than a checked one.
-            #
-            # The evidence above is not discarded: the container executions,
-            # the attestations, the licence inventory and the resource
-            # measurements are still written and still pinned by
-            # registration_evidence. What changed is that the VERDICT now comes
-            # from a probe this call ran, through the same driver-agnostic path
-            # every other harness uses. A promotion that cannot pass its own
-            # gates now fails here instead of recording that it passed.
-            report = register_harness(
-                manifest, driver, runs=args.probe_runs, allow_dirty=False)
-            if report.decision != "eligible-for-verified":
-                failed = [g.gate_id for g in report.gates if not g.passed]
-                raise RuntimeError(
-                    f"{manifest.id}: registration rejected on {failed}; nothing "
-                    f"is promoted. A rejected registration is a result.")
             approval = HarnessPromotionApprovalV1.create(
                 harness_id=manifest.id,
                 harness_version=manifest.version,
@@ -1264,6 +1346,16 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
         "entries": sorted(preserved + entries, key=lambda item: str(item["id"])),
     }
     outputs[catalog_path] = _yaml_bytes(catalog)
+    # EVERY PUBLISHED BYTE, ONCE, IMMEDIATELY BEFORE THE ONLY WRITE. ``outputs``
+    # is the complete set this surface puts into a committed tree -- bundle,
+    # manifests, reports, approvals and the catalog alike -- so the guard's
+    # coverage is a property of the shape rather than of statement order. It
+    # refuses rather than scrubs: a scrub leaves a clean-looking bundle and no
+    # way to tell which artifact leaked, and the leak recurs on the next run.
+    # Keyed by repository-relative path so a refusal names the file without
+    # printing the very prefix it refused.
+    refuse_host_identity({path.relative_to(REPO_ROOT).as_posix(): payload
+                          for path, payload in outputs.items()})
     _immutable_outputs(outputs, mutable_catalog=catalog_path,
                        replacements=tuple(replacements))
     summary: dict[str, Any] = {
