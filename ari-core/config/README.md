@@ -107,6 +107,17 @@ Shipped default config files (YAML) loaded by ari-core.
       - `registration_evidence.json` — the bundle the gates are computed from: manifest digest, clean and negative control verdicts, oracle visibility, network isolation, environment digest, and a digest per evidence artifact.
       - `registration_report.json` — the minted report: every gate with its evidence digest, and the resulting `eligible-for-verified` decision. Minted from evidence rather than handed a decision.
       - `resource_measurements.json` — one record per container execution: status, executor wall time and the resources the run was actually given, so the cost of a registration is a measurement rather than an estimate.
+      - `logs/` — TODO
+        - `clean-screen-stderr.log` — TODO
+        - `clean-screen-stdout.log` — TODO
+        - `clean-validate-repeat-stderr.log` — TODO
+        - `clean-validate-repeat-stdout.log` — TODO
+        - `clean-validate-stderr.log` — TODO
+        - `clean-validate-stdout.log` — TODO
+        - `negative-slow-screen-stderr.log` — TODO
+        - `negative-slow-screen-stdout.log` — TODO
+        - `negative-wrong-screen-stderr.log` — TODO
+        - `negative-wrong-screen-stdout.log` — TODO
     - `hpc_spmm_correctness/` — promotion evidence for the native SpMM correctness harness.
       - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic SpMM results.
       - `clean-certify.attestation.json` — clean authoritative SpMM certification attestation.

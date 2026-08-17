@@ -1,5 +1,5 @@
 {
-  "baseline_lock_digest": "sha256:49733999eef8c596a781271f2b47bca3d6726961c87001a01cbb40fb7e651f07",
+  "baseline_lock_digest": "sha256:cb2f9d7717ebeeee4565cc4dbfde110ef148cd86d4e56984bc17ceb9d45d1b31",
   "basis": {
     "container_identity_matched_the_manifest_pin": true,
     "declared_networks": [
@@ -26,12 +26,12 @@
     "oracle",
     "ratio"
   ],
-  "driver_digest": "sha256:9405367619a794c6d7995f5b3b9ba3dbabf29a6bda8679307e89cc38fb7b376a",
+  "driver_digest": "sha256:b3d0ff07efa8d067981a0c9156e98312777f24fcf71f77be3ecd9a5b0979226a",
   "driver_revision": "ari.assurance.native-perf/v1",
-  "environment_digest": "sha256:de222ece1d6516479ec7dc498271548784559943470a4658f6dc7fa0de1b0665",
+  "environment_digest": "sha256:1e98cd1990cff75e6529f4167dd6291f4a2045e6c95c6d1ba464175f715e5910",
   "harness_id": "hpc/gemm-performance",
   "harness_version": "1.0.0",
-  "manifest_digest": "sha256:d8f0a4c9690ef784551f6ed1b210488ebe5924d3b6862a147fbc177b58a9502c",
+  "manifest_digest": "sha256:40dafeeb03a45f8686f9e44649b449af11e62b9b627dc27a9f4abf152292579e",
   "negative_control_grounds": {
     "negative-slow-screen": "ratio",
     "negative-wrong-screen": "oracle"
@@ -55,8 +55,8 @@
   "result_schema_conformant": true,
   "runs": [
     {
-      "attempt_id": "har-8fca5c95812729232f03ab698995d8f2-0",
-      "attestation_digest": "sha256:080eedfc8bbdf21ba195a2856e5b596f276d7ffaf6957bbafb1255a65c9709b8",
+      "attempt_id": "har-a55b86abedb660b3785d18f5247181b1-0",
+      "attestation_digest": "sha256:8c5dbd262af4cafac618485b8b5c9cfe00f78d02f376bb69eb6b483454f79952",
       "candidate_provenance": "reference_gemm.c",
       "label": "clean-screen",
       "observed_ground": "ratio",
@@ -71,8 +71,8 @@
       "why": "the frozen reference is not a regression against itself"
     },
     {
-      "attempt_id": "har-b10dc3812bcefaaa4cd93e0c24803ff0-0",
-      "attestation_digest": "sha256:4683f59bc887cc673dd5d721ae8dbab824618320ee242216e1221dbe1ae61f23",
+      "attempt_id": "har-d638803464a84e08fd86a9ee5d839c2c-0",
+      "attestation_digest": "sha256:b51587276ab84d64239ee9f4310576c4032288391ea6a9f421f812a5c76ecda5",
       "candidate_provenance": "reference_gemm.c",
       "label": "clean-validate",
       "observed_ground": "ratio",
@@ -87,8 +87,8 @@
       "why": "and stays so at the tier a spread exists at, which is the tier this instrument's verdict rule reads"
     },
     {
-      "attempt_id": "har-1606e67e593da5f795e875fb35446644-1",
-      "attestation_digest": "sha256:017c8616ced3d38b5cdab68f98adaf5ced58372c9d9db56e45bcd8591b5ee53b",
+      "attempt_id": "har-e8bb31b6645b9602c83c2a0a410256e1-1",
+      "attestation_digest": "sha256:5c4be4be50bbf9267f3a98947d48ec52b5e72297202430148b6e08054a16975e",
       "candidate_provenance": "reference_gemm.c",
       "label": "clean-validate-repeat",
       "observed_ground": "ratio",
@@ -103,8 +103,8 @@
       "why": "and again at a different derived seed: the verdict is stable across instances"
     },
     {
-      "attempt_id": "har-21332e2ab877379c6624acd579fb00dd-0",
-      "attestation_digest": "sha256:0e1360580f5160cff8b58ee2caeeb581bfc18890963cfb92d40583600f59dfba",
+      "attempt_id": "har-2a300756d2cdb1d3e96ea882817a1335-0",
+      "attestation_digest": "sha256:7801c9285849f52906e30ff880453db8a2a200f6cf7beda21a27770c74a06553",
       "candidate_provenance": "slow_gemm.c",
       "label": "negative-slow-screen",
       "observed_ground": "ratio",
@@ -119,8 +119,8 @@
       "why": "a correct kernel that is slower than the reference must lose ON THE RATIO -- it is right about the answer, so nothing else may refuse it"
     },
     {
-      "attempt_id": "har-5858c37afdbeb2c571bb5ac2f38c4fa3-0",
-      "attestation_digest": "sha256:d9a61a9f957c27fb9682be2e58a486cd27f2b789c73be7e3496eb45d0bafb2bf",
+      "attempt_id": "har-90b486f97732bd4a45973ad1f492a758-0",
+      "attestation_digest": "sha256:6d02474342a473c8f3645641a2fd31441ec992de6ff95392b8cc7c8698c2cdee",
       "candidate_provenance": "wrong_gemm.c",
       "label": "negative-wrong-screen",
       "observed_ground": "oracle",
@@ -138,5 +138,5 @@
   "schema_version": "ari.harness-control-sequence/v1",
   "target_logical_name": "candidate_gemm.c",
   "target_write_isolation": "proved",
-  "verification_contract_digest": "sha256:a68f9a0f0bef7473b897f6546bcb293e8ac98d658571b3c657815b8c82660773"
+  "verification_contract_digest": "sha256:e6040c9a003bf0a719638c6dd19276bc9a3fc546e6bd362e660f8940493c3dfa"
 }

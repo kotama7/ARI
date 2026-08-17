@@ -2,16 +2,16 @@
   "case_set": "native-perf-gemm-cases/v1@parity",
   "controls": {
     "clean": {
-      "median_seconds": 0.08100101910531521,
-      "median_speedup": 1.0014411922742097,
-      "relative_spread": 0.008945362149561339,
+      "median_seconds": 0.12066869786940515,
+      "median_speedup": 0.9929834097008526,
+      "relative_spread": 0.020673802604376387,
       "resolution_note": "",
       "resolved": true,
       "verdict": "pass"
     },
     "negatives": [
       {
-        "detail": "0.1321x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
+        "detail": "0.1443x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
         "name": "slow-but-correct",
         "verdict": "fail"
       },
@@ -22,27 +22,27 @@
       }
     ]
   },
-  "driver_digest": "sha256:9405367619a794c6d7995f5b3b9ba3dbabf29a6bda8679307e89cc38fb7b376a",
+  "driver_digest": "sha256:b3d0ff07efa8d067981a0c9156e98312777f24fcf71f77be3ecd9a5b0979226a",
   "passed": true,
   "problem": "gemm-dense-fp64/v1@2026q3",
   "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
   "reason": null,
   "results": {
     "clean_control": {
-      "median_speedup": 1.0014411922742097,
-      "relative_spread": 0.008945362149561339,
-      "report_digest": "sha256:ef9eade34d351f3884ef2c10e7f5d9253dc2e9f9e2a1b047b1e39910b725980a",
+      "median_speedup": 0.9929834097008526,
+      "relative_spread": 0.020673802604376387,
+      "report_digest": "sha256:a0e10408e5ea5be919e897dac9c1202ffd73bc68fb38ff38d8edd85e93c86c64",
       "resolved": true,
       "verdict": "pass"
     },
     "negative_control_slow": {
-      "detail": "0.1321x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
-      "report_digest": "sha256:3c6a569e8fa5a860eeeba566b69bc6cc60bb380329ed9352b84c3f63717cacbd",
+      "detail": "0.1443x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
+      "report_digest": "sha256:5834d21ec3a4d0538aa112800078a4445647276ed763b7c860543bcd2a104cfd",
       "verdict": "fail"
     },
     "negative_control_wrong": {
       "detail": "candidate output failed the residual bound (2.79e+11x)",
-      "report_digest": "sha256:f854eac29c57e4ac352d14c3ce473f9147c17988142920392518f59da3a76083",
+      "report_digest": "sha256:4092977d748209f51d42f45571b80a7c93a9f296978e5a94cbad3117a7750b16",
       "verdict": "fail"
     }
   },

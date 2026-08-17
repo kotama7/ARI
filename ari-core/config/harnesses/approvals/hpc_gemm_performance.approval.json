@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:498a1addb9b48e4b41dec75ce33dafd1edd4a3ddbab2ece024239ecaa5b78492",
+  "approval_digest": "sha256:97cf9458dcc882cac57499e1be234a166dc6036c5524ee7a81eecc62810dcb18",
   "approved_date": "2026-08-17",
-  "authorization_basis": "The maintainer authorized re-registration and signature for this family in this session. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts. Reported: five executions of the pinned image at the registered placement (x86_64, thread_budget 2) on an exclusive x86 compute node; three clean controls passing at worst relative spreads 0.029 and 0.031 against a bound of 0.1; the correct-but-slow negative refused on the RATIO at 0.082x of the frozen reference; the fast-but-wrong negative refused on the ORACLE; distinct negative grounds, which is what separates this instrument from a stopwatch; and the fifteen registration gates this run reports. Also reported, and the reason the placement moved: at the previously pinned budget of 8 the clean control read 0.104 and 0.120 and returned inconclusive, and at 4 it read 0.100 on the same node.",
-  "evidence_bundle_digest": "sha256:3772ef37eca33c8f5b76c943f2041db59825c15909d9cc2137bf60525cfd1b2d",
+  "authorization_basis": "reviewed the five-execution control sequence and its discrimination evidence",
+  "evidence_bundle_digest": "sha256:938822be9c61f2d5db935ae17b969b6e96b5e2162cbdea6250a9278ae8fbe33e",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-performance",
-  "harness_manifest_digest": "sha256:d8f0a4c9690ef784551f6ed1b210488ebe5924d3b6862a147fbc177b58a9502c",
+  "harness_manifest_digest": "sha256:40dafeeb03a45f8686f9e44649b449af11e62b9b627dc27a9f4abf152292579e",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:ec569e9347a6eae97054e89abad165a69f813e2ffaccdaefb355cce6445b8bf8",
+  "registration_report_digest": "sha256:8d8ac1b86e559106de1012df922f88a4170143c376a7e9f55b610aba541f866b",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

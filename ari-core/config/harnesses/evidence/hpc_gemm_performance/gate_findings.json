@@ -1,6 +1,6 @@
 {
   "clean_control_pass": {
-    "detail": "passed at spread 0.0010489995924394951",
+    "detail": "passed at spread 0.0052673868902736835",
     "passed": true
   },
   "determinism_declaration": {
@@ -28,7 +28,7 @@
     "passed": true
   },
   "multiple_run_stability": {
-    "detail": "spread 0.000484 over 3 runs",
+    "detail": "spread 0.002832 over 3 runs",
     "passed": true
   },
   "negative_control_fail": {
@@ -48,7 +48,7 @@
     "passed": true
   },
   "source_revision_digest_pin": {
-    "detail": "pinned at 361a85d7fde8, an ancestor of 7be41f8059c8",
+    "detail": "pinned at 361a85d7fde8, an ancestor of 0195c075def3",
     "passed": true
   },
   "target_oracle_test_isolation": {

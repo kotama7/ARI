@@ -18,5 +18,5 @@
     "thread_budget": "2"
   },
   "placement_note": "a timed verdict is a statement about a machine; these are the keys the manifest pins, read from the machine the controls ran on, and the sequence refused before its first launch unless they matched",
-  "registration_commit": "7be41f8059c8655d518d6cfc8f858a7368e83856"
+  "registration_commit": "0195c075def3b01dfd64a199f403ace1d9157b5e"
 }
