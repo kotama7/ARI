@@ -264,9 +264,11 @@ def test_promote_refuses_and_names_the_attesting_surface(
     assert "attest_problem_correctness.py" in out, (
         "the problem-correctness family has a surface that runs five real "
         "container executions; the refusal must point at it")
-    assert "NOTHING can earn this family's evidence today" in out, (
-        "the performance family has no control sequence at all, and saying so "
-        "is the point -- an unearnable bundle is what the literals hid")
+    assert "attest_gemm_performance.py" in out, (
+        "the performance family has a control sequence now -- five container "
+        "executions that must discriminate a wrong answer from a slow one -- "
+        "and the refusal must point at it rather than at the older answer that "
+        "nothing could earn its evidence")
 
 
 def test_a_supplied_signature_is_told_that_nothing_was_signed(
@@ -298,21 +300,26 @@ def test_every_shipped_manifest_knows_where_its_evidence_would_be_earned() -> No
             f"answer 'where is its evidence earned' for")
 
 
-def test_the_family_with_no_control_sequence_is_answered_with_none() -> None:
-    """``None`` is a stated gap, not a missing entry.
+def test_every_family_is_answered_with_a_surface_that_exists() -> None:
+    """``None`` was a stated gap; a name that does not resolve is a worse one.
 
-    ``native-perf/v1`` has no control sequence anywhere in this repository, so
-    its registration cannot be honestly renewed by any surface. Recording that
-    as ``None`` keeps it distinguishable from a family nobody has thought about.
+    ``native-perf/v1`` was answered with ``None`` while nothing in this
+    repository could run its controls, which was true and worth saying. It has
+    a control sequence now, so the answer is a surface -- and the thing to hold
+    is that every named surface is a FILE THAT EXISTS with the mode it names.
+    A map that sends a caller to a script that was renamed is the same defect
+    as one that sends them nowhere, and reads as though the work were done.
     """
-    from ari.assurance.drivers.perf import PERF_DRIVER_REVISION
-    from ari.assurance.drivers.problem_correctness import (
-        PROBLEM_CORRECTNESS_DRIVER_REVISION)
-
     surfaces = repin_module.attesting_surfaces()
-    assert surfaces[PERF_DRIVER_REVISION] is None
-    assert "attest_problem_correctness.py" in (
-        surfaces[PROBLEM_CORRECTNESS_DRIVER_REVISION])
+    assert surfaces, "no families to check"
+    for revision, surface in surfaces.items():
+        assert surface, (
+            f"{revision} has no surface that can earn its evidence; if that is "
+            f"true it must be recorded as None deliberately")
+        script = (Path(repin_module.__file__).parent
+                  / surface.split()[0].rstrip(",."))
+        assert script.is_file(), (
+            f"{revision} is answered with {script.name}, which does not exist")
 
 
 # --------------------------------------------------------------------------

@@ -346,10 +346,17 @@ def attesting_surfaces() -> dict[str, str | None]:
             "four-execution control sequence -- though its _immutable_outputs "
             "refuses to overwrite an existing artifact, so a RE-registration "
             "needs the shape attest_problem_correctness.py has"),
-        # No control sequence exists for the performance family. Its bundle is
-        # the one still carrying the seven declared values, and it cannot be
-        # honestly renewed until something can run its controls.
-        PERF_DRIVER_REVISION: None,
+        # This entry read None until the performance family had a control
+        # sequence, and None was the true answer then: its bundle carried seven
+        # declared values and nothing in this repository could run its controls,
+        # so its registration could not be honestly renewed. It can now, so the
+        # gap closes and the caller is sent somewhere that exists.
+        PERF_DRIVER_REVISION: (
+            "attest_gemm_performance.py promote --manifest {manifest} "
+            "--container-root <the directory holding the pinned image> "
+            "--actor-id <maintainer> --authorization-basis '<what you saw>' "
+            "--approved-date <date>  (on the machine the manifest's placement "
+            "pins; its clean control refuses a node it cannot resolve on)"),
     }
 
 
