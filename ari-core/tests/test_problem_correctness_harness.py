@@ -32,6 +32,56 @@ PROBLEM = "gemm-dense-fp64/v1@2026q3"
 #: 256x256x256. The oracle is shape-generic, so the cheapest registered set is
 #: the honest one to exercise it on.
 SMOKE = "native-perf-gemm-cases/v1@smoke"
+#: 1000x1000x1000, the registered parity shape, for the two candidates whose
+#: TIMED REGION IS O(n*m) -- and only for those. The difference is not about the
+#: oracle, which is shape-generic, so it is stated rather than left to look
+#: arbitrary.
+#:
+#: ``run_timed`` applies the forge guard whether or not anybody reads the clock
+#: (see the verifier's module docstring): it refuses a launch crediting less
+#: than ``CREDIT_FLOOR_FRACTION`` -- 1e-4 -- of its own process's wall clock,
+#: because everything the child does outside the timed call is real work bounded
+#: above by that wall. A refused launch is reported as "candidate run did not
+#: complete", so the case never reaches the oracle, and a test asserting on the
+#: RESIDUAL BOUND fails with a message about timing.
+#:
+#: Two candidates here touch the output and nothing else -- the pinned
+#: ``wrong_gemm.c`` fills C with zeros, and the infinity candidate fills it with
+#: 1.0/0.0 -- so their timed region is O(n*m) where the reference, the slow
+#: control and the seed all do the O(n*m*p) product. At 256^3 that is 65536
+#: element writes: measured, it credits ~2.1e-5 s against a ~7.7 ms process on a
+#: quiet host, a ratio of 2.7e-3. The rest of that process -- exec, the sandbox,
+#: the problem read, the NaN poison, the OpenMP team the frozen driver creates
+#: before the timer, the write-out -- barely grows with the case and IS what
+#: stalls when the host is busy, so the ratio is set by a denominator the case
+#: size does not control.
+#:
+#: The floor is a fraction, so what a case can absorb is ``credited * 1e4``.
+#: Over 574 launches at 256^3, taken from idle up to a load average several
+#: times the core count, the credit fell as low as 2.02e-5 s -- a stall budget
+#: of 0.20 s -- while the wall reached 0.26 s; the smallest ratio seen was
+#: 2.3e-4, 2.3x the floor, and the intermittent failure this pins down reported
+#: 2.10591e-05 s against 0.356988 s: 5.9e-5, BELOW it. Neither half of that
+#: pairing is exotic -- both were measured here, in different launches -- and
+#: their coincidence is the whole defect: the case is small enough that an
+#: ordinary stall outruns the kernel.
+#:
+#: At 1000^3 the same two kernels credit 3.1e-4 s at worst (~1.0e-3 s typical
+#: under load), so the same stall has to reach 3.1 s -- against a worst wall of
+#: 0.48 s seen anywhere in these measurements, the busiest moment included. Over
+#: 390 launches under the same conditions the smallest ratio was 1.5e-3, 15x the
+#: floor, against 2.3x for the smoke shape, and none was refused. The other
+#: candidates need none of this: at 256^3 they measured 1800x-4700x the floor,
+#: because their timed region really does dominate their own process.
+#:
+#: The guard is not what is wrong here, and this does not evade it: it says a
+#: kernel too small to dominate its own process cannot be timed, and the fix is
+#: to ask these two the same question at a size where the timed region
+#: dominates. The parity set is the registered shape for exactly that reason
+#: ("one shape, at the size where the measurement is actually resolved"), so no
+#: new pinned asset is minted to hold a test up. Measured cost of the move:
+#: 2.3 s to 3.6 s for the two together.
+RESOLVED = "native-perf-gemm-cases/v1@parity"
 BUILTIN = (pathlib.Path(__file__).resolve().parents[1]
            / "config" / "harnesses" / "builtin")
 MANIFEST = BUILTIN / "hpc_gemm_problem_correctness.yaml"
@@ -42,9 +92,9 @@ def problem():
     return load_problem(PROBLEM)
 
 
-def _verify(problem, source, **kwargs):
+def _verify(problem, source, *, dataset_revision=SMOKE, **kwargs):
     return verify_problem_correctness(problem, source, tier="screen",
-                                      dataset_revision=SMOKE, **kwargs)
+                                      dataset_revision=dataset_revision, **kwargs)
 
 
 # --- adding this must not have unpinned anything -------------------------------
@@ -121,9 +171,15 @@ def test_a_wrong_kernel_fails_on_the_residual_bound_and_still_conforms(problem):
     ``wrong_gemm.c`` writes the right number of elements and the wrong numbers.
     Reporting one overall verdict against both atoms is how a run would learn
     "the interface was wrong" from a Harness that only checked the numbers.
+
+    At ``RESOLVED``, not ``SMOKE``: this candidate's timed region is the O(n*m)
+    zero fill, which at 256^3 cannot dominate its own process on a loaded host
+    and is refused by the forge guard before the oracle is ever consulted. See
+    ``RESOLVED``.
     """
     report = _verify(problem,
-                     problem.path(problem.definition.scaffolding.negative_control_wrong))
+                     problem.path(problem.definition.scaffolding.negative_control_wrong),
+                     dataset_revision=RESOLVED)
     assert report.verdict == "fail"
     assert report.property_verdicts["numerical-equivalence"] == "fail"
     assert report.property_verdicts["interface-conformance"] == "pass"
@@ -209,6 +265,11 @@ def test_a_candidate_writing_infinities_is_a_failure_not_an_outage(tmp_path, pro
     `infrastructure_error` -- so a candidate writing infinities escaped its fail
     verdict and was recorded as the harness having broken. The registered
     `hpc/gemm-performance` harness still has this defect in `PerfRepetitionV1`.
+
+    At ``RESOLVED``, not ``SMOKE``, for the same reason as the wrong kernel
+    above: at 256^3 an O(n*m) fill is too small a timed region to stay clear of
+    the credit floor on a loaded host, and a launch the forge guard refuses
+    never reaches this oracle.
     """
     source = tmp_path / "inf_gemm.c"
     source.write_text(
@@ -216,7 +277,7 @@ def test_a_candidate_writing_infinities_is_a_failure_not_an_outage(tmp_path, pro
         "void gemm(int n, int m, int p, const double *A, const double *B,\n"
         "          double *C) { (void)A; (void)B; (void)p;\n"
         "  for (int i = 0; i < n*m; ++i) C[i] = 1.0/0.0; }\n", encoding="utf-8")
-    report = _verify(problem, source)
+    report = _verify(problem, source, dataset_revision=RESOLVED)
     assert report.verdict == "fail"
     case = report.case_results[0]
     assert case.worst_residual_ratio is None, "a non-finite ratio is not a number"
