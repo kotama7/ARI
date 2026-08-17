@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import inspect
+import json
 import platform
 import sys
 from pathlib import Path
@@ -459,3 +461,309 @@ def test_the_derivation_is_published_beside_its_answer() -> None:
     for field in ("clean_control_verdict", "negative_control_verdict",
                   "isolation", "observed_verdict"):
         assert field in built
+
+
+# --------------------------------------------------------------------------
+# re-registration: replacing a signed bundle, and the ways that must refuse
+#
+# THE SITUATION. The three native bundles on disk were written by an older
+# writer and cite their own registration report where ``attestation_digests``
+# should name the four executions. The executions happened and their artifacts
+# are pinned and verifiable -- this is a wrong citation, not the "nothing ran"
+# defect ``repin_and_promote_harness`` had -- but the field cannot be corrected,
+# because ``_immutable_outputs`` refuses every existing artifact whose bytes
+# change and the surface now derives seven fields it used to declare, so a
+# second promotion necessarily differs.
+#
+# The guard is right about what it was built for. What it did not draw is the
+# line between SILENTLY CHANGING an artifact and a SIGNED RE-REGISTRATION, and
+# these are the tests of that line. None of them needs a container: the subject
+# is the guard and the receipt that authorises it, both of which are functions
+# over paths and bytes.
+# --------------------------------------------------------------------------
+
+_REPLACED_ID = "hpc/gemm-correctness"
+
+
+def _staged_bundle(root: Path, marker: str):
+    """One run's complete output for one harness: ``(bundle_root, bytes, runs)``.
+
+    Two calls with different markers are two different runs producing the same
+    file NAMES with different bytes and different attestation digests, which is
+    what a re-registration is. Names, not contents, are what the all-or-nothing
+    rule is about.
+    """
+    bundle = root / "evidence" / "hpc_gemm_correctness"
+    attestations: dict[str, SimpleNamespace] = {}
+    outputs: dict[Path, bytes] = {}
+    for index, control in enumerate(promotion.REGISTRATION_CONTROLS):
+        digest = "sha256:" + f"{index}{marker}" * 32
+        attestations[control.label] = SimpleNamespace(attestation_digest=digest)
+        outputs[bundle / f"{control.label}.attestation.json"] = json.dumps(
+            {"attestation_digest": digest, "verdict": control.verdict},
+            sort_keys=True).encode("utf-8")
+    outputs[bundle / "registration_evidence.json"] = (
+        b'{"run": "' + marker.encode() + b'"}\n')
+    outputs[bundle / "resource_measurements.json"] = (
+        b'{"run": "' + marker.encode() + b'"}\n')
+    outputs[bundle / "logs" / "clean-screen-stdout.log"] = marker.encode() + b"\n"
+    outputs[root / "builtin" / "hpc_gemm_correctness.yaml"] = (
+        b"id: hpc/gemm-correctness\n")
+    outputs[root / "reports" / "hpc_gemm_correctness.registration.json"] = (
+        b'{"run": "' + marker.encode() + b'"}\n')
+    outputs[root / "approvals" / "hpc_gemm_correctness.approval.json"] = (
+        b'{"run": "' + marker.encode() + b'"}\n')
+    return bundle, outputs, attestations
+
+
+def _put(outputs: dict[Path, bytes]) -> None:
+    for path, payload in outputs.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+
+def _receipt(bundle: Path, outputs: dict[Path, bytes], attestations):
+    return promotion._bundle_replacement(
+        harness_id=_REPLACED_ID,
+        bundle_root=bundle,
+        produced=frozenset(outputs),
+        outputs=outputs,
+        attestations=attestations,
+    )
+
+
+def test_a_plain_promotion_of_an_already_promoted_harness_still_refuses(
+        tmp_path: Path) -> None:
+    """The guard's original job, unchanged, and now it says where the path is.
+
+    This is the case the three stale bundles hit today. It must keep refusing:
+    rewriting registration history under a signature given for different bytes
+    is the thing the immutable rule exists to stop. What is new is that the
+    refusal names the act that IS allowed and what it costs, rather than leaving
+    a maintainer to conclude the bundles can never be corrected.
+    """
+    bundle, first, _ = _staged_bundle(tmp_path, "a")
+    _put(first)
+    _, second, _ = _staged_bundle(tmp_path, "b")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        promotion._immutable_outputs(second, mutable_catalog=tmp_path / "catalog.yaml")
+    message = str(excinfo.value)
+    assert "already differs" in message
+    assert "--re-register" in message, "the refusal does not say the path exists"
+    assert "signature" in message, "nor what it costs"
+    for path, payload in first.items():
+        assert path.read_bytes() == payload, "a refused promotion wrote something"
+
+
+def test_the_re_registration_path_replaces_a_bundle_it_produced_whole(
+        tmp_path: Path) -> None:
+    """Named explicitly, every produced path lands, including the signed ones."""
+    bundle, first, _ = _staged_bundle(tmp_path, "a")
+    _put(first)
+    _, second, attestations = _staged_bundle(tmp_path, "b")
+
+    promotion._immutable_outputs(
+        second,
+        mutable_catalog=tmp_path / "catalog.yaml",
+        replacements=(_receipt(bundle, second, attestations),),
+    )
+    for path, payload in second.items():
+        assert path.read_bytes() == payload
+    assert (bundle / "registration_evidence.json").read_bytes() != (
+        first[bundle / "registration_evidence.json"])
+
+
+def test_a_bundle_this_run_did_not_produce_whole_is_refused(
+        tmp_path: Path) -> None:
+    """ALL-OR-NOTHING. One survivor is one directory describing two runs.
+
+    This is not hypothetical: the shipped native bundles carry four artifacts
+    -- ``gate_findings.json``, ``measurement_environment.json``,
+    ``multiple_run_stability.json`` and ``registration_report.json`` -- that
+    this surface's run does not produce. Replacing the rest around them would
+    leave a bundle whose attestations came from today and whose gate findings
+    came from another writer on another day, with nothing in it saying so.
+    """
+    bundle, first, _ = _staged_bundle(tmp_path, "a")
+    _put(first)
+    (bundle / "gate_findings.json").write_bytes(b'{"writer": "an older one"}\n')
+    _, second, attestations = _staged_bundle(tmp_path, "b")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        promotion._immutable_outputs(
+            second,
+            mutable_catalog=tmp_path / "catalog.yaml",
+            replacements=(_receipt(bundle, second, attestations),),
+        )
+    message = str(excinfo.value)
+    assert "partial re-registration refused" in message
+    assert "gate_findings.json" in message, "the refusal must name the survivor"
+    for path, payload in first.items():
+        assert path.read_bytes() == payload, "a refused replacement wrote something"
+
+
+def test_a_receipt_may_not_claim_a_path_this_run_did_not_write(
+        tmp_path: Path) -> None:
+    """The other half of all-or-nothing: no permission without a produced byte."""
+    bundle, outputs, attestations = _staged_bundle(tmp_path, "a")
+    smuggled = promotion.BundleReplacement(
+        _REPLACED_ID, bundle,
+        frozenset(outputs) | {bundle / "not_produced_here.json"})
+    with pytest.raises(RuntimeError, match="did not produce"):
+        promotion._immutable_outputs(
+            outputs, mutable_catalog=tmp_path / "catalog.yaml",
+            replacements=(smuggled,))
+
+
+def test_a_receipt_cannot_be_minted_without_the_runs(tmp_path: Path) -> None:
+    """THE STRUCTURAL TIE. Permission to overwrite is a receipt for executions.
+
+    Each refusal here is a different way of holding a replacement for runs that
+    did not happen: none of the controls attested, some of them attested, and --
+    the one a caller could otherwise arrange -- all four attested but the bytes
+    staged for the bundle belonging to a different run.
+    """
+    bundle, outputs, attestations = _staged_bundle(tmp_path, "a")
+
+    with pytest.raises(RuntimeError, match="controls attested"):
+        _receipt(bundle, outputs, {})
+
+    short = dict(attestations)
+    short.pop("negative-screen")
+    with pytest.raises(RuntimeError, match="controls attested"):
+        _receipt(bundle, outputs, short)
+
+    foreign = dict(attestations)
+    foreign["clean-screen"] = SimpleNamespace(
+        attestation_digest="sha256:" + "f" * 64)
+    with pytest.raises(RuntimeError, match="do not carry the digest"):
+        _receipt(bundle, outputs, foreign)
+
+    # AND A REPLACEMENT MUST RESTATE THE BUNDLE'S OWN INDEX. Leaving the old
+    # registration evidence in place beside new attestations is the citation
+    # defect again, this time with the artifacts moved instead of the field.
+    without_index = {path: payload for path, payload in outputs.items()
+                     if path.name != "registration_evidence.json"}
+    with pytest.raises(RuntimeError, match="registration_evidence.json"):
+        promotion._bundle_replacement(
+            harness_id=_REPLACED_ID, bundle_root=bundle,
+            produced=frozenset(without_index), outputs=without_index,
+            attestations=attestations)
+
+
+def test_the_only_place_a_receipt_is_minted_is_the_one_tied_to_the_runs() -> None:
+    """Read at the source, because the tie is a property of the code's shape.
+
+    A second construction site is a second set of rules about when replacing a
+    signed artifact is allowed, and the two are free to drift apart -- which is
+    the objection this surface's own docstring makes about reimplementing
+    ``isolation_findings``.
+    """
+    tree = ast.parse(SOURCE)
+    minted = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+              and isinstance(node.func, ast.Name)
+              and node.func.id == "BundleReplacement"]
+    assert len(minted) == 1, "a replacement is constructed somewhere else too"
+    owners = [node.name for node in ast.walk(tree)
+              if isinstance(node, ast.FunctionDef)
+              and any(child is minted[0] for child in ast.walk(node))]
+    assert owners == ["_bundle_replacement"]
+
+    called = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+              and isinstance(node.func, ast.Name)
+              and node.func.id == "_bundle_replacement"]
+    assert len(called) == 1
+    fed = {keyword.arg: ast.unparse(keyword.value)
+           for keyword in called[0].keywords}
+    assert fed["attestations"] == "run['attestations']", (
+        "the receipt must be minted from what the executions returned; fed "
+        "anything else it is a flag with extra steps")
+    assert fed["outputs"] == "outputs", (
+        "and checked against the bytes actually staged for the write")
+
+
+def test_re_registration_is_never_a_default_and_never_a_fallback() -> None:
+    """Explicit at the call site, per harness, or it does not happen."""
+    assert inspect.signature(
+        promotion._immutable_outputs).parameters["replacements"].default == ()
+
+    tree = ast.parse(SOURCE)
+    flag = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "add_argument"
+            and node.args and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "--re-register"]
+    assert len(flag) == 1, "the re-registration path has no explicit call site"
+    kwargs = {keyword.arg: ast.unparse(keyword.value)
+              for keyword in flag[0].keywords}
+    assert kwargs["default"] == "[]", "an on-by-default re-registration"
+    assert kwargs["action"] == "'append'", (
+        "it names WHICH harnesses may be replaced; a boolean would replace "
+        "every bundle a run touched")
+    assert "const" not in kwargs and "nargs" not in kwargs
+    assert "--re-register" in (promotion.__doc__ or "")
+
+
+def test_an_unknown_harness_id_is_refused_before_any_container_work(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cheap question first, and it is a real question.
+
+    ``hpc/gemm-performance`` is a real harness that this surface does not
+    register -- ``attest_gemm_performance.py`` does. Naming it here must refuse
+    rather than quietly re-register nothing. The container root does not exist,
+    so if the check moved below the container work this would fail with a
+    missing path instead.
+    """
+    monkeypatch.setattr(promotion, "_source_identity",
+                        lambda: ("0" * 40, "https://example.invalid/ari"))
+    args = SimpleNamespace(
+        re_register=["hpc/gemm-performance"],
+        container_root=tmp_path / "absent",
+        container_rootfs=tmp_path / "absent",
+    )
+    with pytest.raises(RuntimeError, match="does not register"):
+        promotion.promote(args)
+
+
+def test_a_promotion_that_never_mentions_the_flag_grants_nothing(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Absence is not an error, and it is not permission either."""
+    monkeypatch.setattr(promotion, "_source_identity",
+                        lambda: ("0" * 40, "https://example.invalid/ari"))
+    args = SimpleNamespace(
+        container_root=tmp_path / "absent",
+        container_rootfs=tmp_path / "absent",
+    )
+    # Past the re-registration reading -- which granted nothing -- and stopped
+    # by the missing container, which is the next thing ``promote`` asks for.
+    with pytest.raises(FileNotFoundError):
+        promotion.promote(args)
+
+
+def test_the_re_registration_path_did_not_restore_a_declared_field() -> None:
+    """The seven, re-checked at the syntax tree after this change.
+
+    A re-registration path is exactly where a second evidence builder would be
+    tempting -- "the same bundle, rewritten" -- and a second builder is a second
+    place the seven can be declared. There is one, and it derives all of them.
+    """
+    seen, literal = _literal_evidence_fields(SOURCE)
+    assert not literal, f"{sorted(literal)} is a literal again"
+    assert seen == _DECLARED_ON_THIS_SURFACE
+
+    tree = ast.parse(SOURCE)
+    builders = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "create"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "HarnessRegistrationEvidenceV1"]
+    assert len(builders) == 1, (
+        "a second registration-evidence builder is a second place the seven "
+        "can be written by hand")
+    fed = {keyword.arg: ast.unparse(keyword.value)
+           for keyword in builders[0].keywords}
+    assert fed["attestation_digests"] == "attestation_digests"
+    assert "report" not in fed["attestation_digests"], (
+        "the shipped bundles point this at their own registration report; the "
+        "surface that regenerates them must not")

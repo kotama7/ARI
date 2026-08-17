@@ -23,6 +23,35 @@ run returned, and parity from this family's own probe result. This was the last
 surface still declaring them; ``d85d9768`` closed the same defect in
 ``repin_and_promote_harness.py`` by refusing instead, because that surface runs
 nothing it could read.
+
+AND WHY THAT DERIVATION COULD NOT REACH THE SHIPPED BUNDLES. The three native
+bundles on disk were written by an older writer, and ``_immutable_outputs``
+refuses any existing artifact whose bytes change -- so a second promotion was
+refused outright and the stale bundles could not be regenerated at all. The
+guard is right about what it was built for: rewriting registration history under
+a signature that was given for different bytes must stay refused. What it did
+not draw is the distinction between that and a SIGNED RE-REGISTRATION -- running
+every control again, deriving every field from those runs again, and signing the
+whole bundle again -- which is a legitimate act and the one the two sibling
+surfaces (``attest_problem_correctness.py``, ``attest_gemm_performance.py``)
+already perform for their families.
+
+``--re-register`` is that act, and it is deliberately awkward:
+
+* it is EXPLICIT at the call site and never a fallback. It names the harness ids
+  whose bundles this maintainer accepts replacing; a plain promotion of an
+  already-promoted harness still refuses, and says where the path is;
+* it is ALL-OR-NOTHING per harness. ``BundleReplacement`` carries every path this
+  run produced for one harness, and ``_immutable_outputs`` refuses if a single
+  artifact of that bundle on disk is not among them -- because a new bundle
+  standing beside one old artifact is one evidence directory describing two
+  different runs;
+* it cannot be exercised without the runs. A ``BundleReplacement`` is minted only
+  by ``_bundle_replacement``, which refuses unless the four controls of
+  ``REGISTRATION_CONTROLS`` all attested and the attestation bytes about to be
+  written carry those runs' own digests. Permission to overwrite is therefore a
+  RECEIPT for executions that happened, not a flag;
+* the signature is unchanged and still required.
 """
 
 from __future__ import annotations
@@ -845,15 +874,128 @@ def _run_registration(
     }, artifacts
 
 
-def _immutable_outputs(outputs: dict[Path, bytes], *, mutable_catalog: Path) -> None:
+class BundleReplacement(NamedTuple):
+    """Permission to overwrite ONE harness's registration artifacts, this run.
+
+    Not a flag and not a set of paths a caller may assemble: the only way to hold
+    one is ``_bundle_replacement``, which refuses unless the four controls of
+    ``REGISTRATION_CONTROLS`` all attested and the attestation bytes this run is
+    about to write carry those runs' own digests. So the permission to replace an
+    artifact and the executions that justify replacing it cannot come apart --
+    which is the whole difference between a re-registration and an edit.
+
+    ``produced`` is every path this run wrote for this harness, bundle and
+    manifest and report and approval alike. ``bundle_root`` is the evidence
+    directory, and it is separate because it is the one place where a file can
+    survive a replacement it was not part of: the guard walks it and refuses if
+    anything there is not in ``produced``.
+    """
+
+    harness_id: str
+    bundle_root: Path
+    produced: frozenset[Path]
+
+
+def _bundle_replacement(
+    *,
+    harness_id: str,
+    bundle_root: Path,
+    produced: frozenset[Path],
+    outputs: dict[Path, bytes],
+    attestations: dict[str, Any],
+) -> BundleReplacement:
+    """Mint the receipt, or refuse. THE TIE BETWEEN THE WRITE AND THE RUN.
+
+    Every check here asks the same question in a different place: are the bytes
+    that are about to replace a signed artifact the bytes THIS run's container
+    executions produced? A ``--re-register`` that only had to be typed would be a
+    way to replace registration history without re-earning it, which is the
+    defect one flag away from the one this surface just repaired.
+    """
+    labels = {control.label for control in REGISTRATION_CONTROLS}
+    if set(attestations) != labels:
+        raise RuntimeError(
+            f"{harness_id}: re-registration needs all {len(labels)} controls "
+            f"attested; this run has {sorted(attestations)}")
+    for control in REGISTRATION_CONTROLS:
+        path = bundle_root / f"{control.label}.attestation.json"
+        payload = outputs.get(path)
+        if payload is None:
+            raise RuntimeError(
+                f"{harness_id}: re-registration would not rewrite {path.name}, "
+                f"so the replaced bundle would keep another run's attestation")
+        if path not in produced:
+            raise RuntimeError(
+                f"{harness_id}: {path.name} is written but not claimed by the "
+                f"replacement, which would leave it outside the guard")
+        carried = json.loads(payload.decode("utf-8")).get("attestation_digest")
+        if carried != attestations[control.label].attestation_digest:
+            raise RuntimeError(
+                f"{harness_id}: the bytes staged for {path.name} do not carry "
+                f"the digest this run's {control.label} execution returned")
+    evidence = bundle_root / "registration_evidence.json"
+    if evidence not in produced or evidence not in outputs:
+        raise RuntimeError(
+            f"{harness_id}: a replacement that does not rewrite "
+            f"registration_evidence.json leaves the bundle's own index naming "
+            f"artifacts it no longer contains")
+    return BundleReplacement(harness_id, bundle_root, frozenset(produced))
+
+
+def _immutable_outputs(
+    outputs: dict[Path, bytes],
+    *,
+    mutable_catalog: Path,
+    replacements: tuple[BundleReplacement, ...] = (),
+) -> None:
+    """Write the promotion, refusing any silent change to a signed artifact.
+
+    THE DEFAULT IS STILL REFUSAL. ``replacements`` is empty unless ``promote``
+    was given ``--re-register``, so an ordinary promotion whose bytes differ from
+    what is on disk fails exactly as before -- and now says where the path is.
+    """
+    replaceable: set[Path] = set()
+    for replacement in replacements:
+        unproduced = sorted(str(path) for path in replacement.produced
+                            if path not in outputs)
+        if unproduced:
+            raise RuntimeError(
+                f"{replacement.harness_id}: the replacement claims "
+                f"{len(unproduced)} path(s) this run did not produce, first "
+                f"{unproduced[0]}; a bundle may only be replaced by one this "
+                f"run produced whole")
+        replaceable |= replacement.produced
+    for replacement in replacements:
+        leftover = sorted(
+            str(path.relative_to(replacement.bundle_root))
+            for path in replacement.bundle_root.rglob("*")
+            if not (path.is_dir() and not path.is_symlink())
+            and path not in replacement.produced
+        ) if replacement.bundle_root.is_dir() else []
+        if leftover:
+            raise RuntimeError(
+                f"{replacement.harness_id}: partial re-registration refused. "
+                f"{len(leftover)} artifact(s) of the bundle on disk were not "
+                f"produced by this run: {', '.join(leftover)}. Keeping an old "
+                f"artifact beside new ones leaves one evidence directory "
+                f"describing two different runs. Remove the superseded files in "
+                f"a committed change, then re-run.")
     for path, payload in outputs.items():
-        if path == mutable_catalog or not path.exists():
+        if path == mutable_catalog or path in replaceable or not path.exists():
             continue
         if path.is_symlink() or not path.is_file() or path.read_bytes() != payload:
-            raise RuntimeError(f"immutable Harness artifact already differs: {path}")
+            raise RuntimeError(
+                f"immutable Harness artifact already differs: {path}. Those "
+                f"bytes carry a maintainer signature given for what is on disk, "
+                f"so rewriting them here would move registration history under "
+                f"it. Replacing them is a re-registration, not a promotion: pass "
+                f"--re-register with the harness id that owns this artifact, "
+                f"which re-runs all four controls, re-derives every evidence "
+                f"field from those runs, replaces that harness's bundle whole "
+                f"and needs a fresh maintainer signature")
     for path, payload in outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
-        if path != mutable_catalog and path.exists():
+        if path != mutable_catalog and path not in replaceable and path.exists():
             continue
         temporary = path.with_name("." + path.name + ".tmp")
         temporary.write_bytes(payload)
@@ -862,6 +1004,17 @@ def _immutable_outputs(outputs: dict[Path, bytes], *, mutable_catalog: Path) -> 
 
 def promote(args: argparse.Namespace) -> dict[str, Any]:
     source_commit, repository = _source_identity()
+    # ASKED FIRST, BECAUSE IT COSTS NOTHING. A mistyped harness id arrives twelve
+    # container executions late if it is read where it is used. Absent, this is
+    # the empty set and every existing artifact stays immutable.
+    requested = tuple(dict.fromkeys(getattr(args, "re_register", None) or ()))
+    registered_ids = {config["id"] for config in KIND_CONFIG.values()}
+    unknown = sorted(set(requested) - registered_ids)
+    if unknown:
+        raise RuntimeError(
+            f"--re-register names {unknown}, which this surface does not "
+            f"register; it registers {sorted(registered_ids)}")
+    re_registering = frozenset(requested)
     container_root = args.container_root.resolve(strict=True)
     if not container_root.is_dir() or container_root.is_symlink():
         raise RuntimeError("container root must be a real directory")
@@ -912,6 +1065,16 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
     outputs: dict[Path, bytes] = {}
     inventory_relative = "evidence/native_container_license_inventory.json"
     outputs[CONFIG_ROOT / inventory_relative] = inventory_bytes
+    # THE ONE ARTIFACT NO SINGLE HARNESS OWNS. All three bundles pin the licence
+    # inventory, so it may only move when all three are being reproduced in the
+    # same run; re-registering one family and letting its inventory bytes land
+    # under the other two signatures is the silent change this guard is for. When
+    # the family is not being replaced whole this stays empty and the inventory
+    # falls back to the immutable rule, which refuses and says why.
+    shared_paths: tuple[Path, ...] = (
+        (CONFIG_ROOT / inventory_relative,)
+        if re_registering == registered_ids else ())
+    replacements: list[BundleReplacement] = []
     manifests: dict[str, HarnessManifestV1] = {}
     entries: list[dict[str, Any]] = []
     promotion_summary: dict[str, Any] = {}
@@ -955,6 +1118,11 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
             evidence_prefix = f"evidence/{slug}"
             parity_relative = f"{evidence_prefix}/official_runner_parity.json"
             outputs[CONFIG_ROOT / parity_relative] = _json_bytes(parity)
+            # EVERY PATH THIS RUN WROTE FOR THIS HARNESS, accumulated as it is
+            # written rather than re-derived afterwards: a second list of the
+            # same paths is free to omit one, and an omitted path is an artifact
+            # of the old bundle surviving into the new one.
+            produced: set[Path] = {CONFIG_ROOT / parity_relative, *shared_paths}
             artifact_digests: dict[str, str] = {
                 inventory_relative: bytes_digest(inventory_bytes),
                 parity_relative: bytes_digest(outputs[CONFIG_ROOT / parity_relative]),
@@ -962,6 +1130,7 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
             for name, payload in run_artifacts.items():
                 relative = f"{evidence_prefix}/{name}"
                 outputs[CONFIG_ROOT / relative] = payload
+                produced.add(CONFIG_ROOT / relative)
                 artifact_digests[relative] = bytes_digest(payload)
             attestation_digests = tuple(
                 sorted(
@@ -999,6 +1168,7 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
             )
             evidence_relative = f"{evidence_prefix}/registration_evidence.json"
             outputs[CONFIG_ROOT / evidence_relative] = _json_bytes(evidence)
+            produced.add(CONFIG_ROOT / evidence_relative)
             # THE GATES ARE EARNED, NOT ASSERTED. This block used to map each
             # gate id to some artifact digest, stamp passed=True on all fifteen
             # with the detail "passed by immutable native promotion evidence",
@@ -1039,6 +1209,23 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
             outputs[CONFIG_ROOT / manifest_relative] = _yaml_bytes(manifest)
             outputs[CONFIG_ROOT / report_relative] = _json_bytes(report)
             outputs[CONFIG_ROOT / approval_relative] = _json_bytes(approval)
+            produced.update({CONFIG_ROOT / manifest_relative,
+                             CONFIG_ROOT / report_relative,
+                             CONFIG_ROOT / approval_relative})
+            # THE RECEIPT IS TAKEN HERE OR NOWHERE. It is minted from this
+            # harness's own attestations against the bytes staged above, after
+            # the controls have run and the gates have passed, so a replacement
+            # cannot exist for a harness whose executions did not happen. A kind
+            # nobody named is simply absent from the list, and every artifact it
+            # already has stays immutable.
+            if manifest.id in re_registering:
+                replacements.append(_bundle_replacement(
+                    harness_id=manifest.id,
+                    bundle_root=CONFIG_ROOT / evidence_prefix,
+                    produced=frozenset(produced),
+                    outputs=outputs,
+                    attestations=run["attestations"],
+                ))
             entries.append(
                 {
                     "id": manifest.id,
@@ -1077,13 +1264,18 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
         "entries": sorted(preserved + entries, key=lambda item: str(item["id"])),
     }
     outputs[catalog_path] = _yaml_bytes(catalog)
-    _immutable_outputs(outputs, mutable_catalog=catalog_path)
+    _immutable_outputs(outputs, mutable_catalog=catalog_path,
+                       replacements=tuple(replacements))
     summary: dict[str, Any] = {
         "schema_version": "ari.native-harness-promotion-summary/v1",
         "source_full_commit_sha": source_commit,
         "container_reference": LOGICAL_CONTAINER,
         "container_digest": container_digest,
         "license_inventory_digest": inventory["inventory_digest"],
+        # WHICH SIGNED BUNDLES THIS RUN REPLACED, in the record the run prints.
+        # A re-registration is a heavier act than a promotion and the summary
+        # should not have to be inferred from the absence of a refusal.
+        "re_registered": sorted(item.harness_id for item in replacements),
         "harnesses": promotion_summary,
     }
     summary["summary_digest"] = canonical_digest(summary)
@@ -1101,6 +1293,17 @@ def main(argv: list[str] | None = None) -> int:
                         help="how many times the parity probe runs to establish "
                              "stability. Fewer than two cannot show it, and "
                              "gather_evidence refuses.")
+    parser.add_argument("--re-register", action="append", default=[],
+                        metavar="HARNESS_ID",
+                        help="replace this harness's already-promoted bundle "
+                             "with the one this run produces. Repeatable, and "
+                             "never a default: without it an existing artifact "
+                             "whose bytes changed is refused. It costs a fresh "
+                             "set of container executions, replacement of that "
+                             "harness's WHOLE bundle -- a single artifact on "
+                             "disk this run did not produce refuses it -- a "
+                             "moved registration evidence digest and hence a "
+                             "moved catalog row, and a fresh signature.")
     args = parser.parse_args(argv)
     summary = promote(args)
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
