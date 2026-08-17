@@ -36,8 +36,10 @@ WHAT IT WILL NOT DO.
   ``network_isolation="proved"``, ``target_write_isolation="proved"``,
   ``oracle_visibility="denied"`` -- and pointed ``attestation_digests`` at its
   own registration report, so the bundle cited itself as the execution it never
-  performed. Both harnesses that ship no attestations were registered through
-  it, and ``hpc/gemm-performance``'s bundle carries those seven values today.
+  performed. Both harnesses that shipped no attestations were registered
+  through it. Every verified row now cites its own executions, so no such
+  bundle remains -- but the refusal stays, because the next harness would
+  otherwise be registered exactly the same way.
   The ``promote`` mode remains only to say this and name where the evidence is
   earned instead; the module constructs neither evidence model at all, which is
   a property a test reads off the syntax tree rather than a habit.

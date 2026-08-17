@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Earn the performance Harness's attestations by RUNNING its controls.
 
-THE DEFECT THIS REPAIRS. ``hpc/gemm-performance`` carries ``status: verified``
-and ships no ``HarnessAttestationV1`` at all. It was registered through
+THE DEFECT THIS REPAIRS. ``hpc/gemm-performance`` CARRIED ``status: verified``
+while shipping no ``HarnessAttestationV1`` at all. It had been registered through
 ``repin_and_promote_harness.py``, which wrote ``clean_control_verdict="pass"``
 and ``negative_control_verdict="fail"`` into ``registration_evidence.json`` as
 LITERALS and pointed ``attestation_digests`` at its own registration report --

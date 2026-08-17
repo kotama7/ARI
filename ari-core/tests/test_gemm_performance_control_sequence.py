@@ -1,12 +1,13 @@
 """The control sequence and promotion surface that let hpc/gemm-performance EARN.
 
-WHAT WAS WRONG. ``hpc/gemm-performance`` carries ``status: verified`` on evidence
-no execution produced. Its ``registration_evidence.json`` holds
+WHAT WAS WRONG. ``hpc/gemm-performance`` CARRIED ``status: verified`` on evidence
+no execution produced. Its ``registration_evidence.json`` held
 ``attestation_digests == [its own registration report's digest]`` -- the bundle
 citing itself as the execution it never performed -- beside seven values that
 were typed rather than observed: two control verdicts, official-runner parity,
-result-schema conformance and three isolation claims. It ships no
-``*.attestation.json`` and no ``logs/``. The surface that wrote it,
+result-schema conformance and three isolation claims. It shipped no
+``*.attestation.json`` and no ``logs/``; it now ships five attestations and
+their logs, each cited by digest. The surface that wrote it,
 ``repin_and_promote_harness.py``, has since been closed for exactly that, which
 left this family with a ``controls`` mode that writes a scratch bundle and
 NOTHING that could re-register it -- so a re-pin, which moves the manifest
