@@ -1,17 +1,17 @@
 {
-  "active_harness_lock_digest": "sha256:cb2f9d7717ebeeee4565cc4dbfde110ef148cd86d4e56984bc17ceb9d45d1b31",
-  "attempt_id": "har-90b486f97732bd4a45973ad1f492a758-0",
-  "attestation_digest": "sha256:6d02474342a473c8f3645641a2fd31441ec992de6ff95392b8cc7c8698c2cdee",
-  "baseline_harness_lock_digest": "sha256:cb2f9d7717ebeeee4565cc4dbfde110ef148cd86d4e56984bc17ceb9d45d1b31",
+  "active_harness_lock_digest": "sha256:fa5201134bb2680b478e08fc3727eaa75fd402556bb730249ae7d2868922e2e5",
+  "attempt_id": "har-6ea47fd560d78e5332bbc969ffa7d414-0",
+  "attestation_digest": "sha256:e1d7f3b2992a09100e2f03e74656a02487404afbe2205627262847770f9c1450",
+  "baseline_harness_lock_digest": "sha256:fa5201134bb2680b478e08fc3727eaa75fd402556bb730249ae7d2868922e2e5",
   "capability_binding_lock_digest": "sha256:194df4714255447584ae860c72eda00149f947de24df6dcc1812e4fe9acc6980",
   "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
   "dataset_digest": "sha256:17d6b66d3387670643f197c4e403816866fcfea208e886985bbe93f5b2fd0590",
-  "driver_digest": "sha256:b3d0ff07efa8d067981a0c9156e98312777f24fcf71f77be3ecd9a5b0979226a",
+  "driver_digest": "sha256:12adc5259e6fbf27430c81d04761822671b0a31b194686e9216baf8ab11d9f8e",
   "epoch_id": "registration-epoch",
   "evidence_artifact_refs": [
     {
-      "digest": "sha256:1977abaf314387422ac5029912528faee5327f2411a76dc27184c32613f7fc6a",
-      "logical_name": ".ari-execution/1977abaf314387422ac5029912528faee5327f2411a76dc27184c32613f7fc6a.stdout.log",
+      "digest": "sha256:6dd20027b3129b79140656ce1a43f1bf111ba345054fdff53dd92e0865abe374",
+      "logical_name": ".ari-execution/6dd20027b3129b79140656ce1a43f1bf111ba345054fdff53dd92e0865abe374.stdout.log",
       "media_type": "text/plain; charset=utf-8",
       "role": "harness-stdout",
       "schema_version": "ari.research-artifact-ref/v1",
@@ -26,9 +26,9 @@
       "source_run_id": "harness-registration-hpc-gemm-performance"
     }
   ],
-  "execution_identity": "sha256:4614a4876d774cce20d53a6fa67e413a064fe90099a957a4a0c0f7dcededf8c3",
-  "execution_result_digest": "sha256:e42a354a40dc0af7fa29909ba7604eca47c83f01cd39e75d9f7116da105bd09c",
-  "harness_manifest_digest": "sha256:40dafeeb03a45f8686f9e44649b449af11e62b9b627dc27a9f4abf152292579e",
+  "execution_identity": "sha256:42a114017bd3bf22411f176c3c85d24ca2547ae1b42d0863ab21f467ebcf460b",
+  "execution_result_digest": "sha256:ed1c7a65e4bd3d334516e179c00ebfb4d320bbaf9449f636b7d417188083a6d9",
+  "harness_manifest_digest": "sha256:9231d5cc4acbd95871067c3275a6b23e1bb21e71f3b6767eab64eead81ef5c1d",
   "infrastructure_status": "ready",
   "knowledge_skill_use_digest": "sha256:8e2a116b1daea019352a9ed94735fc604385b48c7d554ce13a812255068422da",
   "node_id": "registration-negative-wrong-screen",
@@ -45,8 +45,8 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:1977abaf314387422ac5029912528faee5327f2411a76dc27184c32613f7fc6a",
-          "logical_name": ".ari-execution/1977abaf314387422ac5029912528faee5327f2411a76dc27184c32613f7fc6a.stdout.log",
+          "digest": "sha256:6dd20027b3129b79140656ce1a43f1bf111ba345054fdff53dd92e0865abe374",
+          "logical_name": ".ari-execution/6dd20027b3129b79140656ce1a43f1bf111ba345054fdff53dd92e0865abe374.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -74,9 +74,9 @@
           "2000x500x500": false
         },
         "credited_seconds_by_case": {
-          "1000x1000x1000": 0.00029311608523130417,
-          "1500x600x1500": 0.0007216669619083405,
-          "2000x500x500": 0.0002974728122353554
+          "1000x1000x1000": 0.00010917987674474716,
+          "1500x600x1500": 0.00020313076674938202,
+          "2000x500x500": 8.976040408015251e-05
         },
         "failed_case_count": 3,
         "median_speedup_by_case": {
@@ -103,27 +103,26 @@
         },
         "placement": {
           "binding_is_set_by_the_harness": true,
-          "cpus_allowed": "0-63",
-          "cpus_allowed_count": 64,
+          "cpus_allowed": "0-191",
+          "cpus_allowed_count": 192,
           "machine": "x86_64",
           "memory_policy_is_set_by_the_harness": false,
-          "mems_allowed": "0-1",
+          "mems_allowed": "0",
           "numa_node_cpulists": {
-            "node0": "0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60,62",
-            "node1": "1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,51,53,55,57,59,61,63"
+            "node0": "0-191"
           },
-          "numa_nodes_spanned": 2,
-          "numa_nodes_total": 2,
+          "numa_nodes_spanned": 1,
+          "numa_nodes_total": 1,
           "omp_dynamic": "FALSE",
           "omp_places": "cores",
           "omp_proc_bind": "spread",
           "page_size_bytes": 4096,
-          "physical_cores": 32,
-          "sha256": "sha256:83d764e83419a29c60b9cd3d846d46abe50b5614564f7e48add6e11b3a844b17",
+          "physical_cores": 96,
+          "sha256": "sha256:84f8f38473a916ea1a6abf9f393b97aed5c8f1233ef5bb9f1a0c70e2da341adb",
           "thread_budget": "2",
           "threads_per_core": 2.0
         },
-        "report_digest": "sha256:3c0464f8d716473cd7c8dfb9845addf24b1a944322133993cd0a8d1139956cdc"
+        "report_digest": "sha256:b7cecebd238bfb6c613bed7151e2f6150bb630621a5d0ac655a0a43ed0955f11"
       },
       "property_id": "performance-regression",
       "tested_scope": {
@@ -152,7 +151,7 @@
       "verdict": "fail"
     }
   ],
-  "research_contract_digest": "sha256:aa146a315a9e042fe85f77cf50165e3e7ff2a16bffb3ae48f7a26513b3beef44",
+  "research_contract_digest": "sha256:0c498a74825d2a85009c7761aabf1cf439b756f2a5b51b973029dfabb0c39b46",
   "retry_index": 0,
   "run_id": "harness-registration-hpc-gemm-performance",
   "schema_version": "ari.harness-attestation/v1",
@@ -160,5 +159,5 @@
   "target_kind": "benchmark-submission",
   "target_logical_name": "candidate_gemm.c",
   "verdict": "fail",
-  "verification_contract_digest": "sha256:e6040c9a003bf0a719638c6dd19276bc9a3fc546e6bd362e660f8940493c3dfa"
+  "verification_contract_digest": "sha256:961c5780785bc444de421b58b8446e1d4a9fc4043f514e152279527955a24271"
 }

@@ -3,25 +3,25 @@
   "gates": [
     {
       "detail": "clean control verdict 'pass'",
-      "evidence_digest": "sha256:7a46ffa7a931db8cb4df44f0c725cad0a76d0fbd21c30b118827fbc6bbe8ad6a",
+      "evidence_digest": "sha256:fa979775219380a72167a40167ca9ff89ef26efa41ad25df602a9949d8144119",
       "gate_id": "reference_oracle_pass",
       "passed": true
     },
     {
       "detail": "2 negative control(s) failed, for different reasons",
-      "evidence_digest": "sha256:487b951b178fef4bc1cb6efa154d20d232a1c993b385189b328d3aa2661e9665",
+      "evidence_digest": "sha256:18fba92ac75b1b47f3007572819d7de8c5ba1633fa224e312fa4f1c5baa68fd8",
       "gate_id": "negative_control_fail",
       "passed": true
     },
     {
-      "detail": "passed at spread 0.0052673868902736835",
-      "evidence_digest": "sha256:64ca1a26f546e781d7ffa30d59a7c17aa8238443ac3e9f2235e93a538eb3fec1",
+      "detail": "passed at spread 0.00251801683546042",
+      "evidence_digest": "sha256:b2efebac213f96cc0ba584e09c00311fb42c0750b18b5ca941d093c03743d213",
       "gate_id": "clean_control_pass",
       "passed": true
     },
     {
       "detail": "probe passed against this driver",
-      "evidence_digest": "sha256:5457c8f67994eeeb999a6af6229176860d63501a0c520fb5c687bb89cdcbdc7e",
+      "evidence_digest": "sha256:59f8f6c8013f777ec8ead5a063057b2489d79e7b9b91e4a4988041441f67ecf4",
       "gate_id": "official_runner_parity",
       "passed": true
     },
@@ -56,7 +56,7 @@
       "passed": true
     },
     {
-      "detail": "pinned at 361a85d7fde8, an ancestor of 0195c075def3",
+      "detail": "pinned at 361a85d7fde8, an ancestor of 88627bbf706f",
       "evidence_digest": "sha256:d6b170f066dd2d092720bebcd736e8e796efa7a092a59af76c6b6730e3feaf99",
       "gate_id": "source_revision_digest_pin",
       "passed": true
@@ -68,8 +68,8 @@
       "passed": true
     },
     {
-      "detail": "spread 0.002832 over 3 runs",
-      "evidence_digest": "sha256:20a54daaf9fcc164b6207afc34cce92bf1dc1202bdbead490d8c11e149b08d1b",
+      "detail": "spread 0.0008425 over 3 runs",
+      "evidence_digest": "sha256:d4eba74d3f6835106c4a54f3d0c9da96c3b7cd2763df76de939293015b1e3e6f",
       "gate_id": "multiple_run_stability",
       "passed": true
     },
@@ -81,7 +81,7 @@
     },
     {
       "detail": "4 pinned digests are full sha256",
-      "evidence_digest": "sha256:86e5b1cae3f71e15b88c9c1654a26c70d847a2c6467aa7787a6c8b8f36b26a50",
+      "evidence_digest": "sha256:cbc8c279707c997cc707adea2a5e3fd068a4172cdfffe9a0b4fa0864f2c0973d",
       "gate_id": "full_sha256_integrity",
       "passed": true
     },
@@ -93,7 +93,7 @@
     }
   ],
   "harness_id": "hpc/gemm-performance",
-  "manifest_digest": "sha256:40dafeeb03a45f8686f9e44649b449af11e62b9b627dc27a9f4abf152292579e",
-  "report_digest": "sha256:8d8ac1b86e559106de1012df922f88a4170143c376a7e9f55b610aba541f866b",
+  "manifest_digest": "sha256:9231d5cc4acbd95871067c3275a6b23e1bb21e71f3b6767eab64eead81ef5c1d",
+  "report_digest": "sha256:e9942d89fb7be2ac5627d8c021559cefb2e4c458ef6eab1cf7b416ae47a06f83",
   "schema_version": "ari.harness-registration-report/v1"
 }

@@ -2,16 +2,16 @@
   "case_set": "native-perf-gemm-cases/v1@parity",
   "controls": {
     "clean": {
-      "median_seconds": 0.12066869786940515,
-      "median_speedup": 0.9929834097008526,
-      "relative_spread": 0.020673802604376387,
+      "median_seconds": 0.08095022430643439,
+      "median_speedup": 1.000509815724447,
+      "relative_spread": 0.003454486892969412,
       "resolution_note": "",
       "resolved": true,
       "verdict": "pass"
     },
     "negatives": [
       {
-        "detail": "0.1443x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
+        "detail": "0.1309x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
         "name": "slow-but-correct",
         "verdict": "fail"
       },
@@ -22,27 +22,48 @@
       }
     ]
   },
-  "driver_digest": "sha256:b3d0ff07efa8d067981a0c9156e98312777f24fcf71f77be3ecd9a5b0979226a",
+  "driver_digest": "sha256:12adc5259e6fbf27430c81d04761822671b0a31b194686e9216baf8ab11d9f8e",
   "passed": true,
+  "placement": {
+    "binding_is_set_by_the_harness": true,
+    "cpus_allowed": "0-191",
+    "cpus_allowed_count": 192,
+    "machine": "x86_64",
+    "memory_policy_is_set_by_the_harness": false,
+    "mems_allowed": "0",
+    "numa_node_cpulists": {
+      "node0": "0-191"
+    },
+    "numa_nodes_spanned": 1,
+    "numa_nodes_total": 1,
+    "omp_dynamic": "FALSE",
+    "omp_places": "cores",
+    "omp_proc_bind": "spread",
+    "page_size_bytes": 4096,
+    "physical_cores": 96,
+    "sha256": "sha256:84f8f38473a916ea1a6abf9f393b97aed5c8f1233ef5bb9f1a0c70e2da341adb",
+    "thread_budget": "2",
+    "threads_per_core": 2.0
+  },
   "problem": "gemm-dense-fp64/v1@2026q3",
   "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
   "reason": null,
   "results": {
     "clean_control": {
-      "median_speedup": 0.9929834097008526,
-      "relative_spread": 0.020673802604376387,
-      "report_digest": "sha256:a0e10408e5ea5be919e897dac9c1202ffd73bc68fb38ff38d8edd85e93c86c64",
+      "median_speedup": 1.000509815724447,
+      "relative_spread": 0.003454486892969412,
+      "report_digest": "sha256:07c30a12f1f830043eeff47b74568a82ac1161ef175d73722cc505a2db4658d5",
       "resolved": true,
       "verdict": "pass"
     },
     "negative_control_slow": {
-      "detail": "0.1443x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
-      "report_digest": "sha256:5834d21ec3a4d0538aa112800078a4445647276ed763b7c860543bcd2a104cfd",
+      "detail": "0.1309x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
+      "report_digest": "sha256:03fc4e3446b16bc74037f671043c51d1d689238a37594a40728f9e8ca4eb9c6d",
       "verdict": "fail"
     },
     "negative_control_wrong": {
       "detail": "candidate output failed the residual bound (2.79e+11x)",
-      "report_digest": "sha256:4092977d748209f51d42f45571b80a7c93a9f296978e5a94cbad3117a7750b16",
+      "report_digest": "sha256:a6be99a02f6ff9539cb5e1872d37451116faabdda493e4e9bb66a4b1d12df6a4",
       "verdict": "fail"
     }
   },
