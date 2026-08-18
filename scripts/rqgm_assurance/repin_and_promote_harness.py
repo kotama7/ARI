@@ -184,18 +184,85 @@ def _question_pins(manifest: HarnessManifestV1) -> dict[str, tuple[str, str]]:
     # So: report a pin only where it is derivable. What that costs is a genuinely
     # unresolvable problem going unreported HERE; ``prepare`` still refuses it at
     # run time, and it refuses loudly, naming the revision.
-    for slot, loader in (("oracle", lambda r: load_problem(r).digest),
-                         ("dataset", lambda r: load_case_set(r)[1])):
+    # AND "DOES NOT RESOLVE" IS TWO FINDINGS, NOT ONE. The paragraph above is
+    # right that a generated revision is not this surface's pin, and the code
+    # under it caught EVERY failure the same way -- so a case set that exists
+    # and no longer parses was skipped by the branch written for revisions that
+    # do not exist. Demonstrated: one forbidden key added to the pinned scored
+    # case set makes ``load_case_set`` raise, and ``check`` answered "every
+    # manifest pins the code it is measured by" about an artifact that cannot be
+    # read at all. That is the gate reporting a pass for a computation it did
+    # not perform, which is the shape it exists to catch.
+    #
+    # The two are told apart structurally rather than by exception type or
+    # message: both loaders scan their root and skip files whose declared
+    # revision does not match, so "some file here declares this revision" is
+    # exactly the question of whether the artifact is this surface's to check.
+    #
+    # A broken one is reported with an EMPTY computed value, as this docstring
+    # has always said. Empty is not an arbitrary marker: it never equals a
+    # pinned digest, so ``stale_pins`` reports it, and ``repin`` writes a
+    # derived field only when the computed value is truthy, so a re-pin cannot
+    # bake "unreadable" into a manifest.
+    for slot, loader, declared in (
+        ("oracle", lambda r: load_problem(r).digest, _problem_revisions),
+        ("dataset", lambda r: load_case_set(r)[1], _case_set_revisions),
+    ):
         asset = getattr(manifest, slot, None)
         revision = (getattr(asset, "revision", "") or "").strip()
         if not revision:
             continue
         try:
             computed = loader(revision)
-        except Exception:
+        except Exception as exc:
+            if revision not in declared():
+                continue
+            _UNREADABLE[f"{manifest.id}:{slot}.sha256"] = (
+                f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]}")
+            found[f"{slot}.sha256"] = (asset.sha256, "")
             continue
         found[f"{slot}.sha256"] = (asset.sha256, computed)
     return found
+
+
+#: ``harness id:field -> why the artifact behind it would not load``, filled by
+#: ``_question_pins``. A separate map because ``derived_pins`` returns pairs of
+#: digests and an operator told only that a pin is stale would go looking for a
+#: digest to re-pin, when what happened is that the file cannot be read.
+_UNREADABLE: dict[str, str] = {}
+
+
+def _yaml_revisions(paths) -> set[str]:
+    """Every ``revision`` declared by a YAML file, skipping ones that will not
+    even parse as YAML -- those are unreadable in the stronger sense and the
+    caller's loader will say so."""
+    import yaml as _yaml
+
+    found: set[str] = set()
+    for path in paths:
+        try:
+            raw = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            continue
+        revision = str(raw.get("revision", "")).strip()
+        if revision:
+            found.add(revision)
+    return found
+
+
+def _case_set_revisions() -> set[str]:
+    from ari.assurance.native_perf_common import case_sets_root
+
+    root = case_sets_root()
+    return _yaml_revisions(sorted(root.glob("*.yaml"))) if root.is_dir() else set()
+
+
+def _problem_revisions() -> set[str]:
+    from ari.assurance.problems import PROBLEM_MANIFEST_NAME, problems_root
+
+    root = problems_root()
+    return (_yaml_revisions(sorted(root.glob(f"*/{PROBLEM_MANIFEST_NAME}")))
+            if root.is_dir() else set())
 
 
 def stale_pins(manifest: HarnessManifestV1) -> dict[str, tuple[str, str]]:
@@ -246,16 +313,29 @@ def _placement_mismatch(manifest: HarnessManifestV1) -> dict:
 def check(args) -> int:
     """Report stale derived pins. Writes nothing; the pre-commit gate uses this."""
     findings: dict[str, dict] = {}
+    unreadable: dict[str, str] = {}
     for path in sorted(BUILTIN.glob("*.yaml")):
-        stale = stale_pins(_load(path))
+        manifest = _load(path)
+        stale = stale_pins(manifest)
         if stale:
             findings[path.name] = {name: {"pinned": a, "computed": b}
                                    for name, (a, b) in stale.items()}
+        # WHY, WHERE THE ANSWER IS NOT "RE-PIN IT". A stale digest is repaired by
+        # re-pinning; an artifact that will not load is not, and an operator told
+        # only the field name would reach for the wrong tool.
+        for name in sorted(stale):
+            reason = _UNREADABLE.get(f"{manifest.id}:{name}")
+            if reason:
+                unreadable[f"{path.name}: {name}"] = reason
     if args.json:
-        print(json.dumps(findings, indent=2, sort_keys=True))
+        print(json.dumps({"stale": findings, "unreadable": unreadable},
+                         indent=2, sort_keys=True))
     else:
         for name, fields in findings.items():
             print(f"{name}: {', '.join(sorted(fields))}")
+        for where, reason in sorted(unreadable.items()):
+            print(f"  {where} does not name a stale digest: the artifact behind "
+                  f"it will not load -- {reason}")
         print(f"{len(findings)} manifest(s) pin a digest the code no longer has"
               if findings else "every manifest pins the code it is measured by")
     return 1 if findings else 0
@@ -408,6 +488,23 @@ def repin_manifests(args) -> int:
             print(f"  re-pin  : {field}  {pinned[:26]}… -> {computed[:26]}…")
         if not stale:
             print("  pins    : already current")
+        # RE-PINNING CANNOT REPAIR AN ARTIFACT THAT WILL NOT LOAD, and saying it
+        # can is worse than saying nothing. Measured: with one forbidden key in
+        # the pinned scored case set this surface rewrote the manifest byte for
+        # byte unchanged, printed "Re-pinned 1 manifest(s). Commit them, then
+        # re-run", and exited 3 -- asking the operator to commit a change that
+        # does not exist and to re-run, which reports the same thing forever.
+        # A stale digest is re-pinnable; an unreadable file is a repair.
+        broken = {field: _UNREADABLE[f"{manifest.id}:{field}"]
+                  for field in sorted(stale)
+                  if f"{manifest.id}:{field}" in _UNREADABLE}
+        if broken:
+            for field, reason in broken.items():
+                print(f"REFUSED: {manifest.id} pins {field}, and the artifact "
+                      f"behind it will not load -- {reason}")
+            print("Nothing is re-pinned: this is a file to repair, not a digest "
+                  "to move. Fix the artifact, then run this again.")
+            return 5
         differs = _placement_mismatch(manifest)
         if differs:
             print(f"REFUSED: this is not the placement {manifest.id} pins: {differs}")

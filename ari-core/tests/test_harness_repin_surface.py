@@ -478,3 +478,88 @@ def test_a_passing_gate_report_still_writes_no_evidence(
     assert "15/15" in out
     assert "NOT WRITTEN: registration evidence, promotion approval, catalog row." in out
     assert "attest_problem_correctness.py" in out
+
+
+# --- "does not resolve" is two findings, not one -----------------------------
+
+def _break_the_pinned_case_set(monkeypatch, tmp_path):
+    """A copy of the case-set root whose scored set carries a forbidden key.
+
+    A forbidden key rather than malformed YAML on purpose: the file still parses
+    as YAML and still declares its revision, so it is unmistakably the artifact
+    this surface pins -- only the model refuses it. That is the case the skip
+    branch was not written for.
+    """
+    import shutil
+
+    from ari.assurance import native_perf_common
+
+    source = native_perf_common.case_sets_root()
+    destination = tmp_path / "case_sets"
+    shutil.copytree(source, destination)
+    target = destination / "gemm-scored-2026q3.yaml"
+    target.write_text(
+        target.read_text(encoding="utf-8").replace(
+            "cases:", "dtype: float32\ncases:", 1),
+        encoding="utf-8")
+    monkeypatch.setattr(native_perf_common, "case_sets_root", lambda: destination)
+    return destination
+
+
+def test_an_unreadable_case_set_is_a_finding_and_not_a_clean_gate(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """THE DEFECT. ``_question_pins`` caught every load failure with one
+    ``except ... : continue``, written for the ARI-native manifests whose
+    generated revisions this surface cannot resolve and does not own. A case set
+    that EXISTS and no longer parses went through the same branch, so ``check``
+    -- the mode the pre-commit hook runs -- answered "every manifest pins the
+    code it is measured by" about an artifact that cannot be read at all.
+
+    A gate reporting a pass for a computation it did not perform is the shape
+    this whole surface exists to catch.
+    """
+    # Broken BEFORE the write guard: the fixture has to write the copy it
+    # breaks, and the guard is about what the surface under test writes.
+    _break_the_pinned_case_set(monkeypatch, tmp_path)
+    _forbid_writes(monkeypatch)
+    code = repin_module.main(["check"])
+    out = capsys.readouterr().out
+    assert code == 1, "the gate passed an unreadable pinned case set"
+    assert "will not load" in out, (
+        "the finding reads as a stale digest, and re-pinning cannot repair it")
+    assert "dataset.sha256" in out
+
+
+def test_the_generated_revisions_are_still_skipped(monkeypatch, capsys) -> None:
+    """The paragraph the skip was written for is still true.
+
+    The three ARI-native manifests pin a generated oracle and case-set revision
+    that no file declares. Reporting those as drift is a false positive that a
+    blocking gate turns into three harnesses nobody can commit against, which is
+    why the branch exists; splitting the two findings apart must not resurrect it.
+    """
+    _forbid_writes(monkeypatch)
+    code = repin_module.main(["check"])
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert "every manifest pins the code it is measured by" in out
+
+
+def test_repin_refuses_an_unreadable_artifact_instead_of_claiming_progress(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """MEASURED, before this: the surface rewrote the manifest byte for byte
+    unchanged, printed "Re-pinned 1 manifest(s). Commit them, then re-run" and
+    exited 3 -- asking for a commit of a change that does not exist and a re-run
+    that reports the same thing forever."""
+    _break_the_pinned_case_set(monkeypatch, tmp_path)
+    monkeypatch.setenv("ARI_PERF_THREADS", "2")
+    written: list = []
+    monkeypatch.setattr(Path, "write_text",
+                        lambda self, *a, **k: written.append(self))
+    code = repin_module.main(["repin", "hpc_gemm_performance.yaml"])
+    out = capsys.readouterr().out
+    assert code == 5, out
+    assert "will not load" in out and "file to repair" in out
+    assert not written, f"it wrote {written} while refusing"
