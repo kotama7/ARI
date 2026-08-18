@@ -266,13 +266,58 @@ def test_every_shipped_manifest_pins_the_driver_that_exists():
     checked = 0
     for path in sorted(BUILTIN.glob("*.yaml")):
         manifest = yaml.safe_load(path.read_text())
-        want = expected.get(manifest["driver"]["revision"])
-        if want is None:
-            continue
+        revision = manifest["driver"]["revision"]
+        want = expected.get(revision)
+        # NOT ``continue``. A manifest pinning a revision no driver publishes is
+        # the loudest version of the state this test exists for -- registered,
+        # signed, and refused at prepare() with nothing to compare against --
+        # and skipping it made the one case that cannot possibly work the only
+        # one the test had no opinion about.
+        assert want is not None, (
+            f"{path.name} pins driver {revision!r}, which builtin_driver_map "
+            f"does not publish; nothing can prepare or launch this Harness")
         checked += 1
         assert manifest["driver"]["sha256"] == want, (
             f"{path.name} pins a driver digest that is not the driver in this "
             f"tree; prepare refuses it and no gate notices")
+    assert checked >= 4, f"only {checked} manifests were checked"
+
+
+def test_every_shipped_manifest_can_mint_the_argv_that_launches_it():
+    """A pin that resolves is not a Harness that runs.
+
+    THE DEFECT. ``_worker_argv`` fails closed -- deliberately, because a silent
+    fallback would run the wrong verifier and report the result under this
+    manifest's name. It had branches for two driver revisions, and
+    ``ari.assurance.native-perf/v1`` was not one of them, so every governed
+    request for hpc/gemm-performance died at minting while the manifest sat in
+    the catalog as verified with 15/15 gates. The bridge turns that into
+    "inconclusive", so the Harness produced nothing on every node and said
+    nothing about why.
+
+    Nothing compared the shipped manifests against the branches. The driver-pin
+    test above asks whether a driver EXISTS for each revision; this asks whether
+    a request for it can be built, which is a different question and the one
+    that was answered wrong.
+    """
+    from types import SimpleNamespace
+
+    from ari.assurance.models import HarnessManifestV1
+    from ari.assurance.request import _worker_argv
+
+    declaration = SimpleNamespace(
+        logical_name="candidate.c", library="libcandidate.so",
+        compiler=None, compile_flags=None)
+    checked = 0
+    for path in sorted(BUILTIN.glob("*.yaml")):
+        manifest = HarnessManifestV1.model_validate(
+            yaml.safe_load(path.read_text(encoding="utf-8")))
+        argv = _worker_argv(manifest, declaration, tier="screen", seed=1)
+        checked += 1
+        assert argv and argv[1] == "-m", (
+            f"{path.name} mints {argv!r}, which is not a module invocation")
+        assert "worker" in argv[2], (
+            f"{path.name} mints {argv[2]!r}, which is not a harness worker")
     assert checked >= 4, f"only {checked} manifests were checked"
 
 
