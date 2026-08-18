@@ -149,3 +149,39 @@ def test_the_bundle_keeps_the_record_its_claims_were_derived_from(entry) -> None
     assert records, (
         f"{entry['id']} ships attestations and declared values but no record of "
         f"how the second was read off the first")
+
+
+@pytest.mark.parametrize("entry", ENTRIES, ids=IDS)
+def test_the_bundle_describes_the_manifest_it_ships_beside(entry) -> None:
+    """Coherent is not the same as CURRENT, and the checks above are only the first.
+
+    Every assertion before this one is satisfied by a bundle that was earned
+    honestly and then left behind: re-pinning moves manifest_digest, and the
+    evidence, report and approval that named the old one keep citing real runs
+    of real controls with verdicts that still re-derive. Measured on this tree
+    while a re-pin was in flight: all twenty-five checks above passed while
+    ``load_harness_catalog`` refused the catalog outright.
+
+    That refusal is a gate and it fires, but it says "registration report
+    differs" -- true, and it does not say which of the three moved or why. This
+    one names it: the signature is over a manifest that is no longer the one
+    shipping beside it, so the bundle has to be re-earned rather than re-pointed.
+    """
+    manifest = yaml.safe_load(
+        (HARNESS_ROOT / entry["manifest"]).read_text(encoding="utf-8"))
+    evidence = _evidence(entry)
+    approval = json.loads((HARNESS_ROOT / entry["promotion_approval"])
+                          .read_text(encoding="utf-8"))
+    report = json.loads((HARNESS_ROOT / entry["registration_report"])
+                        .read_text(encoding="utf-8"))
+    digest = manifest["manifest_digest"]
+    assert evidence["manifest_digest"] == digest, (
+        f"{entry['id']}: the evidence describes manifest "
+        f"{evidence['manifest_digest'][:22]} and the manifest beside it is "
+        f"{digest[:22]}; a re-pin moved the digest and the bundle was not re-earned")
+    assert approval["harness_manifest_digest"] == digest, (
+        f"{entry['id']}: the SIGNATURE is over manifest "
+        f"{approval['harness_manifest_digest'][:22]}, not over {digest[:22]}")
+    assert approval["registration_report_digest"] == report["report_digest"], (
+        f"{entry['id']}: the signature names a registration report that is not "
+        f"the one shipped")
