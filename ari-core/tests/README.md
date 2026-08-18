@@ -291,6 +291,7 @@ targets the like-named module under `ari/`.
 - `test_settings_propagation.py` — settings propagation.
 - `test_settings_roundtrip.py` — settings roundtrip.
 - `test_setup_env.py` — setup_env.sh behaviour.
+- `test_shipped_registration_evidence_is_earned.py` — TODO
 - `test_skill_lock.py` — deterministic provider/schema/phase/authority locks and drift rejection.
 - `test_skill_manifest.py` — canonical manifest, environment, tool policy, schema, and compatibility validation.
 - `test_skill_public_contract.py` — skills import core via the public contract.
