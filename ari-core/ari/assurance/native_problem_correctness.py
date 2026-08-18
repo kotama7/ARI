@@ -213,22 +213,20 @@ class NativeProblemCorrectnessReportV1(DigestBoundModel):
     #: here; "was it isolated" is not answerable after the fact, and the launch
     #: already decides it.
     sandbox: dict[str, Any]
-    #: WHAT WAS RUNNING BESIDE THE KERNEL, sampled either side of every launch.
-    #: RECORDED, NOT PINNED, and the two halves are deliberately split: the
-    #: placement carries whether the allocation was scheduled and exclusive,
-    #: which is stable enough to compare, while this carries the load actually
-    #: present, which is not. Measured on this site, the same instrument read a
-    #: clean-control spread of 0.0038 on an exclusive node and 0.966 beside a
-    #: concurrent test suite, and the two runs produced identical placement
-    #: records -- so a contended number was first reported as a property of the
-    #: architecture. ``peak_load`` is the worst 1-minute run-queue length seen
-    #: across the launches this report covers; null means it could not be read.
-    contention: dict[str, Any]
-
     #: A label. The controls this harness registers against are the problem's own
     #: wrong kernel, so nothing needs to be synthetically corrupted, and this
     #: never alters a verdict.
     negative_control: bool
+    #: Covers every field above, so nothing here may vary between two runs that
+    #: reached the same verdict. THIS IS A CONSTRAINT, not a description: a
+    #: manifest pins ``negative_control_report_digest`` and the registration's
+    #: stability gate establishes that a deterministic verifier repeats by
+    #: requiring byte-identical clean controls. Recording the ambient run-queue
+    #: length here broke both at once -- the pin became unsatisfiable and the
+    #: harness unregisterable -- because a load reading is a live measurement of
+    #: the machine, not of the answer. The performance report carries that
+    #: reading, where the verdict IS a time and the load is the confound; a
+    #: residual bound has no duration for it to contaminate.
     report_digest: str
 
 
@@ -319,12 +317,9 @@ def verify_problem_correctness(
             environment=measurement_environment(),
             placement=measurement_placement(),
             sandbox=dict(sandbox_seen),
-            contention={"peak_load": max(load_seen) if load_seen else None,
-                        "samples": len(load_seen)},
             negative_control=negative_control)
 
     sandbox_seen: dict = {}
-    load_seen: list[float] = []
     results: list[ProblemCorrectnessCaseResultV1] = []
     # WHICH CASES FAILED THE CONTRACT, recorded where the check happens rather
     # than inferred afterwards from ``written != expected``. Inferring it read a
@@ -408,10 +403,6 @@ def verify_problem_correctness(
                     break
                 finally:
                     sandbox_seen.update(sandbox_record(watched.get("sandbox") or {}))
-                    for _key in ("load_before", "load_after"):
-                        _seen = watched.get(_key)
-                        if isinstance(_seen, (int, float)):
-                            load_seen.append(float(_seen))
                 output = np.fromfile(first_out, dtype=np.float64)
                 written = int(output.size)
                 if written != expected:

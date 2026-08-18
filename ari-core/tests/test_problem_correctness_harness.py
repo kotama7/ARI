@@ -1139,23 +1139,28 @@ def test_the_placement_does_not_name_the_partition():
     assert partition not in json.dumps(measurement_placement())
 
 
-def test_the_load_is_recorded_but_never_pinned(problem):
-    """The stable half is compared; the varying half is only reported.
+def test_one_candidate_verified_twice_produces_one_digest(problem):
+    """Nothing in this report may move between runs that reached one verdict.
 
-    `prepare` compares the placement for equality, so a field that moved with
-    the ambient load would make every allocation a different placement from
-    itself. The load therefore lives in the report, where a reader chasing a
-    spread can see what was running beside it -- which is exactly what was
-    missing when a contended 0.966 was first read as a property of the machine.
+    Two things depend on it and neither says so where the report is written: a
+    manifest pins ``negative_control_report_digest``, and the registration's
+    stability gate establishes that a deterministic verifier repeats by
+    requiring byte-identical clean controls. Recording the ambient run-queue
+    length in the report broke both at once, and the harness could no longer be
+    registered at all -- so the check that would have caught it is here, run
+    against the machine rather than reasoned about from the field list.
     """
     from ari.assurance.native_perf_common import measurement_placement
 
-    report = _verify(problem, problem.path(problem.definition.scaffolding.reference))
-    assert set(report.contention) == {"peak_load", "samples"}
-    assert report.contention["samples"] >= 1, "a launch must sample the load"
-    peak = report.contention["peak_load"]
-    assert peak is None or isinstance(peak, float)
+    source = problem.path(problem.definition.scaffolding.reference)
+    first = _verify(problem, source)
+    second = _verify(problem, source)
+    assert first.verdict == second.verdict
+    assert first.report_digest == second.report_digest, (
+        "a field that moves with the machine rather than with the answer")
 
-    # And the pinned half carries none of it.
+    # The load belongs to the performance report, whose verdict is a time. The
+    # placement is compared for equality by `prepare`, so it carries none of it
+    # either: an allocation would otherwise differ from itself.
     placement = measurement_placement()
     assert not [k for k in placement if "load" in k.lower()]
