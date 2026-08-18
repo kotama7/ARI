@@ -13,9 +13,9 @@ description: ARI-native dense fp64 GEMM performance benchmark
 driver:
   license: MIT
   revision: ari.assurance.native-perf/v1
-  sha256: sha256:12adc5259e6fbf27430c81d04761822671b0a31b194686e9216baf8ab11d9f8e
+  sha256: sha256:b59b6dd9fdf3b54a5a66c5a0ef5c714a41bb9b7613108b1c20200d050c37e280
 expected_result_schema: ari.native-perf-report/v1
-expected_result_schema_digest: sha256:ef43c2de17e2df72fa7350f83920f33d3c0cda212b1ae340358d1583d158e8ec
+expected_result_schema_digest: sha256:0fd05f5445b50a9adc123580e2ba92bcaa82b24dd32e3f8c6743f6c66a882fa1
 filesystem_policy: isolated-readonly-target
 hidden_test_policy: verifier-only
 id: hpc/gemm-performance
@@ -23,7 +23,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: benchmark
 maintainer: ARI maintainers
-manifest_digest: sha256:9231d5cc4acbd95871067c3275a6b23e1bb21e71f3b6767eab64eead81ef5c1d
+manifest_digest: sha256:615b52b6f9f56e222b6cdbd8ead046035d0c8d8256d1e539b2580ae781d77bfe
 model:
   license: not-applicable
   revision: not-applicable
