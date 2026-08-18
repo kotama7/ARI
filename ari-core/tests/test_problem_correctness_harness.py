@@ -13,6 +13,7 @@ registered Harnesses pinned to the drivers they were registered against.
 
 from __future__ import annotations
 
+import json
 import pathlib
 
 import pytest
@@ -1099,3 +1100,62 @@ def test_a_candidate_that_never_built_publishes_no_residual_at_all():
     measurements = _normalized([])
     assert measurements["case_count"] == 0
     assert measurements["worst_residual_ratio"] is None
+
+
+# --- was anything else on the machine ------------------------------------------
+
+def test_the_placement_says_whether_the_allocation_was_exclusive():
+    """The record answered "what shape of machine" and not "was it alone".
+
+    That is the condition that most moves a timed verdict: measured on this
+    site, the same instrument read a clean-control spread of 0.0038 on an
+    exclusive node and 0.966 beside a concurrent test suite, and the two runs
+    produced IDENTICAL placement records -- so the contended number was first
+    reported as a property of the architecture.
+
+    The obvious test does not work and this asserts the two keys that do. "Does
+    this process hold the whole node" separates neither case: an exclusive
+    allocation with `-c4` holds 4 of 192 cpus while a shared login node holds
+    64 of 64, so the fraction is SMALLER on the exclusive one.
+    """
+    from ari.assurance.native_perf_common import measurement_placement
+
+    placement = measurement_placement()
+    assert "scheduled_allocation" in placement
+    assert "exclusive_allocation" in placement
+    assert isinstance(placement["scheduled_allocation"], bool)
+    assert placement["exclusive_allocation"] in (True, False, None)
+
+
+def test_the_placement_does_not_name_the_partition():
+    """A site's partition names are machine identity, and this record ships."""
+    import os
+
+    from ari.assurance.native_perf_common import measurement_placement
+
+    partition = (os.environ.get("SLURM_JOB_PARTITION") or "").strip()
+    if not partition:
+        pytest.skip("no scheduler partition to leak")
+    assert partition not in json.dumps(measurement_placement())
+
+
+def test_the_load_is_recorded_but_never_pinned(problem):
+    """The stable half is compared; the varying half is only reported.
+
+    `prepare` compares the placement for equality, so a field that moved with
+    the ambient load would make every allocation a different placement from
+    itself. The load therefore lives in the report, where a reader chasing a
+    spread can see what was running beside it -- which is exactly what was
+    missing when a contended 0.966 was first read as a property of the machine.
+    """
+    from ari.assurance.native_perf_common import measurement_placement
+
+    report = _verify(problem, problem.path(problem.definition.scaffolding.reference))
+    assert set(report.contention) == {"peak_load", "samples"}
+    assert report.contention["samples"] >= 1, "a launch must sample the load"
+    peak = report.contention["peak_load"]
+    assert peak is None or isinstance(peak, float)
+
+    # And the pinned half carries none of it.
+    placement = measurement_placement()
+    assert not [k for k in placement if "load" in k.lower()]

@@ -322,6 +322,18 @@ class NativePerfReportV1(DigestBoundModel):
     #: to be inferred: a reader cannot otherwise tell a sandboxed measurement
     #: from one on a kernel that has none.
     sandbox: dict[str, Any] = Field(default_factory=dict)
+    #: WHAT WAS RUNNING BESIDE THE KERNEL, sampled either side of every launch.
+    #: RECORDED, NOT PINNED, and the two halves are deliberately split: the
+    #: placement carries whether the allocation was scheduled and exclusive,
+    #: which is stable enough to compare, while this carries the load actually
+    #: present, which is not. Measured on this site, the same instrument read a
+    #: clean-control spread of 0.0038 on an exclusive node and 0.966 beside a
+    #: concurrent test suite, and the two runs produced identical placement
+    #: records -- so a contended number was first reported as a property of the
+    #: architecture. ``peak_load`` is the worst 1-minute run-queue length seen
+    #: across the launches this report covers; null means it could not be read.
+    contention: dict[str, Any] = Field(default_factory=dict)
+
     negative_control: bool = False
     #: Set when the CANDIDATE did not build. A build failure is a fact about the
     #: candidate, but it used to be reported as one thing by the evaluator
@@ -565,6 +577,52 @@ def isa_flags_for(compiler: str) -> tuple[str, ...]:
 # where it ran
 # --------------------------------------------------------------------------
 
+def _allocation_exclusivity() -> tuple[bool, bool | None]:
+    """``(scheduled, exclusive)`` for the allocation this process runs in.
+
+    WHY THE PLACEMENT RECORD NEEDED THIS. It answers "what shape of machine was
+    this measured on" in seventeen fields and could not answer "was anything
+    else running on it" -- and that is the condition that most moves a timed
+    verdict. Measured on this site: an exclusive compute node read a
+    clean-control spread of 0.0038, and the same instrument beside a concurrent
+    test suite read 0.966. Both produced IDENTICAL placement records, so an
+    attestation could not be told apart from one taken under load, and one was
+    reported as a property of the architecture before the contention was found.
+
+    THE OBVIOUS TEST DOES NOT WORK, and it is worth saying why so it is not
+    tried again: "does this process hold the whole node" separates neither case.
+    Measured, an exclusive allocation with ``-c4`` holds 4 of 192 cpus while a
+    shared login node holds 64 of 64 -- the fraction is SMALLER on the exclusive
+    one. Whole-node possession and exclusivity are independent here because the
+    partition itself is what forbids sharing.
+
+    So it is read from the scheduler. ``scheduled`` is whether this ran inside a
+    batch allocation at all; ``exclusive`` comes from the partition's own
+    over-subscription policy. ``None`` means unknowable -- no scheduler, or its
+    query failed -- which is different from "shared" and is recorded as such.
+
+    THE PARTITION'S NAME IS NOT RECORDED, only the policy it implies. A site's
+    partition names are machine identity and this record is published.
+    """
+    job = (os.environ.get("SLURM_JOB_ID") or "").strip()
+    if not job:
+        return False, None
+    partition = (os.environ.get("SLURM_JOB_PARTITION") or "").strip()
+    if not partition:
+        return True, None
+    try:
+        shown = subprocess.run(["scontrol", "show", "partition", partition],
+                               capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return True, None
+    if shown.returncode != 0:
+        return True, None
+    for token in shown.stdout.split():
+        if token.startswith("OverSubscribe="):
+            return True, token.split("=", 1)[1].strip().upper().startswith("EXCLUSIVE")
+    return True, None
+
+
 def measurement_placement() -> dict[str, Any]:
     """The allocation's shape and the machine's memory topology.
 
@@ -599,6 +657,7 @@ def measurement_placement() -> dict[str, Any]:
     allowed = _cpu_set(cpus or "")
     _cores = physical_cores(sorted(allowed)) if allowed else physical_cores()
     regime = measurement_thread_regime()
+    _scheduled, _exclusive = _allocation_exclusivity()
     body = {
         "machine": os.uname().machine,
         "page_size_bytes": page,
@@ -635,6 +694,13 @@ def measurement_placement() -> dict[str, Any]:
         # There is no numactl, taskset, mbind or set_mempolicy on this path.
         "binding_is_set_by_the_harness": True,
         "memory_policy_is_set_by_the_harness": False,
+        # WAS ANYTHING ELSE ON THIS MACHINE. Stable for a given kind of
+        # allocation, so it can be compared; see ``_allocation_exclusivity``.
+        # What VARIES -- the load actually present while the kernel ran -- is
+        # recorded per launch instead, because a placement whose digest moved
+        # with the ambient load could never be pinned at all.
+        "scheduled_allocation": _scheduled,
+        "exclusive_allocation": _exclusive,
     }
     digest = hashlib.sha256(
         _json.dumps(body, sort_keys=True, separators=(",", ":"),
@@ -978,6 +1044,29 @@ def measurement_thread_regime() -> dict[str, str]:
     }
 
 
+def run_queue_length() -> float | None:
+    """The 1-minute load average, or None where it cannot be read.
+
+    RECORDED, NEVER PINNED. What was running BESIDE the kernel is the condition
+    that most moves a timed verdict -- measured on this site, the same
+    instrument read a clean-control spread of 0.0038 on an exclusive node and
+    0.966 beside a concurrent test suite -- and the placement record could not
+    express it. It cannot go into that record either: the placement is compared
+    for equality by ``prepare``, and a field that moves with the ambient load
+    would make every allocation a different placement from itself.
+
+    So the stable half of the question lives in the placement
+    (``scheduled_allocation``, ``exclusive_allocation``) and the varying half
+    lives here, per launch, in the report. A reader who wants to know whether a
+    number was taken under load can then see it, which is what was missing when
+    a contended 0.966 was first reported as a property of the architecture.
+    """
+    try:
+        return float(Path("/proc/loadavg").read_text(encoding="utf-8").split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
               *, timeout: float, role: str = "candidate",
               ld_library_path: str | None = None,
@@ -1026,6 +1115,7 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
     # kernel time no matter what the child writes. This does not floor a
     # measurement, it refuses one: a credit below what the wall clock allows is
     # not a fast kernel, it is a number that did not come from this run.
+    _load_before = run_queue_length()
     started = time.perf_counter()
     argv = [*launcher, str(exe), str(problem), str(out_path), str(timing)]
     # Popen rather than run(), because the process GROUP has to be reaped before
@@ -1137,6 +1227,11 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
         # WHAT ACTUALLY HAPPENED, not what this host is capable of. Reported
         # from the same decision the launch was made on.
         observed["sandbox"] = status
+        # THE CONDITION, not the capability. Sampled either side of the launch
+        # rather than once, because a run that starts quiet and ends loaded is
+        # exactly the case a single sample reports as quiet.
+        observed["load_before"] = _load_before
+        observed["load_after"] = run_queue_length()
     return float(seconds)
 
 
@@ -1218,6 +1313,7 @@ __all__ = [
     "median",
     "relative_spread",
     "resolve_compiler",
+    "run_queue_length",
     "sandbox_record",
     "SANDBOX_RECORD_KEYS",
     "runtime_libs_for",

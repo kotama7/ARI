@@ -160,6 +160,7 @@ def verify_performance(
     base = ("-O3", "-fopenmp", *isa_flags_for(resolved))
 
     sandbox_seen: dict = {}
+    load_seen: list[float] = []
 
     def _report(*, verdict, results, build_error=None):
         """One shape for every way this function can end.
@@ -183,6 +184,8 @@ def verify_performance(
             environment=measurement_environment(),
             dataset_revision=case_set.revision, dataset_sha256=dataset_digest,
             placement=measurement_placement(), sandbox=dict(sandbox_seen),
+            contention={"peak_load": max(load_seen) if load_seen else None,
+                        "samples": len(load_seen)},
             negative_control=negative_control)
 
     results: list[PerfCaseResultV1] = []
@@ -290,6 +293,16 @@ def verify_performance(
                     # run, so it makes the report digest non-reproducible.
                     sandbox_seen.update(sandbox_record(
                         watched["candidate"].get("sandbox") or {}))
+                    # WORST LOAD SEEN, over every launch this report covers.
+                    # Recorded, never pinned: the placement says whether the
+                    # allocation was exclusive, this says what was actually
+                    # running. A spread quoted without it cannot be told from
+                    # one taken beside another job.
+                    for _role in watched.values():
+                        for _key in ("load_before", "load_after"):
+                            _seen = _role.get(_key)
+                            if isinstance(_seen, (int, float)):
+                                load_seen.append(float(_seen))
                     over_cand = watched["candidate"].get("overhead", 0.0)
                     over_ref = watched["reference"].get("overhead", 0.0)
                     if over_ref > 0 and over_cand > over_ref * MAX_OVERHEAD_RATIO:

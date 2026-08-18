@@ -236,6 +236,11 @@
       "title": "Case Results",
       "type": "array"
     },
+    "contention": {
+      "additionalProperties": true,
+      "title": "Contention",
+      "type": "object"
+    },
     "crossed_compiler_boundary": {
       "title": "Crossed Compiler Boundary",
       "type": "boolean"
