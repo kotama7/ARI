@@ -222,6 +222,7 @@ targets the like-named module under `ari/`.
 - `test_prompt_provenance.py` — subtask 044 prompt-provenance recorder + run rollup: `hash12` determinism matching `load_versioned`, the additive-schema JSONL record, no-op without a checkpoint dir, env-pin resolution, `build_prompt_versions_rollup`, and ARI-metadata registration of the new artifact filenames.
 - `test_prompt_registry.py` — subtask 038 `PromptRegistry`: discovery of exactly the 28 core keys (READMEs excluded), byte-/hash-identical delegation to the wrapped `FilesystemPromptLoader`, placeholder parsing tolerant of `{{`/`}}` JSON escapes, the config-injected-key tolerance policy, and loader dependency injection.
 - `test_prompt_snapshots.py` — subtask 042 auto-discovered prompt snapshots: every `ari/prompts/**/*.md` pinned as raw bytes plus its `str.format`-rendered output and placeholder set, so an added/deleted/edited template that was not re-blessed (`ARI_UPDATE_PROMPT_SNAPSHOTS=1`) fails.
+- `test_provenance_pins_survive_a_rewrite.py` — TODO
 - `test_public_api_boundary.py` — public-API boundary.
 - `test_publish_and_registry.py` — publish + registry.
 - `test_publish_yaml_api.py` — publish YAML API.
