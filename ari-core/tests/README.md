@@ -149,8 +149,10 @@ targets the like-named module under `ari/`.
 - `test_include_ear_toggle.py` — include-EAR toggle.
 - `test_infrastructure_end_state.py` — a crashed node must not be readable as a scientific result. A node killed by the watchdog produced NO measurement, and recording it as a plain failure conflates "the candidate was bad" (data) with "the framework broke" (missing data), biasing the arm comparison the study exists to make. `ended_by` separated finish from step-exhaustion but was never set on the crash paths, so a crash looked identical to non-convergence.
 - `test_integration.py` — integration.
+- `test_kca_acceptance.py` — TODO
 - `test_kca_contracts.py` — KCA schema, serialization, digest, and cross-contract invariant coverage.
 - `test_kca_declaration_invariants.py` — every catalog-classified tool covers its capability contract's permissions and side-effect class, and the Router accounts for every entry it did not propose.
+- `test_kca_run_admission.py` — TODO
 - `test_kca_skill_catalog_paths.py` — the KCA query skills must find their catalogs with NOTHING configured. Two skill servers computed a repository root one directory too high, and because every failure in these servers is returned as data in a versioned error envelope rather than raised, a catalog that could not be found came back as an empty result — the shape of "nothing is registered", not of "this is misconfigured", so a default deployment told an agent there were no harnesses and no knowledge skills and nothing said otherwise. Pins the resolution itself rather than the arithmetic, that the default catalog file exists and is really read end to end, that the documented `ARI_ROOT` override still wins, and that a catalog row whose `id` disagrees with the manifest it names — or that carries no id at all — is refused rather than loading clean.
 - `test_kca_surfaces.py` — CLI, public API, config, and node-report KCA surface coverage.
 - `test_knowledge_external_importer.py` — pinned external knowledge-source import, provenance, and rejection coverage.

@@ -42,8 +42,21 @@ def _rep(index=0, *, correct=True, speedup=0.02):
         max_rel_error=0.5 if correct else 9e11)
 
 
-def _report(cases, *, verdict="fail"):
+#: What ``run_timed`` records when this kernel CAN restrict the timed child.
+#: Filtered to the keys a published report may carry, i.e. the shape the
+#: measurement path actually sees (``SANDBOX_RECORD_KEYS``).
+ISOLATED = {"filesystem_isolation": True, "mechanism": "landlock",
+            "landlock_abi": 3,
+            "does_not_restrict": ["fork", "cpu", "network-by-itself", "memory"]}
+
+#: And what it records on a kernel that has no Landlock, where it makes no
+#: attempt and runs the candidate with the whole filesystem visible.
+UNISOLATED = {"filesystem_isolation": False, "mechanism": None}
+
+
+def _report(cases, *, verdict="fail", sandbox=None):
     return NativePerfReportV1.create(
+        sandbox=dict(ISOLATED if sandbox is None else sandbox),
         problem_id="gemm-dense-fp64", problem_revision=PROBLEM,
         problem_digest="sha256:" + "1" * 64, family="gemm", tier="screen",
         verdict=verdict, case_results=tuple(cases), regression_threshold=0.95,
@@ -195,6 +208,78 @@ def test_an_instrument_failure_is_raised_so_the_node_goes_unranked(monkeypatch,
     assert out["evaluation_status"] == "infrastructure_error"
     assert out["metrics"] == {}
     assert "scientific_score" not in out
+
+
+# --- the candidate has to have been kept away from the oracle ------------------
+
+def test_a_run_whose_candidate_was_not_isolated_is_refused_rather_than_scored(
+        monkeypatch, tmp_path):
+    """The launch record was written and never read.
+
+    ``run_timed`` restricts the timed child with Landlock where the kernel has
+    it and, where it does not, makes NO attempt: the candidate runs with the
+    problem directory and ``/proc`` visible, and the launch records
+    ``filesystem_isolation: false`` rather than refusing. Nothing between that
+    record and a rank looked at it -- so on such a host a candidate that read
+    the frozen reference it is divided by, or found its timing file through
+    ``/proc/self/cmdline``, was turned into a speedup and ranked beside one that
+    could not. Both are the moves the isolation exists to remove, and the
+    wall-clock bound and overhead check that remain do not see either.
+
+    Refused as an INSTRUMENT failure, which is the distinction this module is
+    built on: the conditions a measurement is only meaningful under were not
+    provided, so the node goes unranked instead of being scored 0.0 (which reads
+    as a bad kernel) or scored at whatever it claimed.
+    """
+    work = tmp_path / "node"
+    am.seed_work_dir(work)
+    report = _report([_case("c1", verdict="pass", correct=True, speedup=40.0)],
+                     verdict="pass", sandbox=UNISOLATED)
+    monkeypatch.setattr(am, "verify_performance", lambda *_a, **_k: report)
+
+    with pytest.raises(PerfInfrastructureError, match="not held away"):
+        am.measure(str(work))
+
+    # And it reaches the unranked path rather than becoming a number.
+    out = DeterministicEvaluator(
+        measure_fn=lambda _w: am.measure(str(work))).evaluate_sync("g", [], "s")
+    assert out["evaluation_status"] == "infrastructure_error"
+    assert out["metrics"] == {}
+
+
+def test_a_launch_that_recorded_no_isolation_at_all_is_refused_too(tmp_path):
+    """An absent record is not a passing one.
+
+    The field defaults to an empty dict, so "nothing said the candidate was
+    isolated" and "something said it was" are different states and only the
+    second may be scored. Reading a missing record as satisfied is how the
+    record came to be written and never read in the first place.
+    """
+    with pytest.raises(PerfInfrastructureError, match="not held away"):
+        am.refuse_an_unisolated_run(
+            _report([_case("c1", verdict="pass", correct=True, speedup=40.0)],
+                    verdict="pass", sandbox={}))
+
+
+def test_a_candidate_that_did_not_build_was_never_launched_so_it_is_not_refused():
+    """Nothing ran, so nothing was exposed; the build failure stays the
+    candidate's and must not be relabelled an instrument outage."""
+    report = _report([], verdict="fail", sandbox={})
+    am.refuse_an_unisolated_run(report.model_copy(
+        update={"build_error": "expected ';'"}))
+
+
+def test_an_isolated_run_is_measured_normally(monkeypatch, tmp_path):
+    """The gate refuses a launch record, not a candidate: with the isolation
+    recorded the same report scores exactly as before."""
+    work = tmp_path / "node"
+    am.seed_work_dir(work)
+    report = _report([_case("c1", verdict="pass", correct=True, speedup=40.0)],
+                     verdict="pass", sandbox=ISOLATED)
+    monkeypatch.setattr(am, "verify_performance", lambda *_a, **_k: report)
+    result = am.measure(str(work))
+    assert result["evaluation_status"] == "valid"
+    assert result["families"]["c1"]["speedup"] == pytest.approx(40.0)
 
 
 def test_an_unnamed_problem_refuses_rather_than_defaulting(monkeypatch):

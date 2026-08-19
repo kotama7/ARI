@@ -241,6 +241,18 @@ def test_a_candidate_is_actually_judged_inside_the_pinned_image():
     back. This is the only test that proves the pinned image, the pinned
     runtime, the address-space bound, the read-only package mount and the denied
     network compose into something that can judge an artifact.
+
+    AND IT READS THE VERDICT, which it did not. The candidate is built with
+    ``-DARI_PROBE_ORACLE_ACCESS``, so before computing anything it tries to open
+    the oracle module inside the image and then to write into the mounted input
+    directory; either success makes the kernel return non-zero, which the
+    verifier records as ``candidate error`` and the report as ``verdict: fail``.
+    Every assertion here used to stop short of that -- ``exit_code`` is the
+    VERIFIER's, not the candidate's, and ``deterministic`` stays true for a
+    kernel that refuses identically every time, while ``negative_control`` is an
+    input to the run rather than an observation of it. So a candidate that read
+    the hidden oracle left all four true and the test passed, which is the one
+    thing it exists to catch.
     """
     manifest = next(m for m in _containerised() if m.id == "hpc/gemm-correctness")
     image = _pinned_image(manifest)
@@ -304,3 +316,14 @@ def test_a_candidate_is_actually_judged_inside_the_pinned_image():
         assert report["schema_version"].startswith("ari.native-hpc-verification-report")
         assert report["deterministic"] is True
         assert report["negative_control"] is False
+        # THE VERDICT, which is where the isolation shows up. The reference
+        # kernel is correct, so the only thing that can make this fail is the
+        # probe: 77 means the oracle module was readable from inside the
+        # candidate, 78 means the mounted input directory was writable.
+        failures = [case for case in report["case_results"]
+                    if case["verdict"] != "pass"]
+        assert report["verdict"] == "pass", (
+            f"the reference candidate was not judged correct inside the pinned "
+            f"image; a 'candidate error: ... 77' means it could read the hidden "
+            f"oracle and a '... 78' means it could write the input directory: "
+            f"{[case['detail'] for case in failures][:4]}")

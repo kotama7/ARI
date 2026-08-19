@@ -301,6 +301,52 @@ def report_to_measurement(report, *, compile_ok: bool = True) -> dict[str, Any]:
     }
 
 
+def refuse_an_unisolated_run(report) -> None:
+    """Raise unless the launch record says the candidate was held away from the oracle.
+
+    ``run_timed`` probes THIS kernel before every launch. Where the kernel can
+    enforce Landlock the timed child is restricted between fork and exec, and a
+    failure to restrict kills the launch. Where it cannot, no attempt is made:
+    the candidate runs with the whole filesystem visible and the launch records
+    ``filesystem_isolation: false`` instead of refusing.
+
+    THE RECORD WAS WRITTEN AND NEVER READ. Nothing between that decision and a
+    rank looked at it, so on a host without Landlock a candidate that read the
+    frozen reference -- its own denominator -- out of the problem directory, or
+    found its timing file through ``/proc/self/cmdline``, was turned into a
+    speedup and ranked exactly like one that could not. Those are the two moves
+    the isolation exists to remove, and both are simply available when it is
+    absent; the wall-clock bound and the overhead check that remain cover a
+    different family and do not see a candidate that copies the answer.
+
+    So it is read here, and it RAISES. That is the module's own error taxonomy
+    and not a new one: an unisolated launch is the INSTRUMENT failing to provide
+    the conditions a measurement is only meaningful under, so it must reach
+    ``evaluate_sync``'s unranked ``infrastructure_error`` path rather than
+    become a zero that reads as a bad kernel -- and it must certainly not become
+    a good one.
+
+    Read from the report because the report is written by the process that took
+    the decision, inside whatever container the run happened in. Probing the
+    kernel again from here would answer a question about a different process.
+    """
+    if getattr(report, "build_error", None):
+        # Nothing was launched, so nothing was exposed. A build failure is a
+        # fact about the candidate and stays one.
+        return
+    sandbox = dict(getattr(report, "sandbox", None) or {})
+    if sandbox.get("filesystem_isolation") is True:
+        return
+    stated = sandbox.get("filesystem_isolation")
+    raise PerfInfrastructureError(
+        f"the timed candidate was not held away from the problem directory "
+        f"(filesystem_isolation={stated!r}, mechanism="
+        f"{sandbox.get('mechanism')!r}), so this run is not a measurement "
+        f"against a hidden oracle and must not be scored. A kernel that can "
+        f"read the frozen reference it is divided by, or the timing file it is "
+        f"credited from, is not measured by refusing its number afterwards.")
+
+
 def measure(work_dir: str, *, seed: int = 0, tier: str | None = None,
             regression_threshold: float = DEFAULT_REGRESSION_THRESHOLD,
             run_timeout: float = 900.0) -> dict[str, Any]:
@@ -347,6 +393,11 @@ def measure(work_dir: str, *, seed: int = 0, tier: str | None = None,
             "problem_revision": definition.revision,
             "problem_digest": loaded.digest,
         }
+    # THE LAUNCH RECORD IS READ BEFORE THE NUMBER IS. See
+    # ``refuse_an_unisolated_run``: the sandbox decision is taken per launch and
+    # recorded, and until this call nothing between that record and a rank ever
+    # looked at it.
+    refuse_an_unisolated_run(report)
     measurement = report_to_measurement(report)
     # The candidate built and was measured, so it is also the thing a governed
     # Harness should judge. Declaring it here is what joins the two halves: the
@@ -377,6 +428,7 @@ __all__ = [
     "PROBLEM_ENV",
     "measure",
     "problem_revision",
+    "refuse_an_unisolated_run",
     "report_to_measurement",
     "resolve",
     "seed_work_dir",
