@@ -1337,7 +1337,14 @@ def test_audit_log_verifies_real_immutable_audit_log_file(tmp_path):
 
 def test_kernel_modules_have_no_llm_or_network_imports():
     """The kernel is NOT an LLM judge: grep-style guard over kernel*.py +
-    transition_rules.py, mirroring test_prompt_provenance."""
+    transition_rules.py, mirroring test_prompt_provenance.
+
+    The wall-clock and entropy names are banned for a second reason: a kernel
+    that reads the clock cannot be replayed from its recorded inputs, so the
+    same audit run twice could reach two verdicts. ``test_kca_acceptance.py``
+    carries the same property over the resolvers as well, with an AST scan
+    that also sees function-local imports.
+    """
     import ari.rqgm as rqgm_pkg
 
     pkg_dir = Path(rqgm_pkg.__file__).parent
@@ -1356,7 +1363,8 @@ def test_kernel_modules_have_no_llm_or_network_imports():
     for path in files:
         text = path.read_text(encoding="utf-8")
         for name in ("litellm", "openai", "anthropic", "requests", "httpx",
-                     "aiohttp", "socket"):
+                     "aiohttp", "socket", "time", "datetime", "random",
+                     "secrets"):
             assert f"import {name}" not in text, (path.name, name)
             assert f"from {name}" not in text, (path.name, name)
 
