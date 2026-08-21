@@ -22,9 +22,10 @@ of it:
   `rqgm.paper.epoch.rounds` (default `2`) over the INHERITED node-count trigger.
 
 Every downstream paper task (02–07) hangs its config and activation off the switch designed here.
-This is the direct paper-phase analog of the exploration-phase Task 01,
-[../ari_rqgm/01_execution_modes_and_compatibility.md](../ari_rqgm/01_execution_modes_and_compatibility.md);
-it mirrors that plan's structure, decisions, and invariant discipline. It resolves the Task-01
+This is the direct paper-phase analog of the exploration-phase mode switch documented in
+[Execution Modes → Turning RQGM on](../../guides/execution_modes.md#turning-rqgm-on) and
+[Configuration → Execution mode and RQGM governance (opt-in)](../../reference/configuration.md#execution-mode-and-rqgm-governance-opt-in);
+it mirrors that switch's structure, decisions, and invariant discipline. It resolves the Task-01
 open questions handed down by [00_paper_pipeline_investigation.md](00_paper_pipeline_investigation.md)
 (config home for `paper.mode`, `PaperArchiveRuntime` construction site, provenance-file ownership,
 and re-invocation/resume semantics for `ari paper`).

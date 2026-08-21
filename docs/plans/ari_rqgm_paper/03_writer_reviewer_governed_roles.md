@@ -21,17 +21,18 @@ reviewer first-class governed roles inside ari-core:
 - **lift** the seed prompts from `ari-skill-paper`'s copies into ari-core governed founding
   templates, leaving the skill's copies untouched for `linear` mode;
 - specify how the governed prompt bytes *drive* the dumb skill executor (the skill is the hands);
-- reuse the EXISTING `RegistryTransitionEngine` (../ari_rqgm/09) + prompt-evolution pipeline
-  (../ari_rqgm/07) verbatim to co-evolve the two roles at the paper-archive epoch boundary, and
+- reuse the EXISTING `RegistryTransitionEngine` ([the four facades](../../concepts/rqgm_architecture.md#the-four-facades))
+  + prompt-evolution pipeline ([candidates crawl, the RTE adopts](../../concepts/rqgm_runtime_walkthrough.md#_7-prompt-evolution-—-candidates-crawl-the-rte-adopts))
+  verbatim to co-evolve the two roles at the paper-archive epoch boundary, and
   reuse the EXISTING same-role isolation the reviewer already enjoys.
 
 This task consumes decisions from [00_paper_pipeline_investigation.md](00_paper_pipeline_investigation.md)
 (where writer/reviewer live today, the skill tool surface) and
 [02_paper_draft_archive_search.md](02_paper_draft_archive_search.md) (the archive substrate + the
-draft `NodeExecutor` that these roles' prompts drive). It sits on top of the parent set's kernel
-([../ari_rqgm/04_constitutional_kernel.md](../ari_rqgm/04_constitutional_kernel.md)) and
+draft `NodeExecutor` that these roles' prompts drive). It sits on top of the existing kernel
+([Execution Modes → Constitutional kernel (Layer 0)](../../guides/execution_modes.md#constitutional-kernel-layer-0)) and
 prompt-evolution machinery
-([../ari_rqgm/07_prompt_spec_and_prompt_evolution.md](../ari_rqgm/07_prompt_spec_and_prompt_evolution.md)),
+([RQGM Runtime Walkthrough → Prompt evolution](../../concepts/rqgm_runtime_walkthrough.md#_7-prompt-evolution-—-candidates-crawl-the-rte-adopts)),
 adding **two roles and two founding templates — no new mechanism**.
 
 ## 2. Scope
@@ -105,8 +106,8 @@ All paths repo-relative. Verified against branch `RQGM` (ari-core v0.9.1).
 | Touchpoint | File / symbol | Why it matters here |
 |---|---|---|
 | Evolvable role vocabulary | `ari-core/ari/rqgm/events.py` — `EVOLVABLE_ROLES` (lines 57–68) | The closed tuple every governed role must be in. `paper_writer`/`paper_reviewer` are appended here; a role absent from it is treated as non-evolving by the whole stack. Parity is asserted by `test_rqgm_kernel.py::test_all_evolvable_roles_in_matrix` (each `EVOLVABLE_ROLES` member must have institutional **and** meta capability rows). |
-| Capability matrix | `ari-core/ari/rqgm/kernel_rules.py` — `_EVOLVABLE_ROLES` (lines 115–134), `_build_capability_matrix` (lines 139–163), `CAPABILITY_MATRIX` (line 161) | The grant table `validate_capability` (../ari_rqgm/04 §5.4 item 3) reads. Both new roles are added to `_EVOLVABLE_ROLES`, so they inherit `_INSTITUTIONAL_BASE` (read records/active_prompt_text/checkpoint_artifacts, append/invoke records) and `_META_BASE` — identical to `generator`/`reviewer`. The 2026-07-14 `failure_summary_compressor` amendment (lines 125–133) is the exact precedent: a role in `EVOLVABLE_ROLES` but missing from the matrix is `CK-ACC-001`-blocked in every tier. |
-| Context-scope whitelists | `ari-core/ari/rqgm/kernel_rules.py` — `CONTEXT_VIEW_WHITELISTS` (lines 234–252) | Already carries a `paper_writer` entry `{verified_context, science_data, claim_registry}` from the 2026-07-15 amendment (lines 222–251), added **deliberately NOT as an EVOLVABLE role** ("the paper skill is a separate ungoverned subprocess"). This task **reverses that deliberate exclusion** (§5.2) and adds a `paper_reviewer` row. `validate_context_scope` (../ari_rqgm/04 §5.4 item 11, `CK-CTX-*`, warn-and-flag) reads it. |
+| Capability matrix | `ari-core/ari/rqgm/kernel_rules.py` — `_EVOLVABLE_ROLES` (lines 115–134), `_build_capability_matrix` (lines 139–163), `CAPABILITY_MATRIX` (line 161) | The grant table `validate_capability` reads ([Constitutional violation codes](../../reference/rqgm_schemas.md#constitutional-violation-codes) — `CK-ACC-001`/`CK-ACC-002`, a `CAPABILITY_MATRIX` miss is a block). Both new roles are added to `_EVOLVABLE_ROLES`, so they inherit `_INSTITUTIONAL_BASE` (read records/active_prompt_text/checkpoint_artifacts, append/invoke records) and `_META_BASE` — identical to `generator`/`reviewer`. The 2026-07-14 `failure_summary_compressor` amendment (lines 125–133) is the exact precedent: a role in `EVOLVABLE_ROLES` but missing from the matrix is `CK-ACC-001`-blocked in every tier. |
+| Context-scope whitelists | `ari-core/ari/rqgm/kernel_rules.py` — `CONTEXT_VIEW_WHITELISTS` (lines 234–252) | Already carries a `paper_writer` entry `{verified_context, science_data, claim_registry}` from the 2026-07-15 amendment (lines 222–251), added **deliberately NOT as an EVOLVABLE role** ("the paper skill is a separate ungoverned subprocess"). This task **reverses that deliberate exclusion** (§5.2) and adds a `paper_reviewer` row. `validate_context_scope` reads it ([Constitutional violation codes](../../reference/rqgm_schemas.md#constitutional-violation-codes) — `CK-CTX-001` is severity `warn` and never blocks node execution). |
 | Constitution hash | `ari-core/ari/rqgm/kernel_rules.py` — `constitution_hash()` / `CONSTITUTION_HASH` (lines 292–304); `_canonical_rules_payload` (lines 257–289) | The pin over all rule tables. Because `_canonical_rules_payload` serializes `capability_matrix` and `context_view_whitelists`, adding the two roles **necessarily** changes the hash. The pin `_EXPECTED_CONSTITUTION_HASH = "4fa36f2bd302"` in `ari-core/tests/test_rqgm_kernel.py:69` (and lines 726–729, 822, 1056, 1154) must be recomputed and re-pinned with an amendment comment (§5.7). |
 | Founding prompt table | `ari-core/ari/rqgm/prompt_spec.py` — `FOUNDING_PROMPT_TABLE` (lines 153–217), `founding_spec_from_entry` (lines 262–323), `build_founding_specs` (lines 326–351) | Where each governed committed template becomes a v1 `active` founding `PromptSpec` (`prompt_hash == load_versioned(key)[1]`, pure bytes → spec). Two rows are appended for the lifted templates. The primary-last-per-role rollup convention applies (both roles are single-template, so ordering is trivial). |
 | Founding component table | `ari-core/ari/rqgm/prompt_spec.py` — `FOUNDING_COMPONENT_TABLE` (lines 232–259), `founding_component_payloads` (lines 383–404) | The `(component_id, role, tier, prompt_id, capabilities)` bootstrap the runtime stamps. `paper_writer_v1` / `paper_reviewer_v1` are appended (institutional tier, empty extra capabilities), sorted by `component_id`. |
@@ -137,8 +138,8 @@ handles arbitrary role strings, so the amendment is "data, not code."
 
 ### 5.2 `paper_writer`: promote context-scope-only → EVOLVABLE (the collision to resolve)
 
-There is a real, pre-existing collision to resolve — exactly the kind
-[../ari_rqgm/01](../ari_rqgm/01_execution_modes_and_compatibility.md) resolved for "config home".
+There is a real, pre-existing collision to resolve — exactly the kind the exploration mode
+resolved for "config home" ([Configuration → Execution mode and RQGM governance (opt-in)](../../reference/configuration.md#execution-mode-and-rqgm-governance-opt-in)).
 The 2026-07-15 amendment added `paper_writer` to `CONTEXT_VIEW_WHITELISTS`
 (`kernel_rules.py:247–251`) **and explicitly documented** (in that block and in
 `test_rqgm_kernel.py:64–68`) that it is *deliberately NOT an `EVOLVABLE_ROLES` member* because "the
@@ -290,9 +291,12 @@ the skill keeps its copies for `linear`:
 - `ari-skill-paper/src/prompts/academic_reviewer.md` → `ari-core/ari/prompts/rqgm/paper_reviewer.md`
 
 The lift is a byte-copy of the instruction body, plus the standard new-prompt checklist (the four
-snapshot layers per ../ari_rqgm/07 §5.2): the copied bytes define `prompt_hash = sha256(bytes)[:12]`
-via `founding_spec_from_entry`, so the founding specs are `active`-on-creation and verifiable with
-zero new hashing. Two rows are appended to each founding table:
+prompt-snapshot layers, [ARI Architecture → Test, CI and docs surfaces](../../concepts/architecture.md#test-ci-and-docs-surfaces)):
+the copied bytes define `prompt_hash = sha256(bytes)[:12]` via `founding_spec_from_entry` — the
+`hash12` scheme every founding `PromptSpec` records
+([`rqgm_prompt_spec.schema.json`](../../reference/rqgm_schemas.md#rqgm-prompt-spec-schema-json)) —
+so the founding specs are `active`-on-creation and verifiable with zero new hashing. Two rows
+are appended to each founding table:
 
 ```python
 # planned: ari-core/ari/rqgm/prompt_spec.py  (FOUNDING_PROMPT_TABLE, append)
@@ -331,9 +335,11 @@ topology-agnostic (the parent set proved this by bolting the same table onto the
 A `paper_writer_v2` or `paper_reviewer_v2` candidate rides the identical
 `candidate → validated → shadow → probationary_active → active` spine (T1, T3, T6, T7) and the same
 sanction edges (T9–T19). No `paper_*` rows are added; adding them would be the only way to *break*
-the invariant that the constitution is role-agnostic. The kernel's `validate_transition`
-(../ari_rqgm/04 §5.4 item 5) checks table membership and boundary/RTE shape — all satisfied by the
-existing rows.
+the invariant that the constitution is role-agnostic. The kernel's `validate_transition` checks
+table membership and boundary/RTE shape ([Constitutional violation codes](../../reference/rqgm_schemas.md#constitutional-violation-codes)
+— `CK-REG-001`…`CK-REG-007` cover an edge absent from the T1–T21 table, a boundary-only edge
+stamped mid-epoch, and a `produced_by` that is not the RegistryTransitionEngine) — all satisfied by
+the existing rows.
 
 The only role-aware piece is the boundary *adoption*: `_role_opening` / `_active_after`
 (`transition_engine.py:1332–1362`) and the T6 guard `one_adoption_per_role_per_boundary` operate
@@ -390,7 +396,7 @@ async def paper_refine(
 - When `writer_prompt_override == ""` (the `linear` default, and the value any non-RQGM caller
   passes), the skill loads its own `paper_writer.md` exactly as today — **byte-identical**.
 - Under `rqgm_archive`, the draft `NodeExecutor` (doc 02) resolves the epoch's **active**
-  `paper_writer` prompt text via the governed loader (`GovernedPromptLoader`, ../ari_rqgm/07 §5.5)
+  `paper_writer` prompt text via the governed loader (`GovernedPromptLoader`, [the four facades](../../concepts/rqgm_architecture.md#the-four-facades))
   and passes it as `writer_prompt_override`; the skill uses that text as the section-drafting
   instruction. Passing an instruction *string* is not governance — the skill still evolves nothing;
   the evolving bytes live only in ari-core.
@@ -525,11 +531,11 @@ id the RUNTIME actually stamps today"). Registration would be nominal, not opera
 each governed `paper_reviewer` score additionally appends one **`review_record`** into
 `rqgm_audit.jsonl` via `ImmutableAuditLog.append`. This is the parent set's **existing** step-1
 observation type (`governance/_records.py:76–84` `OBSERVATION_RECORD_TYPES`; admissible kind at
-`governance/_evidence.py:35`; parent
-[../ari_rqgm/05](../ari_rqgm/05_governance_orchestrator.md) §5.3 step 1) — **no new record schema,
-no new type**. The append mirrors `AdversarialRound._log_all` (`adversarial/round.py:290–302`),
-which already writes the JSONL truth and then the Task 02 audit envelope for every adversarial
-record:
+`governance/_evidence.py:35` — `review_record` is in the closed `record_type → kind` map of
+[The motion-pipeline records](../../reference/rqgm_schemas.md#the-motion-pipeline-records)) —
+**no new record schema, no new type**. The append mirrors `AdversarialRound._log_all`
+(`adversarial/round.py:290–302`), which already writes the JSONL truth and then the Task 02
+audit envelope for every adversarial record:
 
 ```python
 # planned: the envelope each paper_reviewer score appends — ENVELOPE_FIELDS
@@ -806,8 +812,9 @@ Per boundary, for each role R ∈ {`paper_writer`, `paper_reviewer`}:
 
 Cost is epoch-amortized and top-K-gated: full governance (adversarial + co-evolution) applies only
 to `rqgm.governance.full_governance_only_on_top_k` (default **3**) drafts, reused verbatim
-(cost model owned by [06_cost_control_and_budget.md](06_cost_control_and_budget.md) and
-[../ari_rqgm/12_cost_control_and_context_budget.md](../ari_rqgm/12_cost_control_and_context_budget.md)).
+(cost model owned by [06_cost_control_and_budget.md](06_cost_control_and_budget.md); the knob and
+its default live in
+[Configuration → `rqgm.governance`](../../reference/configuration.md#rqgm-governance-—-governanceorchestrator-budgets-and-posture)).
 
 **Degraded on-ramp.** When `rqgm.paper.prompt_evolution.enabled: false`, steps 1–2 are skipped
 entirely and step 4 has no candidate to adopt: the two roles stay pinned at their founding v1
@@ -873,8 +880,9 @@ monotonically" (which claimed a pipeline object that is never instantiated).
 
 ### 6.2 New committed prompt templates
 
-Two founding templates lifted from the skill, passing the ../ari_rqgm/07 §5.2 four-layer new-prompt
-checklist (extraction snapshot, provenance hash, contract snapshot, `check_prompts.py`):
+Two founding templates lifted from the skill, passing the four-layer new-prompt checklist
+(extraction snapshot, provenance hash, contract snapshot, `check_prompts.py` —
+[ARI Architecture → Test, CI and docs surfaces](../../concepts/architecture.md#test-ci-and-docs-surfaces)):
 
 - `ari-core/ari/prompts/rqgm/paper_writer.md`   — freeform LaTeX writer instruction.
 - `ari-core/ari/prompts/rqgm/paper_reviewer.md` — JSON reviewer contract with `accept_recommendation`.

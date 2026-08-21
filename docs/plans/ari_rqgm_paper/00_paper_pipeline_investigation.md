@@ -180,10 +180,10 @@ paths repo-relative, verified against branch `RQGM`.
 - `ari-core/ari/pipeline/claim_gate/` (`gate.py:run_hard_gate`, `policy.py`, `numeric.py`,
   `resolve.py`, `invariants.py`, `contract.py`, `formula_eval.py`, `latex.py`) with the
   public surface `ari-core/ari/public/claim_gate.py`. This is the **deterministic,
-  RQGM-independent, never-evolving hard gate** — the same Layer-0 the exploration set's
-  [../ari_rqgm/04_constitutional_kernel.md](../ari_rqgm/04_constitutional_kernel.md)
-  designated as never kernel-wrapped. Blocking matrix (unchanged, a global invariant of
-  this set too): **draft never blocks**; `always_block_on` objective falsehoods block at
+  RQGM-independent, never-evolving hard gate** — the same Layer-0 fixed layer that
+  [Execution Modes → Constitutional kernel (Layer 0)](../../guides/execution_modes.md#constitutional-kernel-layer-0)
+  records as never an evolution target and never kernel-wrapped. Blocking matrix
+  (unchanged, a global invariant of this set too): **draft never blocks**; `always_block_on` objective falsehoods block at
   final in ANY mode; the gate **fails open** on infrastructure errors.
 - The gate is mirrored across process boundaries by `ari-skill-paper/src/claim_links.py`
   (mirrors `claim_gate/latex.py`) and `ari-skill-transform/src/claims.py` (mirrors
