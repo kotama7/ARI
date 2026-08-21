@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -1157,6 +1158,102 @@ def test_publication_decision_is_logical_and() -> None:
     ).status == "fail"
 
 
+#: The artifact a certify Attestation is about, and a different one.  The
+#: publication path compares these two for equality, so they must be able to
+#: disagree without anything else about the Attestation changing.
+CERTIFIED_TARGET = "sha256:" + "c" * 64
+SUBSTITUTED_TARGET = "sha256:" + "d" * 64
+
+
+def _harness_attestation(*, node_id: str, tier: str, target_digest: str):
+    """One fixed-verifier Attestation, passing, at *tier*, about *target*."""
+
+    from ari.assurance.models import (
+        HarnessAttestationV1,
+        HarnessPropertyResultV1,
+        VerificationScopeV1,
+    )
+
+    return HarnessAttestationV1.create(
+        run_id="run-ready",
+        node_id=node_id,
+        epoch_id="epoch-000",
+        producer_epoch_id="epoch-000",
+        research_contract_digest=D1,
+        verification_contract_digest=D1,
+        knowledge_skill_use_digest=D1,
+        capability_binding_lock_digest=D1,
+        baseline_harness_lock_digest=D1,
+        active_harness_lock_digest=D1,
+        harness_manifest_digest=D1,
+        driver_digest=D1,
+        oracle_digest=D1,
+        dataset_digest=D1,
+        container_digest=D1,
+        target_logical_name="candidate.so",
+        target_digest=target_digest,
+        target_kind="shared-library",
+        execution_identity=D1,
+        execution_result_digest=D1,
+        verdict="pass",
+        property_results=(
+            HarnessPropertyResultV1(
+                property_id="numerical-equivalence",
+                method="differential-testing",
+                tier=tier,
+                tested_scope=VerificationScopeV1(
+                    values={"language": ("c",), "hardware": ("cpu",)}
+                ),
+                verdict="pass",
+                covered_atom_digests=(D2,),
+                evidence_artifact_refs=(),
+            ),
+        ),
+        evidence_artifact_refs=(),
+        infrastructure_status="ready",
+        nondeterminism_declaration="none",
+        nondeterminism_observations=(),
+        attempt_id="attempt-1",
+        retry_index=0,
+    )
+
+
+def _record_assurance(checkpoint: Path, nodes, *, tier, attested_target: str):
+    """Attach one passing Attestation to the run's node, on disk and in the tree.
+
+    The node claims ``CERTIFIED_TARGET``; *attested_target* is what the
+    Attestation is about.  Everything else -- verdict, tier, node id -- is held
+    fixed, so the only thing that can move the publication decision between the
+    two calls is the pair the criterion names.
+    """
+
+    node = nodes[0]
+    relative = None
+    if tier is not None:
+        relative = f"rqgm/kca/nodes/{node.id}/attestations/{tier}.json"
+        path = checkpoint / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            _harness_attestation(
+                node_id=node.id, tier=tier, target_digest=attested_target
+            ).model_dump_json(),
+            encoding="utf-8",
+        )
+    node.assurance_status = "pass"
+    node.assurance_tier = "certify"
+    node.frontier_class = "scientific_frontier"
+    node.attestation_refs = [relative] if relative else []
+    node.verified_target_digest = CERTIFIED_TARGET
+    node.property_verdicts = {"numerical-equivalence": "pass"}
+    for name in ("tree.json", "nodes_tree.json"):
+        payload = json.loads((checkpoint / name).read_text(encoding="utf-8"))
+        payload["nodes"] = [
+            item.to_dict() if hasattr(item, "to_dict") else item for item in nodes
+        ]
+        _write(checkpoint / name, payload)
+    return relative
+
+
 def _materialize_publishable_build(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1166,6 +1263,9 @@ def _materialize_publishable_build(
     include_disclosures: bool = True,
     include_contextual_negative: bool = False,
     final_tex_extra: str = "",
+    assurance_mode: str = "off",
+    attestation_tier: str | None = "certify",
+    attested_target: str = CERTIFIED_TARGET,
 ):
     from ari.manuscript.digest import file_digest
     from ari.manuscript.state import ManuscriptStateStore
@@ -1179,6 +1279,10 @@ def _materialize_publishable_build(
     )
 
     checkpoint, nodes, data = _ready_checkpoint(tmp_path)
+    if assurance_mode != "off":
+        _record_assurance(
+            checkpoint, nodes, tier=attestation_tier, attested_target=attested_target
+        )
     if include_contextual_negative:
         negative = {
             "id": "node-contextual-negative",
@@ -1205,6 +1309,7 @@ def _materialize_publishable_build(
         nodes,
         experiment_data=data,
         mode="enforce",
+        assurance_mode=assurance_mode,
         exploration_mode=exploration_mode,
         paper_mode=paper_mode,
     )
@@ -2079,3 +2184,161 @@ def test_audit_archive_records_legacy_authoring_and_diagnostics(
     with pytest.raises(Exception, match="stale manuscript archive binding"):
         stricter.run_archive(nodes, data, checkpoint, mcp, "")
     assert len(mcp.writer_inputs) == 2
+
+
+# ── Task 20 criteria 43 and 57: what may reach a publication decision ────────
+
+
+def _publication_decision(
+    root: Path, monkeypatch: pytest.MonkeyPatch, **materialize
+):
+    """Materialise one enforce-assurance run and take it to the final decision.
+
+    The whole path runs: the Attestation on disk is read by the exploration
+    snapshot, classified by the manuscript builder, judged by the readiness
+    evaluator, and only then does ``finalize_runtime_publication`` assemble the
+    ``PublicationDecisionV1``.  Nothing here supplies the assurance verdict --
+    it is derived from the Attestation the run recorded.
+    """
+
+    from ari.manuscript.runtime import finalize_runtime_publication
+
+    root.mkdir(parents=True, exist_ok=True)
+    checkpoint, outcome, build = _materialize_publishable_build(
+        root, monkeypatch, assurance_mode="enforce", **materialize
+    )
+    decision = finalize_runtime_publication(checkpoint)
+    gates = {item.gate: item for item in decision.subverdicts}
+    return SimpleNamespace(
+        checkpoint=checkpoint,
+        outcome=outcome,
+        build=build,
+        decision=decision,
+        gates=gates,
+    )
+
+
+def _attestation_file_digest(checkpoint: Path, node_id: str, tier: str) -> str:
+    from ari.manuscript.digest import file_digest
+
+    return file_digest(
+        checkpoint / "rqgm" / "kca" / "nodes" / node_id / "attestations"
+        / f"{tier}.json"
+    )[0]
+
+
+def test_certify_publication_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Task 20 criterion 43: an uncertified result cannot reach publication.
+
+    The control is the same run with a passing certify Attestation, and it is
+    asserted to reach ``publishable`` with the ``assurance`` gate PASSING and
+    naming that Attestation's own bytes.  Without it, "blocked" would be
+    consistent with a pipeline that blocks everything, and a passing decision
+    would be consistent with an ``assurance`` gate that was never required.
+
+    Then the two shapes of "uncertified" the certification predicate
+    distinguishes -- a run whose strongest Attestation is a screen, and a run
+    carrying no Attestation at all -- each reach ``blocked``, with the
+    assurance gate failing on ``required_certification_missing_or_failed``.
+    The tier is the only thing that moves between the control and the first:
+    same node, same verdict, same target, same everything else.
+    """
+
+    certified = _publication_decision(tmp_path / "certified", monkeypatch)
+    assert certified.decision.decision == "publishable"
+    assurance = certified.gates["assurance"]
+    assert assurance.status == "pass", (
+        "the control published without the assurance gate being required"
+    )
+    assert assurance.artifact_digests == (
+        _attestation_file_digest(certified.checkpoint, "node-root", "certify"),
+    ), "the passing assurance gate does not name the Attestation it read"
+
+    screened = _publication_decision(
+        tmp_path / "screened", monkeypatch, attestation_tier="screen"
+    )
+    assert screened.decision.decision == "blocked"
+    assert screened.gates["assurance"].status == "fail"
+    assert screened.gates["assurance"].reason_codes == (
+        "required_certification_missing_or_failed",
+    )
+    assert screened.gates["assurance"].artifact_digests == ()
+
+    unattested = _publication_decision(
+        tmp_path / "unattested", monkeypatch, attestation_tier=None
+    )
+    assert unattested.decision.decision == "blocked"
+    assert unattested.gates["assurance"].status == "fail"
+
+    # The gates that have nothing to do with certification are unchanged, so
+    # "blocked" is attributable to the missing certification and not to a run
+    # that fell apart.
+    for gate in ("claim_evidence", "build_compile", "reproduction", "freshness"):
+        assert screened.gates[gate].status == "pass", gate
+        assert unattested.gates[gate].status == "pass", gate
+
+
+def test_publication_target_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Task 20 criterion 57: the published claim's target is the certify
+    Attestation's target.
+
+    Both runs record a passing certify Attestation for the same node with the
+    same verdict, tier, and property results.  The ONLY difference is the
+    artifact the Attestation is about: the node claims ``CERTIFIED_TARGET``
+    either way, and the second run's Attestation certifies a different one.
+
+    A certification of a different artifact is therefore not silently reused
+    for this claim: the snapshot marks it ``stale`` rather than absent -- it is
+    still visible evidence -- and the final publication decision blocks.
+    """
+
+    matched = _publication_decision(tmp_path / "matched", monkeypatch)
+    substituted = _publication_decision(
+        tmp_path / "substituted", monkeypatch, attested_target=SUBSTITUTED_TARGET
+    )
+
+    def _attestation_artifact(case):
+        snapshot = json.loads(
+            (
+                case.checkpoint
+                / ".ari-manuscript"
+                / "attempts"
+                / str(case.outcome.attempt_id)
+                / "source_snapshot.json"
+            ).read_text(encoding="utf-8")
+        )
+        return next(
+            item
+            for item in snapshot["artifacts"]
+            if item["kind"] == "harness-attestation"
+        )
+
+    good = _attestation_artifact(matched)
+    bad = _attestation_artifact(substituted)
+    assert good["metadata"]["verdict"] == bad["metadata"]["verdict"] == "pass"
+    assert good["metadata"]["tiers"] == bad["metadata"]["tiers"]
+    assert good["metadata"]["target_digest"] == CERTIFIED_TARGET
+    assert bad["metadata"]["target_digest"] == SUBSTITUTED_TARGET
+    assert good["metadata"]["target_matches"] is True
+    assert bad["metadata"]["target_matches"] is False
+    assert good["status"] == "present"
+    assert bad["status"] == "stale", (
+        "an Attestation about another artifact was discarded rather than kept "
+        "as evidence that does not certify this claim"
+    )
+    assert good["metadata"]["certify_pass"] is True
+    assert bad["metadata"]["certify_pass"] is False
+
+    assert matched.decision.decision == "publishable"
+    assert matched.gates["assurance"].status == "pass"
+    assert matched.gates["assurance"].artifact_digests == (
+        _attestation_file_digest(matched.checkpoint, "node-root", "certify"),
+    )
+
+    assert substituted.decision.decision == "blocked"
+    assert substituted.gates["assurance"].status == "fail"
+    assert substituted.gates["assurance"].artifact_digests == ()
+    for gate in ("claim_evidence", "build_compile", "reproduction", "freshness"):
+        assert substituted.gates[gate].status == "pass", gate
