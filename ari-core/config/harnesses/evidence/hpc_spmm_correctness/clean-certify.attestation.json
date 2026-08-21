@@ -1,8 +1,8 @@
 {
-  "active_harness_lock_digest": "sha256:2f9e4928fe35b92d28f3dd7d6bd7c77e19f554dd08cb70c36a8801749d513950",
-  "attempt_id": "har-cdfd1477ac0d76428c7f01620efefe39-0",
-  "attestation_digest": "sha256:66c6bdc88c0482a8fd6d5064dbb2740fa75fd3d930a49aebc2351a5e89a667f7",
-  "baseline_harness_lock_digest": "sha256:2f9e4928fe35b92d28f3dd7d6bd7c77e19f554dd08cb70c36a8801749d513950",
+  "active_harness_lock_digest": "sha256:2d781e3ca0f5864ea6a1b84c9444c9e01ed7f278c065a6b825f85eb2274d9148",
+  "attempt_id": "har-6f89b198ee7add28688c8e91bac78579-0",
+  "attestation_digest": "sha256:baea82547877a507cafb446243336b1942523079f3b14a76964cea64a59bdf10",
+  "baseline_harness_lock_digest": "sha256:2d781e3ca0f5864ea6a1b84c9444c9e01ed7f278c065a6b825f85eb2274d9148",
   "capability_binding_lock_digest": "sha256:194df4714255447584ae860c72eda00149f947de24df6dcc1812e4fe9acc6980",
   "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
   "dataset_digest": "sha256:bb58fd7ad9dcbdf70de9b66e60e50a4208d2e6e5db201c510e042811b4c20447",
@@ -10,8 +10,8 @@
   "epoch_id": "registration-epoch",
   "evidence_artifact_refs": [
     {
-      "digest": "sha256:4fa0f8728f91fd2410fc093a6ec886d4ac1e2c9816f9455586f9d317cadb9253",
-      "logical_name": ".ari-execution/4fa0f8728f91fd2410fc093a6ec886d4ac1e2c9816f9455586f9d317cadb9253.stdout.log",
+      "digest": "sha256:9351db73b9472cdb7e6822cc8bc381f121eda27e45e29be1aa8417722cd490dd",
+      "logical_name": ".ari-execution/9351db73b9472cdb7e6822cc8bc381f121eda27e45e29be1aa8417722cd490dd.stdout.log",
       "media_type": "text/plain; charset=utf-8",
       "role": "harness-stdout",
       "schema_version": "ari.research-artifact-ref/v1",
@@ -26,9 +26,9 @@
       "source_run_id": "harness-registration-hpc-spmm-correctness"
     }
   ],
-  "execution_identity": "sha256:637c155f6ffce99207d958cfb69a9a9b0b171d07a1dad39194c221fb1c52d9e0",
-  "execution_result_digest": "sha256:fa6b095014d843473ef61f82633673481fa198531523f49136e00945f5d9fc53",
-  "harness_manifest_digest": "sha256:436023bfcee0471944c3fbc498aaff0cfecb94b1a67004153552eb7d88a6d6bb",
+  "execution_identity": "sha256:a82035d4b458cb96cf495926a657a9ae5ee4bf07fca21ec7fc199dd24c9f3449",
+  "execution_result_digest": "sha256:0543a35d022e5703b497751c052ec8e9a0baac9c670b3c7ef03fedca0fa114ac",
+  "harness_manifest_digest": "sha256:265660c18170029a456160a97b2a49f8399021108a103f2a57c36cf9ab85e57f",
   "infrastructure_status": "ready",
   "knowledge_skill_use_digest": "sha256:8e2a116b1daea019352a9ed94735fc604385b48c7d554ce13a812255068422da",
   "node_id": "registration-clean-certify",
@@ -45,8 +45,8 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:4fa0f8728f91fd2410fc093a6ec886d4ac1e2c9816f9455586f9d317cadb9253",
-          "logical_name": ".ari-execution/4fa0f8728f91fd2410fc093a6ec886d4ac1e2c9816f9455586f9d317cadb9253.stdout.log",
+          "digest": "sha256:9351db73b9472cdb7e6822cc8bc381f121eda27e45e29be1aa8417722cd490dd",
+          "logical_name": ".ari-execution/9351db73b9472cdb7e6822cc8bc381f121eda27e45e29be1aa8417722cd490dd.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -64,13 +64,13 @@
       "measurements": {
         "case_count": 31,
         "failed_case_count": 0,
-        "max_abs_error": 3.927763336797341e-07,
-        "max_rel_error": 4.709133792874081e-06
+        "max_abs_error": 3.281206062411002e-07,
+        "max_rel_error": 5.58436597408404e-06
       },
       "method": "repeated-execution",
       "oracle_comparison": {
         "oracle": "independent CSR traversal with duplicate-index summation",
-        "report_digest": "sha256:2c223a79947c341b40a357aa48065620e5ee995c10601cfab6d9b90b483e55e8",
+        "report_digest": "sha256:e7953c606177742d1118e6168433e58fc1f0a25c90a17e19dd92a74b5c7ca320",
         "sandbox": {
           "does_not_restrict": [
             "fork",
@@ -122,8 +122,8 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:4fa0f8728f91fd2410fc093a6ec886d4ac1e2c9816f9455586f9d317cadb9253",
-          "logical_name": ".ari-execution/4fa0f8728f91fd2410fc093a6ec886d4ac1e2c9816f9455586f9d317cadb9253.stdout.log",
+          "digest": "sha256:9351db73b9472cdb7e6822cc8bc381f121eda27e45e29be1aa8417722cd490dd",
+          "logical_name": ".ari-execution/9351db73b9472cdb7e6822cc8bc381f121eda27e45e29be1aa8417722cd490dd.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -141,13 +141,13 @@
       "measurements": {
         "case_count": 31,
         "failed_case_count": 0,
-        "max_abs_error": 3.927763336797341e-07,
-        "max_rel_error": 4.709133792874081e-06
+        "max_abs_error": 3.281206062411002e-07,
+        "max_rel_error": 5.58436597408404e-06
       },
       "method": "differential-testing",
       "oracle_comparison": {
         "oracle": "independent CSR traversal with duplicate-index summation",
-        "report_digest": "sha256:2c223a79947c341b40a357aa48065620e5ee995c10601cfab6d9b90b483e55e8",
+        "report_digest": "sha256:e7953c606177742d1118e6168433e58fc1f0a25c90a17e19dd92a74b5c7ca320",
         "sandbox": {
           "does_not_restrict": [
             "fork",
@@ -194,7 +194,7 @@
       "verdict": "pass"
     }
   ],
-  "research_contract_digest": "sha256:aa467010bcdcade5d2054d6646c8ce1c11762839550cf2834719d233dbb9a39a",
+  "research_contract_digest": "sha256:c567a91b90e6b6d2c71e1a8c9d5949509feb01ec290afdeec3a0f13ac11784c5",
   "retry_index": 0,
   "run_id": "harness-registration-hpc-spmm-correctness",
   "schema_version": "ari.harness-attestation/v1",
@@ -202,5 +202,5 @@
   "target_kind": "shared-library",
   "target_logical_name": "candidate.so",
   "verdict": "pass",
-  "verification_contract_digest": "sha256:39b2fc95068ed5a05f88d2cf14513546e9308e6fe2d121a9c1ec6f22b47f6cf5"
+  "verification_contract_digest": "sha256:8bb8eb787cb3dff8260222ea29f039afd2829fbff467f92bf6da38c07d908255"
 }

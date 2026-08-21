@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:4701cf696e925cbd88556c52d1995f609958d80ecf7f0437dc1fcca2c48ace57",
-  "approved_date": "2026-08-17",
-  "authorization_basis": "reviewed the four-execution control sequence and its discrimination evidence",
-  "evidence_bundle_digest": "sha256:e5c204fcd1b9a0b9ccab74fff84d7e155024301387546822619b57a6acf43c62",
+  "approval_digest": "sha256:fa286ccd0a1c954007af4f264ae12b06d6f640bd4c24d60a17a4cf20ec16c2e8",
+  "approved_date": "2026-08-22",
+  "authorization_basis": "The maintainer authorized re-registration and signature for these families in this session. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts. This re-registration exists because the instrument changed: the isolated candidate host now OBSERVES what each launch ran under and returns it, the worker attaches that record to the report, and the driver carries it into the attestation -- so network_isolation can be derived from a record instead of restating the request, which is what these three bundles did. Reported: the filesystem entry is a precondition rather than a finding, because the host fails closed and a candidate never runs unrestricted; the Landlock ABI recorded is the one negotiated; the network observation is taken before the restriction because Landlock denies the probe's own modules afterwards, and it reverses correctly between a routed host and an empty namespace. Also reported: the four container executions per family and the fifteen gates each run reports.",
+  "evidence_bundle_digest": "sha256:cd401f542c13d81de67dd72dc3e216f8048d2ea8d8603dea538a3e3b3e6b4b60",
   "from_status": "candidate",
   "harness_id": "hpc/spmm-correctness",
-  "harness_manifest_digest": "sha256:436023bfcee0471944c3fbc498aaff0cfecb94b1a67004153552eb7d88a6d6bb",
+  "harness_manifest_digest": "sha256:265660c18170029a456160a97b2a49f8399021108a103f2a57c36cf9ab85e57f",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:db6442da9a77ed6d9db3f6735d2f773eded1f6497f2479b68b411204cb8328df",
+  "registration_report_digest": "sha256:5b2e32a934de9c0ce336eb494fb924192e9aa10b2b7e6041bf45f841c3c238cd",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

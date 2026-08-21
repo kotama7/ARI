@@ -87,14 +87,14 @@ properties:
 target_interface_contract: gemm-c-abi/v1
 target_interface_digest: sha256:478f6ea1cf9bd1ba188b6f964dbc5ca0c27cf3e43e728fcd102f58f996612f7e
 source_repository: https://github.com/kotama7/ARI.git
-source_full_commit_sha: e8a99f7e33387f12316387e5f18161fb602d3c92
+source_full_commit_sha: aff7dee48c81f32a1caee4181c09028186c8530f
 implementation_license: MIT
 dataset:
-  revision: native-hpc-generated-cases/v1@e8a99f7e33387f12316387e5f18161fb602d3c92
+  revision: native-hpc-generated-cases/v1@aff7dee48c81f32a1caee4181c09028186c8530f
   sha256: sha256:933036fefbb98f8dc29a491ce063ab0c56d2315c78667c3f080226eff12afcf7
   license: MIT
 oracle:
-  revision: ari-native-gemm-oracle/v1@e8a99f7e33387f12316387e5f18161fb602d3c92
+  revision: ari-native-gemm-oracle/v1@aff7dee48c81f32a1caee4181c09028186c8530f
   sha256: sha256:1c8960dc4a008a5ee3ae370f551ac175d944a0db9fc73dc26af9ba29a04bad4b
   license: MIT
 driver:
@@ -134,4 +134,4 @@ infrastructure_failure_policy: separate
 retry_limit: 1
 negative_control_report_digest: sha256:b3cdaebb07e13487527cded05fdd6981d2677c3b07c57e77dd087631ccde8e67
 upstream_parity_report_digest: sha256:24130325b49f2e10358af521721b4d2e7441b5d140f37d4a42e97ead3716eab9
-manifest_digest: sha256:b39b7c336858f9d73af3d86fd5c9fb13c09febbf3e7b1862638428964bd5b290
+manifest_digest: sha256:f221a7033f244072992319c201d10b89141a114322c1a252b9caa52a1764d162

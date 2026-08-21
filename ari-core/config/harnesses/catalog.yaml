@@ -1,16 +1,16 @@
 schema_version: 1
-catalog_source_revision: ari-harness-catalog/1@e8a99f7e33387f12316387e5f18161fb602d3c92
+catalog_source_revision: ari-harness-catalog/1@aff7dee48c81f32a1caee4181c09028186c8530f
 driver_protocol_version: ari.harness-driver/v1
 property_vocabulary_version: ari.assurance-properties/v1
 entries:
 - id: hpc/gemm-correctness
   manifest: builtin/hpc_gemm_correctness.yaml
   registration_report: reports/hpc_gemm_correctness.registration.json
-  registration_report_digest: sha256:bfb0967cc1f093b3345fde364c87289509952260ec13b88f20660f7a49f7122e
+  registration_report_digest: sha256:158cd187130110aad6e2832dd25ed0e13c26355744c133eb99251da5aa7be0a9
   registration_evidence: evidence/hpc_gemm_correctness/registration_evidence.json
-  registration_evidence_digest: sha256:24b1fb9126ee1dc31cdea8a46484bebd0d759d07f59121320f174a543d6f35b2
+  registration_evidence_digest: sha256:4b67f520070f61155a97c18ae14ee34dfc8e27b7113c1dad45ffb1d50c8b2289
   promotion_approval: approvals/hpc_gemm_correctness.approval.json
-  promotion_approval_digest: sha256:e7169e38b9051145f184a9f32052a5c1cf8ced7c159a69d9d9f1c53bc7290b98
+  promotion_approval_digest: sha256:550101a3f0f4a2bfd3a74a6999a2afad6843a648fc358ed1897ac90dec69f7e7
 - id: hpc/gemm-dense-fp64-problem-correctness
   manifest: builtin/hpc_gemm_problem_correctness.yaml
   registration_report: reports/hpc_gemm_dense_fp64_problem_correctness.registration.json
@@ -30,16 +30,16 @@ entries:
 - id: hpc/spmm-correctness
   manifest: builtin/hpc_spmm_correctness.yaml
   registration_report: reports/hpc_spmm_correctness.registration.json
-  registration_report_digest: sha256:db6442da9a77ed6d9db3f6735d2f773eded1f6497f2479b68b411204cb8328df
+  registration_report_digest: sha256:5b2e32a934de9c0ce336eb494fb924192e9aa10b2b7e6041bf45f841c3c238cd
   registration_evidence: evidence/hpc_spmm_correctness/registration_evidence.json
-  registration_evidence_digest: sha256:e5c204fcd1b9a0b9ccab74fff84d7e155024301387546822619b57a6acf43c62
+  registration_evidence_digest: sha256:cd401f542c13d81de67dd72dc3e216f8048d2ea8d8603dea538a3e3b3e6b4b60
   promotion_approval: approvals/hpc_spmm_correctness.approval.json
-  promotion_approval_digest: sha256:4701cf696e925cbd88556c52d1995f609958d80ecf7f0437dc1fcca2c48ace57
+  promotion_approval_digest: sha256:fa286ccd0a1c954007af4f264ae12b06d6f640bd4c24d60a17a4cf20ec16c2e8
 - id: hpc/stencil-correctness
   manifest: builtin/hpc_stencil_correctness.yaml
   registration_report: reports/hpc_stencil_correctness.registration.json
-  registration_report_digest: sha256:2c97c5026f6cd163d5d2e19f0749f7f239c2d31275d0020c500c3d136cc3ce7a
+  registration_report_digest: sha256:24a640020c0efd9142f265e056611175271da50d863e061e346c8a54cd34d0f5
   registration_evidence: evidence/hpc_stencil_correctness/registration_evidence.json
-  registration_evidence_digest: sha256:c6e59768269f347bba280a2e3cd237047d022b5d30f50dbc4e5c7321ea4ee652
+  registration_evidence_digest: sha256:562cc47c149b692464015e2f4f2e9e4a5ef99444c0c8387c974e6b396202eb1d
   promotion_approval: approvals/hpc_stencil_correctness.approval.json
-  promotion_approval_digest: sha256:d4e9d1ebf49e49cfe8baefc59b371505ec09f58392cff079442a20c70659130c
+  promotion_approval_digest: sha256:d4c55f8ed1a3b943bb184b4ed29d3aca6783ad8e643f682c6ade460ffeb6ac54
