@@ -14,9 +14,9 @@ description: Correctness of a candidate against the gemm-dense-fp64 problem's ow
 driver:
   license: MIT
   revision: ari.assurance.problem-correctness/v1
-  sha256: sha256:a85500584b25e0e2fb47634aa69af44c0fcfaa124ecf8aa905e9011a143def6a
+  sha256: sha256:134e2995aac0e0f3cd22879771fce90b38392d5a0e5fe833bf41706d67d5f3ea
 expected_result_schema: ari.native-problem-correctness-report/v1
-expected_result_schema_digest: sha256:6378306ffb63e236faba237a5253470f4c3c8a7b307d63e577ffd65a6fe930fa
+expected_result_schema_digest: sha256:ff0c5c857d79fc7c0f15a6120ea8151284b78e880f548d8691e029155c552f6c
 filesystem_policy: isolated-readonly-target
 hidden_test_policy: verifier-only
 id: hpc/gemm-dense-fp64-problem-correctness
@@ -24,7 +24,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: artifact_verifier
 maintainer: ARI maintainers
-manifest_digest: sha256:546fddfcd549a3fd77dbad40f45a483d45ac9ebe2187b4a72cd46c92be07fe68
+manifest_digest: sha256:130cfe19bc052065ead77dec1065048cf28b27432c021a1dab98e5b3f278d6ce
 model:
   license: not-applicable
   revision: not-applicable
@@ -87,7 +87,7 @@ resources:
 retry_limit: 1
 schema_version: ari.harness-manifest/v1
 scorer_determinism: deterministic
-source_full_commit_sha: 24b6456bb24065831867fd71e7a29c62f749b1d3
+source_full_commit_sha: 6ff13f97bcdb950afe50c8ba4c56bb82f301e7c9
 source_repository: https://github.com/kotama7/ARI.git
 status: verified
 subject_types:
