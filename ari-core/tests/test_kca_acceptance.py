@@ -1585,9 +1585,9 @@ def test_generator_harness_mutation_denied(tmp_path):
     ... rewrite a lock, ... remove a required Harness, change
     tolerance/oracle/dataset/driver/container, or override fail".  There is no
     single ``generator_changed_the_harness`` signal, and there does not need to
-    be one -- the refusals are structural and there are six of them, so this
-    walks all six.  A guard that covered only the capability matrix would miss
-    the resumed run, which reads its Lock back as plain JSON and never
+    be one -- the refusals are structural and there are seven of them, so this
+    walks all seven.  A guard that covered only the capability matrix would
+    miss the resumed run, which reads its Lock back as plain JSON and never
     revalidates it against the model that pins its producer.
     """
 
@@ -1760,16 +1760,16 @@ def _tolerance_bearing_models() -> tuple[str, ...]:
     ))
 
 
-def _tolerance_comparison_sites() -> set[tuple[str, str]]:
-    """``(module, function)`` for every production comparison of two tolerance
-    policy digests.
+def _comparison_sites(token: str, *, occurrences: int = 2) -> set[tuple[str, str]]:
+    """``(module, function)`` for every production comparison mentioning *token*
+    at least *occurrences* times.
 
-    A moved tolerance is refused at more than one layer, and a guard that bound
-    the Kernel while the layers around it quietly stopped comparing would cover
-    part of where the rule lives -- the repeated shape this suite exists to
-    avoid.  So the sites are read out of the source: a fifth comparison fails
-    this test until something drives it, and the last one removed empties the
-    set and trips the floor below.
+    The repeated defect in this repository is a guard written for a real rule
+    that then covers part of where the rule lives.  Each criterion below states
+    its rule once and then reads the places production applies it out of the
+    source, so a site added later fails the test until something drives it, and
+    the last site removed empties the inventory and trips that criterion's
+    floor.
     """
 
     import ari
@@ -1785,10 +1785,16 @@ def _tolerance_comparison_sites() -> set[tuple[str, str]]:
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             for inner in ast.walk(node):
-                if (
-                    isinstance(inner, ast.Compare)
-                    and ast.unparse(inner).count("tolerance_policy_digest") >= 2
+                if not isinstance(inner, ast.Compare):
+                    continue
+                # Equality only: ``x is None`` is a presence check, not a
+                # comparison of two identities, and the distinction is read
+                # off the operator rather than written down as an exception.
+                if not all(
+                    isinstance(op, (ast.Eq, ast.NotEq)) for op in inner.ops
                 ):
+                    continue
+                if ast.unparse(inner).count(token) >= occurrences:
                     sites.add((str(path.relative_to(root)), node.name))
     return sites
 
@@ -1817,7 +1823,7 @@ def test_ck_har_tolerance_relaxation(tmp_path):
 
     bearers = _tolerance_bearing_models()
     assert bearers, "no assurance document carries a tolerance policy any more"
-    sites = _tolerance_comparison_sites()
+    sites = _comparison_sites("tolerance_policy_digest")
     assert sites, "nothing in production compares two tolerance policy digests"
 
     manifest = _harness_manifest()
@@ -2441,14 +2447,18 @@ def _validate_attestation_call_sites():
 def test_attestation_target_digest(tmp_path):
     """An Attestation is invalid unless its target digest is the candidate's.
 
-    The claim is checked where validity is decided, which is three places: the
-    procedural validator every driver's result passes through
-    (``ari.assurance.attestation.validate_attestation``), the Constitutional
-    Kernel's Harness integrity pass, and the Evidence Clerk that decides
-    whether an Attestation may enter an evidence bundle at all.  Inside the
-    validator the set of references the target must agree with is read from its
-    own source, so a check added against a further reference is driven here
-    rather than quietly left alone.
+    Driven at every place production decides that -- the procedural validator
+    every driver's result passes through, the Constitutional Kernel's Harness
+    integrity pass, the Evidence Clerk that decides whether an Attestation may
+    enter an evidence bundle, and the manuscript snapshot, where nothing raises
+    and a wrong answer would simply be believed -- against an inventory of
+    comparison sites read out of the source, so a fifth place fails this test
+    until something drives it.
+
+    Inside the validator the references the target must agree with come from
+    its SIGNATURE, for the reason given on ``_attestation_target_references``,
+    and each production call site is checked for handing it an independently
+    obtained current target rather than one it already compares.
     """
 
     manifest, atom, locked, baseline, request, attestation = _verification_state(
@@ -2525,11 +2535,68 @@ def test_attestation_target_digest(tmp_path):
     assert _all_blocking(moved - agreed), moved
 
     # And the Evidence Clerk, which is where an Attestation becomes evidence.
+    # Both of its target comparisons: the candidate the node holds now, and the
+    # target the envelope advertises for the document it carries.
     record = _attestation_record(tmp_path)
     assert _exclusion_reason(record, tmp_path) is None
     assert _exclusion_reason(
         dict(record, current_node_target_digest=OTHER_SHA), tmp_path
     ) == "stale_target_attestation"
+    # The envelope arm is isolated: the substituted document carries its own
+    # correct digest and the record advertises it, so the only disagreement
+    # left is the target -- otherwise the digest arm answers first and this
+    # assertion would hold with the target comparison deleted.
+    elsewhere = _attestation(target_digest=OTHER_TARGET_SHA)
+    assert _exclusion_reason(
+        dict(
+            record,
+            attestation=elsewhere.model_dump(mode="json"),
+            attestation_digest=elsewhere.attestation_digest,
+        ),
+        tmp_path,
+    ) == "attestation_envelope_mismatch"
+
+    # And the manuscript snapshot, which is where an Attestation becomes a
+    # published certification. An Attestation for another candidate is recorded
+    # ``stale`` and does not certify -- the same claim at the other end of the
+    # run, where nothing raises and a wrong answer would simply be believed.
+    from types import SimpleNamespace
+
+    from ari.manuscript.snapshot import _attestation_artifacts
+
+    node_root = tmp_path / "manuscript"
+    node_root.mkdir(parents=True, exist_ok=True)
+    (node_root / "node.attestation.json").write_text(
+        json.dumps(attestation.model_dump(mode="json")), encoding="utf-8"
+    )
+
+    def _snapshot(verified_target):
+        node = SimpleNamespace(
+            id=attestation.node_id,
+            attestation_refs=("node.attestation.json",),
+            verified_target_digest=verified_target,
+        )
+        return _attestation_artifacts(node_root, [node])[0]
+
+    present = _snapshot(attestation.target_digest)
+    assert present.status == "present"
+    assert present.metadata["target_matches"] is True
+    stale = _snapshot(OTHER_TARGET_SHA)
+    assert stale.status == "stale", stale.status
+    assert stale.metadata["target_matches"] is False
+    assert stale.metadata["certify_pass"] is False
+
+    # Every place production compares an Attestation target has been driven.
+    driven = {
+        ("assurance/attestation.py", "validate_attestation"),
+        ("rqgm/kernel_harness_integrity.py", "_append_attestation_findings"),
+        ("rqgm/governance/_evidence.py", "_harness_integrity_reason"),
+        ("manuscript/snapshot.py", "_attestation_artifacts"),
+    }
+    compared = _comparison_sites("target_digest")
+    assert compared, "nothing in production compares an Attestation target"
+    undriven = compared - driven
+    assert not undriven, f"target comparison nothing drives here: {sorted(undriven)}"
 
 
 # ── criterion 38: a reused Attestation from a superseded Lock is detected ────
@@ -2624,6 +2691,44 @@ def test_stale_attestation(tmp_path):
         **common,
     )
     assert _all_blocking(reused - current), reused
+
+    # And the Fixed Verifier refuses to EXECUTE under a request whose active
+    # Lock is not the baseline it was handed, which is what stops a stale
+    # Attestation from being minted rather than merely caught afterwards.
+    from ari.assurance.runner import FixedVerifier, HarnessExecutionError
+
+    verifier = FixedVerifier({}, executor=lambda *_a, **_k: None)
+    minting = dict(
+        manifest=manifest,
+        baseline_lock=baseline,
+        research_contract_digest=SHA,
+        verification_contract_digest=SHA,
+        knowledge_skill_use_digest=SHA,
+        capability_binding_lock_digest=SHA,
+        producer_epoch_id="epoch_000",
+    )
+    with pytest.raises(HarnessExecutionError, match="baseline lock"):
+        verifier.run(
+            request=_run_request(
+                tmp_path / "mint-under-revision",
+                locked=locked,
+                atom=atom,
+                active_lock_digest=revised.lock_digest,
+            ),
+            **minting,
+        )
+
+    # Every place production compares a Harness Lock identity on an Attestation
+    # or on the request that produces one has been driven.
+    driven = {
+        ("assurance/attestation.py", "validate_attestation"),
+        ("assurance/runner.py", "run"),
+        ("rqgm/kernel_harness_integrity.py", "_append_attestation_findings"),
+    }
+    compared = _comparison_sites("harness_lock_digest", occurrences=1)
+    assert compared, "nothing in production compares a Harness Lock identity"
+    undriven = compared - driven
+    assert not undriven, f"Lock comparison nothing drives here: {sorted(undriven)}"
 
 
 # ── criterion 65: stale Skill, Binding and Attestation, each detected alone ──
