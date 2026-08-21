@@ -11,6 +11,7 @@ from ari.protocols.integrity import (
     DigestBoundModel,
     FULL_GIT_COMMIT_PATTERN,
     SHA256_DIGEST_PATTERN,
+    Sha256Digest,
     StrictModel,
 )
 
@@ -78,8 +79,8 @@ class HarnessRegistrationEvidenceV1(DigestBoundModel):
     manifest_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     source_full_commit_sha: str = Field(pattern=FULL_GIT_COMMIT_PATTERN)
     environment_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
-    evidence_artifact_digests: dict[str, str] = Field(min_length=1)
-    attestation_digests: tuple[str, ...] = Field(min_length=1)
+    evidence_artifact_digests: dict[str, Sha256Digest] = Field(min_length=1)
+    attestation_digests: tuple[Sha256Digest, ...] = Field(min_length=1)
     clean_control_verdict: Literal["pass", "fail", "not_available"]
     negative_control_verdict: Literal["pass", "fail", "not_available"]
     official_runner_parity: bool

@@ -11,6 +11,7 @@ from ari.protocols.integrity import (
     DigestBoundModel,
     FULL_GIT_COMMIT_PATTERN,
     SHA256_DIGEST_PATTERN,
+    Sha256Digest,
     StrictModel,
 )
 from ari.protocols.scientific_requirements import AssuranceTier
@@ -274,9 +275,9 @@ class HarnessCatalogSnapshotV1(DigestBoundModel):
     property_vocabulary_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     driver_protocol_version: str
     manifests: tuple[HarnessManifestV1, ...]
-    registration_report_digests: dict[str, str]
-    registration_evidence_digests: dict[str, str]
-    promotion_approval_digests: dict[str, str] = Field(default_factory=dict)
+    registration_report_digests: dict[str, Sha256Digest]
+    registration_evidence_digests: dict[str, Sha256Digest]
+    promotion_approval_digests: dict[str, Sha256Digest] = Field(default_factory=dict)
     snapshot_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
 
     @model_validator(mode="after")
@@ -317,7 +318,7 @@ class HarnessRequirementV1(DigestBoundModel):
 
 class HarnessCoverageV1(StrictModel):
     harness_manifest_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
-    covered_atom_digests: tuple[str, ...]
+    covered_atom_digests: tuple[Sha256Digest, ...]
 
 
 class HarnessSuiteV1(DigestBoundModel):
@@ -325,10 +326,10 @@ class HarnessSuiteV1(DigestBoundModel):
 
     schema_version: Literal["ari.harness-suite/v1"] = "ari.harness-suite/v1"
     requirements: tuple[HarnessRequirementV1, ...]
-    harness_manifest_digests: tuple[str, ...]
+    harness_manifest_digests: tuple[Sha256Digest, ...]
     coverage: tuple[HarnessCoverageV1, ...]
-    covered_atom_digests: tuple[str, ...]
-    unsatisfied_atom_digests: tuple[str, ...] = Field(default_factory=tuple)
+    covered_atom_digests: tuple[Sha256Digest, ...]
+    unsatisfied_atom_digests: tuple[Sha256Digest, ...] = Field(default_factory=tuple)
     aggregate_resource_cost: tuple[int, int, int, int]
     verification_environment_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     resolver_objective: tuple[Any, ...]
@@ -368,7 +369,7 @@ class LockedHarnessV1(StrictModel):
     container_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     result_schema_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     tolerance_policy_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
-    covered_atom_digests: tuple[str, ...]
+    covered_atom_digests: tuple[Sha256Digest, ...]
 
 
 class BaselineHarnessLockV1(DigestBoundModel):
@@ -385,7 +386,7 @@ class BaselineHarnessLockV1(DigestBoundModel):
     oracle_bundle_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     suite_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     requirements: tuple[HarnessRequirementV1, ...]
-    unsatisfied_atom_digests: tuple[str, ...] = Field(default_factory=tuple)
+    unsatisfied_atom_digests: tuple[Sha256Digest, ...] = Field(default_factory=tuple)
     harnesses: tuple[LockedHarnessV1, ...]
     coverage_proof_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     producer_component_id: Literal["harness_resolver_v1"] = "harness_resolver_v1"
@@ -517,7 +518,7 @@ class HarnessPropertyResultV1(StrictModel):
     measurements: dict[str, Any] = Field(default_factory=dict)
     tolerance_evidence: dict[str, Any] = Field(default_factory=dict)
     oracle_comparison: dict[str, Any] = Field(default_factory=dict)
-    covered_atom_digests: tuple[str, ...]
+    covered_atom_digests: tuple[Sha256Digest, ...]
     evidence_artifact_refs: tuple[ResearchArtifactRefV1, ...]
 
 

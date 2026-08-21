@@ -10,6 +10,7 @@ from pydantic import Field, field_validator, model_validator
 from ari.protocols.integrity import (
     DigestBoundModel,
     SHA256_DIGEST_PATTERN,
+    Sha256Digest,
     StrictModel,
 )
 from ari.protocols.scientific_requirements import EnvironmentSnapshotV1
@@ -148,7 +149,7 @@ class CapabilityProvisionV1(DigestBoundModel):
     # are separate tool_refs, and without them an async Capability binds, runs,
     # and its result is unreachable.
     lifecycle_tool_refs: tuple[str, ...] = Field(default_factory=tuple)
-    nested_source_lock_digests: tuple[str, ...] = Field(default_factory=tuple)
+    nested_source_lock_digests: tuple[Sha256Digest, ...] = Field(default_factory=tuple)
     declared_capability_ref: str
     capability_ref: str = Field(pattern=CAPABILITY_REF_PATTERN)
     capability_contract_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)

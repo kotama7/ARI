@@ -11,14 +11,27 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from typing import Any, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, ValidationInfo, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    model_validator,
+)
 
 
 SHA256_DIGEST_PATTERN = r"^sha256:[0-9a-f]{64}$"
 FULL_GIT_COMMIT_PATTERN = r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$"
 ZERO_SHA256 = "sha256:" + ("0" * 64)
+
+#: A single full trust anchor. Scalar anchor fields already carry
+#: ``Field(pattern=SHA256_DIGEST_PATTERN)``; this alias is what gives the SAME
+#: constraint to an anchor that lives *inside* a collection, where a bare
+#: ``tuple[str, ...]`` or ``dict[str, str]`` annotation accepts a truncated
+#: ``hash12`` element and silently demotes the anchor.
+Sha256Digest = Annotated[str, Field(pattern=SHA256_DIGEST_PATTERN)]
 
 
 class ContractIntegrityError(ValueError):
@@ -114,6 +127,7 @@ __all__ = [
     "DigestBoundModel",
     "FULL_GIT_COMMIT_PATTERN",
     "SHA256_DIGEST_PATTERN",
+    "Sha256Digest",
     "StrictModel",
     "ZERO_SHA256",
     "bytes_digest",
