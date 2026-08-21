@@ -17,6 +17,40 @@ INSIDE the entry point, which is where the audit stops looking.
 
 Each test costs a compile and a run on the smoke case set. That is the price of
 knowing these stay shut.
+
+TWO RATIOS, ONE FUNCTION APART, AND ONLY ONE OF THEM IS REACHABLE FROM A LAUNCH.
+Read this before adding work to the launch path, because both of us got it
+wrong in the same week and in opposite directions.
+
+  overhead ratio   over_cand / over_ref     built from WALL      (this file's guard)
+  relative spread  relative_spread(ratios)  built from CREDITED  (the verdict rule)
+
+``run_timed`` returns the driver's OWN timer as the credited figure and records
+wall separately, so ``overhead = wall - credited``. Anything that makes a launch
+take longer without crediting the time therefore lands in the overhead ratio and
+NOT in the spread.
+
+WHAT THAT COST, in both directions:
+
+* A network observation was added inside the timed region. On a routed host its
+  probe ran to a 250 ms timeout -- against 0.023 ms for the filesystem record
+  beside it -- so every launch carried a constant in wall, hence in overhead.
+  The guard below is a RATIO, and the same constant on both terms pulls it to
+  one. MEASURED: the self-timing forger went from refused to VERDICT PASS. Not
+  caught by a weaker rule -- not caught. Reinstating a bare 250 ms sleep in that
+  region reproduces it; removing it restores the refusal.
+
+* The same constant was then suspected of flattening the SPREAD, because a
+  clean-control spread came back larger once it was removed. It cannot: the
+  spread is built from credited ratios and the constant never entered credited.
+  MEASURED anyway, same node, same budget, n=5 each, sleeping 250 ms inside the
+  wall window: median spread 0.001550 without and 0.002326 with, ranges
+  overlapping almost entirely. No effect, in either direction.
+
+So: a launch-time constant is invisible to the verdict rule and disabling to the
+forgery guard. The mechanism is real and applies to exactly one of the two. Ask
+which quantity it acts on before measuring, or the measurement answers a
+question nobody asked.
 """
 
 from __future__ import annotations
