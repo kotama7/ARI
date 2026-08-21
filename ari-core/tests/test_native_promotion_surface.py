@@ -912,14 +912,30 @@ def test_the_environment_is_read_before_any_run_can_put_a_site_path_in_it() -> N
         "the measurement environment is captured while a run has a site path "
         "exported into it")
 
+    # THE PROPERTY, NOT THE NUMBER OF PLACES IT HOLDS IN. This counted the
+    # scrub sites and required exactly one, which goes red on a correct
+    # refactor and silent on a second unscrubbed write -- and the first of
+    # those happened: the scrub moved INTO the capture, so there is no
+    # rewrite left to count. What has to be true is that every capture
+    # scrubs, and that nothing rewrites the values afterwards, because a
+    # rewrite is what left `sha256` covering the values it had replaced.
     tree = ast.parse(SOURCE)
-    scrubbed = [node for node in ast.walk(tree) if isinstance(node, ast.Assign)
-                and any(isinstance(t, ast.Subscript)
-                        and isinstance(t.slice, ast.Constant)
-                        and t.slice.value == "variables"
-                        for t in node.targets)]
-    assert len(scrubbed) == 1
-    assert "scrub_host_identity" in ast.unparse(scrubbed[0].value)
+    captures = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "measurement_environment"]
+    assert captures, "the environment is not captured here at all"
+    for capture in captures:
+        assert any(keyword.arg == "scrub" for keyword in capture.keywords), (
+            "a capture that does not scrub publishes host identity, and its "
+            "digest names the unscrubbed values")
+    rewritten = [node for node in ast.walk(tree) if isinstance(node, ast.Assign)
+                 and any(isinstance(t, ast.Subscript)
+                         and isinstance(t.slice, ast.Constant)
+                         and t.slice.value == "variables"
+                         for t in node.targets)]
+    assert not rewritten, (
+        "rewriting the values after the capture leaves the digest over the "
+        "ones that were replaced -- a confirmation oracle for the host path")
 
 
 def test_every_published_byte_passes_the_host_identity_guard_before_the_write(
