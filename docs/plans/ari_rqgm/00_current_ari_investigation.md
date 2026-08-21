@@ -682,7 +682,7 @@ via config. Downstream plans cite these by number (B-1 … B-19).
 | Q-12 | Fix the `@mcp.tool()` regression on `survey`/`generate_ideas` first; fate of the exposed `_load_virsci_snapshot_papers`. | Task 03 |
 | Q-13 | Staged `idea.json` compatibility: which consumers migrate to ProposalSummaryView in which order; single-writer/locking discipline once more writers exist. | Task 03 |
 | Q-14 | Mid-run re-ideation at epoch boundaries? Today `generate_ideas` runs exactly once at root; workflow.yaml's `frontier_expand` declaring `tool: generate_ideas` is fiction. | Task 03 |
-| Q-15 | `ARI_DISABLED_TOOLS_FOR_CHILD` is a stub — needed for "run inherited idea verbatim". | Task 03 |
+| Q-15 | `ARI_DISABLED_TOOLS_FOR_CHILD` is a stub — needed for "run inherited idea verbatim". | Task 03 → **Task 05** (Task 03 §10 forwarded it as sub-run governance; landed in [05](05_governance_orchestrator.md) §3 on 2026-08-22, where it is recorded as still open. The stub's inert behaviour itself is permanent doc, not plan: `docs/reference/environment_variables.md`) |
 | Q-16 | Map epoch exploration width onto `ARI_IDEA_VIRSCI_K/TEAM_SIZE/MAX_TEAMS` (already env-plumbed). | Task 03 |
 | Q-17 | Determinism budget: which kernel decisions are pure rules vs logged-LLM with total fallback (precedent: deterministic-rule-first). | Task 04 |
 | Q-18 | Fail-open vs fail-closed per check class (run-loop hooks fail open; only the paper gate blocks). | Task 04 |
@@ -718,7 +718,7 @@ via config. Downstream plans cite these by number (B-1 … B-19).
 | Q-48 | Binary outcomes: RQGM theory uses o ∈ {0,1} Beta posteriors; ARI signals are scalar/rubric — binarize or redesign? | Task 13 |
 | Q-49 | ARI's ground-truth anchor definition and curation; per-epoch output versioning for the paper pipeline (fixed paths overwritten in place). | Task 13 |
 | Q-50 | RQGM budget caps must be authored, not copied — the paper's B̄ values were not extracted. | Task 13 |
-| Q-51 | Which RQGM env vars / checkpoint files / config keys get documented in `docs/reference/` immediately (SemVer freeze) vs kept plan-internal until stabilized. | Task 01 (config), Task 02 (files), final call at Task 13 wrap-up |
+| Q-51 | Which RQGM env vars / checkpoint files / config keys get documented in `docs/reference/` immediately (SemVer freeze) vs kept plan-internal until stabilized. | Task 01 (config), Task 02 (files), final call at Task 13 wrap-up — **landed in [13](13_evaluation_and_ablation.md) §10 on 2026-08-22**, where the published-in-practice half is recorded and the still-unmade half (RQGM checkpoint files and `rqgm.*` keys are documented but absent from `docs/about/release_policy.md`'s public-surface enumeration) is stated as an open maintainer call |
 
 Pre-existing warts to decide on only when touched (no owner until then): the dead
 `self.experiment_goal` block at `ari-core/ari/agent/loop.py` (~line 668); the

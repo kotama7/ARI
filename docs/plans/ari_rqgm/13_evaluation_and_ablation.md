@@ -448,6 +448,36 @@ subset (B0 + B3, 1 seed, tiny budget) is documented as the "deletion-criteria sm
   by fresh-checkpoint-per-run policy (already in §5.2).
 - **Wall-clock nondeterminism** (metric 13) invites P2 violations. Mitigation: metadata-only,
   never hashed, host recorded alongside.
+- **The RQGM documentation-freeze call (Task 00 Q-51) is owed here and half of it is still
+  unmade.** [00](00_current_ari_investigation.md) §5.9 Q-51 asks which RQGM env vars /
+  checkpoint files / config keys go into `docs/reference/` immediately — which SemVer-freezes
+  them — versus staying plan-internal until stabilised, and assigns the **final call to this
+  task's wrap-up**. [01](01_execution_modes_and_compatibility.md) §6.3 and
+  [02](02_epoch_state_and_registry.md) §4 each restate the *rule* ("documenting
+  SemVer-freezes it"); neither makes the call, and until 2026-08-22 this plan — the one the
+  call was assigned to — said nothing about it at all, so on plan 00's deletion the question
+  would have gone with it. Recorded here so it cannot.
+  > **What was decided in practice.** "Keep it plan-internal" was not the road taken: the
+  > whole RQGM surface has been published. Env vars — `ARI_MODE`, `ARI_RQGM_ENABLED`,
+  > `ARI_PAPER_MODE`, `ARI_RQGM_PAPER_ENABLED`, `ARI_PAPER_AGENT_AS_JUDGE` — are in
+  > `docs/reference/environment_variables.md`; the `rqgm.*` config blocks are in
+  > `docs/reference/configuration.md`; the checkpoint files have a full inventory in
+  > `docs/reference/rqgm_schemas.md` ("Checkpoint file inventory") and per-file behaviour in
+  > `docs/reference/file_formats.md`.
+  > **What is still an open call, and it is a maintainer's.** `docs/about/release_policy.md`
+  > defines the public surface two different ways for these two kinds of thing. For env vars
+  > it is a *rule* — "Documented environment variables (those listed in
+  > `docs/reference/environment_variables.md`)" — so all five RQGM variables are already
+  > frozen, automatically, and that half of Q-51 is answered. For checkpoint files it is a
+  > *closed enumeration* — `tree.json`, `nodes_tree.json`, `node_report.json`,
+  > `settings.json`, `workflow.yaml`, `experiment.md`, `manifest.lock`,
+  > `publish_record.json`, `lineage_decisions.jsonl` — and not one RQGM file appears in it.
+  > So the documented RQGM checkpoint files (and, by the same silence, the `rqgm.*` config
+  > keys) are fully published yet not named as public surface: whether publication froze
+  > them is genuinely undecided, and this plan does not decide it. Either the enumeration in
+  > `release_policy.md` is extended, or it is stated there that documented RQGM files are
+  > deliberately excluded from the freeze. Answer it, or re-home it, before this file is
+  > deleted.
 
 ## 11. Completion criteria
 

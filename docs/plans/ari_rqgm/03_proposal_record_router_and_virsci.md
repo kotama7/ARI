@@ -511,6 +511,15 @@ Integration:
 - **`ARI_DISABLED_TOOLS_FOR_CHILD` is a stub** (`ari-core/ari/cli/lineage.py`): "run inherited
   idea verbatim" in child runs needs real plumbing; forwarded as an open item to Task 05
   (governance of sub-run spawning).
+  > **Landed 2026-08-22.** It had not in fact reached Task 05 — that plan contained no
+  > mention of the variable or of sub-run governance — so the item was owned by nobody
+  > while both plans read as though it were owned. It is now recorded in
+  > [05](05_governance_orchestrator.md) §3 as an explicit open question owned there. The
+  > *stub's current behaviour* needs no plan at all: it is permanently documented in
+  > `docs/reference/environment_variables.md`, `docs/reference/file_formats.md` and
+  > `docs/concepts/architecture.md` (all three languages) as **inert — reserved, no
+  > reader**. What stays open is only the design question of whether sub-run spawning is
+  > governed at all.
 - **Timeout/retry hazards**: `generate_ideas` is a `_SLOW_TOOLS` member (1 h); adapter calls
   under the 3-retry policy must be idempotent (content-keyed dedup) or results get duplicated.
 - **Snapshot/gate friction**: three new committed prompt templates touch all four

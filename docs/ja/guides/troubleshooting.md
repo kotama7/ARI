@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-08-08
+last_verified: 2026-08-22
 ---
 
 # トラブルシューティング
@@ -195,6 +195,18 @@ PY
 `model`, `*_tokens`, `estimated_cost_usd`, …) で、ネストした `metadata`
 オブジェクトはありません。追加フィールド `epoch` は `ari_rqgm` 実行時のみ
 書き込まれるため、デフォルト実行では存在しません。
+
+`ari_rqgm` 実行でも、このフィールドが押されるのは ARI **コア**プロセスから
+発行された呼び出しだけです。`RQGMRuntime` はエポック開始時に
+`cost_tracker.set_default_metadata(epoch=...)` で設定しますが、この既定値は
+設定したプロセス自身のメモリ上にしか存在しません。各 MCP スキルサーバーは
+別プロセスであり、その `bootstrap_skill(...)` が登録するのは `skill`
+(と場合により `phase`) のみで、エポックをプロセス境界の向こうへ運ぶ環境変数も
+ありません。したがってスキルが発行した呼び出しは `epoch` なしで記録されます。
+`cost_trace.jsonl` を `epoch` で集計して得られるのはコアプロセスの費用であり、
+実行全体の費用ではありません。全体を見るには `skill` で集計してください。
+スキル呼び出しをエポックへ正確に帰属させるには MCP 越しの呼び出し単位の
+メタデータ配管が必要ですが、ARI はそれを行っていません。
 
 最も費用がかかるのは通常 BFTS ジャッジ (`ari-skill-evaluator`) または
 ルーブリックレビュー (`ari-skill-paper`) です。`ARI_MODEL_EVAL` /

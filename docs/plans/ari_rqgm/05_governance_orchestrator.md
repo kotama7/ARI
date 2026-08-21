@@ -65,6 +65,45 @@ the RegistryTransitionEngine (Task 09); it never applies sanctions itself.
 - **No change to simple_bfts.** Under the default mode the orchestrator is never
   constructed and no new file is written.
 - **No CLI surface change** (keeps the contract-snapshot budget at zero for v1).
+- **No governance of sub-run spawning** — but the question is OWNED here, unanswered.
+  Whether a lineage child launched by `fanout` / `switch_to_idea` inherits the parent's
+  governance posture, and in particular what "run the inherited idea verbatim" should
+  actually disable in that child, is not designed in this plan.
+  > **OPEN — forwarded here by [03](03_proposal_record_router_and_virsci.md) §10/§11.8,
+  > which is where [00](00_current_ari_investigation.md)'s Q-15 was routed.** The
+  > *present-tense* half is settled and already lives in permanent docs, so no fact is
+  > lost when those plans go: `ARI_DISABLED_TOOLS_FOR_CHILD` is **inert**.
+  > `ari-core/ari/cli/lineage.py` calls
+  > `os.environ.setdefault("ARI_DISABLED_TOOLS_FOR_CHILD", "")` — on the *parent's own*
+  > environment, with the empty string — when a `switch_to_idea` / `fanout` record sets
+  > `disable_generate_ideas`, and nothing in `ari-core/`, `ari-skill-*/` or `scripts/`
+  > reads the variable back, so it trims no tool; `disabled_tools` is populated from YAML
+  > only. That is stated in `docs/reference/environment_variables.md` (its own row),
+  > `docs/reference/file_formats.md` (the `disable_generate_ideas` field) and
+  > `docs/concepts/architecture.md` — in all three languages.
+  > What is **not** decided anywhere, and is therefore this plan's to re-home or answer
+  > before deletion: should sub-run spawning be governed at all under `ari_rqgm`, and if
+  > so, is the child's tool set constrained by giving this reserved variable a reader, by
+  > `disabled_tools` in the child's `workflow.yaml`, or not at all? No answer exists in
+  > the tree; do not let this question disappear with a plan file.
+- **No exploration-side `reviewer` component** — again owned here as an open question.
+  > **OPEN — forwarded here (and to [07](07_prompt_spec_and_prompt_evolution.md)) by
+  > [15](15_validated_attack_target_binding.md) §10 R2.** The seven exploration adversary
+  > types each implicate exactly one role, `generator`
+  > (`_AFFECTED_ROLES_BY_TYPE`, `ari-core/ari/rqgm/adversarial/round.py`), and bind the
+  > epoch-frozen `generator_v1` incumbent. The *reviewer* side has no binding at all:
+  > `reviewer` is a founded, evolvable **prompt** role (`reviewer_prompt_v1`,
+  > `evaluator/peer_review`, in `FOUNDING_PROMPT_TABLE`) but there is no `reviewer_v1`
+  > entry in `FOUNDING_COMPONENT_TABLE` — only the paper set's `paper_reviewer_v1` —
+  > so no exploration attack can accuse the evaluator that scored the node, however
+  > lenient it was. R4 of that same plan records the matching hole on the score channel
+  > (`reliability_score` stays near 1.0 for a busy lenient component), so today neither
+  > channel detects exploration-side leniency.
+  > The decision has two halves and both are unrecorded: whether any of the seven types
+  > should implicate `reviewer` at all (this plan — it changes who can be prosecuted),
+  > and whether a `reviewer_v1` component should be founded to receive that binding
+  > ([07](07_prompt_spec_and_prompt_evolution.md) — it changes the founding registration
+  > transaction). Neither plan may be deleted while the question lives only in them.
 
 ## 4. Existing ARI touchpoints
 
@@ -578,7 +617,10 @@ Integration / regression:
   expand) enforced by capability fields in the ComponentRegistry (Task 02/11).
 - **Monolithic `_run_loop`.** Adding another hook to a ~925-line function increases
   fragility. Mitigation: the hook is ≤ ~20 lines delegating to the facade; any loop
-  refactor is out of scope and tracked by Task 01's open questions.
+  refactor is out of scope and tracked by Task 01's open questions —
+  [01](01_execution_modes_and_compatibility.md) §10 **R9**, which is where it landed on
+  2026-08-22. It was absent from R1–R8 until then, so between this sentence being written
+  and that date the refactor was tracked by nothing.
 - **Bond design is a stub.** Epoch-reset bonds may under-deter serial frivolous
   prosecution across epochs. Acceptable for v1; carry-over penalties are a candidate
   refinement for Task 11's meta-evolution constraints.

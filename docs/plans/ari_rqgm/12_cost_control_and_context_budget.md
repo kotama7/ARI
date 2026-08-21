@@ -565,6 +565,32 @@ Integration / regression:
   *after* the call; long-lived skills spawned in a previous epoch keep the old default.
   Mitigation: epoch attribution for skills is best-effort in v1 (documented); exact
   attribution would need per-call metadata plumbed through MCP, deferred.
+  > **Corrected and given a permanent home, 2026-08-22.** Two things were wrong with the
+  > sentence above and neither is amended in place, because the risk text is the record of
+  > what was believed at the time.
+  > (1) "(documented)" was **false**: nothing outside this plan said epoch attribution for
+  > skills was best-effort. It is true now — `docs/guides/troubleshooting.md`
+  > ("Unexpected cost spike", the paragraph on the additive `epoch` field) states the
+  > limitation in all three languages, and `ari-core/ari/cost_tracker.py` is already a
+  > declared source of that page.
+  > (2) The mechanism is not "forked before/after". `_DEFAULT_METADATA` is plain
+  > module-level state in the process that calls `set_default_metadata`
+  > (`ari-core/ari/cost_tracker.py`), and `RQGMRuntime._stamp_cost_epoch`
+  > (`ari-core/ari/rqgm/runtime.py`) calls it in the ARI core process only. MCP skill
+  > servers are *separate* processes; their `bootstrap_skill(...)` registers `skill` and
+  > sometimes `phase` and never `epoch`, and no environment variable carries the epoch
+  > across the boundary. So skill-issued calls are not "attributed on a best-effort
+  > basis" — they carry **no** `epoch`, always. The plan's §5.4 claim that "every litellm
+  > call — including MCP skill subprocesses via `bootstrap_skill` — is attributable to an
+  > epoch" does not hold as shipped, and a maintainer should decide whether §5.4 is the
+  > spec that is owed or the sentence that is wrong.
+  > What this does **not** change: the `rqgm.budgets` USD/token caps are unaffected,
+  > because governance actors run in the core process and their calls do carry the epoch.
+  > (3) "deferred" named no owner, so on this plan's deletion the deferral would have
+  > vanished. It no longer can: the troubleshooting page states outright that attributing
+  > skill calls to an epoch exactly would need per-call metadata plumbed through MCP and
+  > that ARI does not do it. The item is therefore recorded as a permanent known
+  > limitation rather than as a plan-internal to-do, and needs no re-homing.
 - **Determinism vs. sample_rate expectations**: hash-based sampling is deterministic
   per node id, so re-runs sample the same nodes — a feature for P2 but a surprise for
   users expecting fresh randomness; document it.

@@ -470,6 +470,25 @@ Stage-1-advisory-first policy.
   The mode switch documents where the answer lives, not the answer.
 - **R8 — Contract-snapshot creep.** Any later temptation to add `--mode` CLI flags re-opens the
   golden budget. Guard: this plan's decision (config+env only for v1) is recorded as normative.
+- **R9 — `_run_loop` is a monolith and no one owns splitting it.** Every RQGM hook — the
+  mode detection this plan adds (§5.4), the epoch tick (02), `audit_epoch` (05), the
+  transition commit (09), `repair()` (10), the per-node budget gate (12) — attaches inside
+  one function, `_run_loop` in `ari-core/ari/cli/bfts_loop.py`. Each hook is individually
+  small and fail-open, and none of them is the problem; the accumulation is.
+  > **OPEN — forwarded here by [05](05_governance_orchestrator.md) §10
+  > ("any loop refactor is out of scope and tracked by Task 01's open questions"), which
+  > is the only place the hand-off was recorded. It had not in fact landed in R1–R8, so
+  > until this entry the refactor was owned by nobody.** No decision exists anywhere in
+  > the tree about whether, when, or how `_run_loop` gets split, and this plan does not
+  > invent one — splitting it is a change to the mock seam that `run`/`resume` rely on
+  > (late-bound `ari.cli` lookups, §4) and to the read-once checkpoint-first idiom at the
+  > loop head, so it is a real decision with real regression surface, not a tidy-up.
+  > One fact worth carrying into that decision: the plan set sized this function at
+  > ~925 lines; `_run_loop` is now ~1,630 lines (`bfts_loop.py` lines 464–2089), so the
+  > fragility Task 05 flagged has roughly doubled since it was flagged. Task 01 owns the
+  > question because mode wiring and the protocol seams (`SearchStrategy` /
+  > `NodeExecutor`, §4) are what a split would have to preserve — re-home it or answer it
+  > before this file is deleted.
 
 ## 11. Completion criteria
 
