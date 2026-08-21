@@ -13,7 +13,7 @@ description: ARI-native dense fp64 GEMM performance benchmark
 driver:
   license: MIT
   revision: ari.assurance.native-perf/v1
-  sha256: sha256:b8d4367543fe19ea04202af27cd016a9b82e2c276e04f9026fe3c6a131236b97
+  sha256: sha256:4470c3f2041d5b77875bb0a4cd719e99f5384b4a1f447324eeee6fbaf53c354e
 expected_result_schema: ari.native-perf-report/v1
 expected_result_schema_digest: sha256:0fd05f5445b50a9adc123580e2ba92bcaa82b24dd32e3f8c6743f6c66a882fa1
 filesystem_policy: isolated-readonly-target
@@ -23,7 +23,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: benchmark
 maintainer: ARI maintainers
-manifest_digest: sha256:7618024c7d10f359d94c98867595e12125b6dc662f7e437bee793c2060caee5b
+manifest_digest: sha256:9033e8cdaceb383231c1ebe1f335d4105742dbab16aedf71b994cdbedca9aa6a
 model:
   license: not-applicable
   revision: not-applicable
@@ -71,7 +71,7 @@ resources:
 retry_limit: 1
 schema_version: ari.harness-manifest/v1
 scorer_determinism: deterministic
-source_full_commit_sha: 21fcdbeb2fe85aa9019651358107d4a7a9afd9f0
+source_full_commit_sha: 24b6456bb24065831867fd71e7a29c62f749b1d3
 source_repository: https://github.com/kotama7/ARI.git
 status: verified
 subject_types:
