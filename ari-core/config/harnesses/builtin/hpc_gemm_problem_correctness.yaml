@@ -14,9 +14,9 @@ description: Correctness of a candidate against the gemm-dense-fp64 problem's ow
 driver:
   license: MIT
   revision: ari.assurance.problem-correctness/v1
-  sha256: sha256:032b6b3a27b7aa817400e04f50cebb4d1f80bb0bfafc78e043c9f3b41b1dc925
+  sha256: sha256:b794bf611222431ffe07b05d9047f3932af4a1c57dd7c3fa92414c81510d8639
 expected_result_schema: ari.native-problem-correctness-report/v1
-expected_result_schema_digest: sha256:ff0c5c857d79fc7c0f15a6120ea8151284b78e880f548d8691e029155c552f6c
+expected_result_schema_digest: sha256:6378306ffb63e236faba237a5253470f4c3c8a7b307d63e577ffd65a6fe930fa
 filesystem_policy: isolated-readonly-target
 hidden_test_policy: verifier-only
 id: hpc/gemm-dense-fp64-problem-correctness
@@ -24,7 +24,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: artifact_verifier
 maintainer: ARI maintainers
-manifest_digest: sha256:902ba55d5b14d496c2aac26776c19c80e675aad3eb3a3ce1dc94ce2776019666
+manifest_digest: sha256:c88f43a5901855806b5c415272c6e38eeb107a3b06a36b8de2acbeac407e505b
 model:
   license: not-applicable
   revision: not-applicable
