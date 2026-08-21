@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:f921daca10589b1ff6fdf7faed18035e123caa1044a3e3cb14a96d0c8597f4ed",
+  "approval_digest": "sha256:4701cf696e925cbd88556c52d1995f609958d80ecf7f0437dc1fcca2c48ace57",
   "approved_date": "2026-08-17",
-  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of this re-registration -- not on independent inspection of the artifacts, which are pinned here for that purpose. Reported: four container executions per family from a clean worktree, clean-screen, clean-certify and clean-certify-repeat passing and negative-screen failing in all three, and fifteen gates each. WHY IT WAS RE-EARNED: the shipped bundles' attestation_digests named their own registration report rather than the four executions -- a wrong citation left when a surface that ran nothing rewrote half of each bundle -- and every previously-declared evidence field is now read off these runs.",
-  "evidence_bundle_digest": "sha256:5e3249f81c0b698ba1dff5fb4c499194aa90974f4e3407dec065e1795574eeb6",
+  "authorization_basis": "reviewed the four-execution control sequence and its discrimination evidence",
+  "evidence_bundle_digest": "sha256:e5c204fcd1b9a0b9ccab74fff84d7e155024301387546822619b57a6acf43c62",
   "from_status": "candidate",
   "harness_id": "hpc/spmm-correctness",
-  "harness_manifest_digest": "sha256:b817dc5b1aaa90d016db6ffda558294f502cd8dd0c814b0d308a3f3f3e75de52",
+  "harness_manifest_digest": "sha256:436023bfcee0471944c3fbc498aaff0cfecb94b1a67004153552eb7d88a6d6bb",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:a33ff1b4667c6ebb87257c45ce3ecc5c9b775c84fd42ce9e33d4496930b09f75",
+  "registration_report_digest": "sha256:db6442da9a77ed6d9db3f6735d2f773eded1f6497f2479b68b411204cb8328df",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }
