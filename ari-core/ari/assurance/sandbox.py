@@ -247,5 +247,27 @@ def network_record() -> dict:
     }
 
 
-__all__ = ["SandboxUnavailable", "landlock_abi", "network_record", "restrict_to",
-           "sandbox_record"]
+#: The observation, taken once. A process does not change network namespace, so
+#: repeating the probe cannot learn anything the first one did not -- and it is
+#: not free: on a ROUTED host the connect() runs to its timeout, measured at a
+#: median of 250.5 ms against 0.023 ms for the filesystem record beside it.
+_OBSERVED: dict | None = None
+
+
+def observed_network() -> dict:
+    """``network_record`` for THIS process, computed once and reused.
+
+    WHY IT IS CACHED, and why that does not weaken it. The record answers what
+    the calling process can reach, and a process stays in the namespace it was
+    started in -- so the second launch's answer is the first launch's answer.
+    What repeating it did buy was 250 ms of wall clock per launch, and that had
+    a consequence far worse than the delay; see ``run_timed``.
+    """
+    global _OBSERVED
+    if _OBSERVED is None:
+        _OBSERVED = network_record()
+    return dict(_OBSERVED)
+
+
+__all__ = ["SandboxUnavailable", "landlock_abi", "network_record",
+           "observed_network", "restrict_to", "sandbox_record"]

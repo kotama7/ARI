@@ -1135,6 +1135,28 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
     # kernel time no matter what the child writes. This does not floor a
     # measurement, it refuses one: a credit below what the wall clock allows is
     # not a fast kernel, it is a number that did not come from this run.
+    # THE NETWORK OBSERVATION IS TAKEN HERE, BEFORE THE CLOCK STARTS, and the
+    # placement of these two lines is the whole of a defect I shipped.
+    #
+    # It was inside the timed region, at the sandbox record below. On a routed
+    # host its connect() runs to timeout -- 250.5 ms median against 0.023 ms for
+    # the filesystem record -- so every launch carried a 250 ms CONSTANT in
+    # ``wall``, and therefore in ``overhead``.
+    #
+    # That constant lands in a RATIO. The self-timing forgery guard is
+    # ``over_cand > over_ref * MAX_OVERHEAD_RATIO``, and it works because the
+    # reference's overhead is a live calibration for the candidate's -- the
+    # docstring of the test that holds it says "no constant, no assumption about
+    # the host". Adding the same constant to both terms pulls the ratio toward
+    # one. MEASURED on this node: a kernel that times itself and writes a
+    # fraction of it scored VERDICT PASS. The guard did not weaken, it stopped.
+    #
+    # Before the clock and once per process: the answer cannot change between
+    # launches of one process, so nothing is lost by not repeating it, and
+    # nothing of it reaches ``wall``.
+    from ari.assurance.sandbox import observed_network
+
+    _network = observed_network()
     _load_before = run_queue_length()
     started = time.perf_counter()
     argv = [*launcher, str(exe), str(problem), str(out_path), str(timing)]
@@ -1159,16 +1181,16 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
     # So: probe in the parent. If this kernel CAN enforce it, the child must --
     # a failure in preexec_fn propagates and kills the launch. If it cannot, no
     # attempt is made and ``sandbox_status`` says the run was unprotected.
-    from ari.assurance.sandbox import (SandboxUnavailable, network_record,
-                                       restrict_to, sandbox_record)
+    from ari.assurance.sandbox import (SandboxUnavailable, restrict_to,
+                                       sandbox_record)
 
     status = sandbox_record(out_path.parent)
-    # OBSERVED IN THE PARENT, at the same point and for the same reason: this
-    # process is in the namespace the child will inherit, so what it can reach
-    # is what the child can reach. Recorded whatever the answer -- a launch that
-    # was NOT isolated has to be able to say so, which is the whole difference
-    # between this and reading the request back.
-    status.update(network_record())
+    # OBSERVED IN THE PARENT, because this process is in the namespace the child
+    # will inherit, so what it can reach is what the child can reach. Recorded
+    # whatever the answer -- a launch that was NOT isolated has to be able to say
+    # so, which is the whole difference between this and reading the request
+    # back. Taken above, before the clock, for the reason written there.
+    status.update(_network)
     if status.get("filesystem_isolation"):
         def _restrict():                    # pragma: no cover - runs post-fork
             restrict_to(out_path.parent)    # no except: fail closed

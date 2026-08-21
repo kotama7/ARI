@@ -26,6 +26,7 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -151,3 +152,60 @@ def test_no_shipped_bundle_claims_more_than_it_observed(harness, bundle) -> None
             f"{harness} declares network_isolation: proved and "
             f"{observed.count(False)} of its {len(observed)} runs recorded that "
             f"they could reach a network")
+
+
+# --- the observation must not pay for itself out of the forgery guard ---------
+
+def test_the_observation_is_taken_once_and_before_the_clock() -> None:
+    """A CONSTANT IN A RATIO DISABLES THE GUARD IT LANDS IN, and I shipped one.
+
+    The first version took this record inside ``run_timed``'s timed region. On a
+    routed host the connect() runs to its timeout -- 250.5 ms median, against
+    0.023 ms for the filesystem record beside it -- so every launch carried a
+    250 ms constant in ``wall`` and therefore in ``overhead``.
+
+    The self-timing forgery guard is ``over_cand > over_ref * MAX_OVERHEAD_RATIO``
+    and it works because the reference's overhead is a live calibration for the
+    candidate's; the test that holds it says so in its own docstring: "no
+    constant, no assumption about the host". Adding the same constant to both
+    terms pulls the ratio toward one. MEASURED: a kernel that times itself and
+    writes a fraction of it went from refused to VERDICT PASS. Reinstating a
+    250 ms sleep in that region reproduces it exactly.
+
+    Two properties keep it out, and both are checked here rather than trusted:
+    the record is computed once per process, and it is taken before the clock
+    that ``overhead`` is derived from starts.
+    """
+    import inspect
+
+    from ari.assurance import native_perf_common
+    from ari.assurance.sandbox import observed_network
+
+    first, second = observed_network(), observed_network()
+    assert first == second
+    started = time.perf_counter()
+    for _ in range(5):
+        observed_network()
+    assert (time.perf_counter() - started) < 0.05, (
+        "a repeated observation is paying the probe again, and every launch "
+        "would carry it")
+
+    source = inspect.getsource(native_perf_common.run_timed)
+    where_observed = source.index("observed_network()")
+    where_clock = source.index("started = time.perf_counter()")
+    assert where_observed < where_clock, (
+        "the observation is taken inside the region wall time is measured over, "
+        "so its cost becomes overhead and lands in the forgery guard's ratio")
+
+
+def test_the_uncached_probe_is_still_available_and_still_honest() -> None:
+    """Caching must not become the only way to ask.
+
+    ``network_record`` is what a caller uses to observe a namespace it has just
+    entered -- the test above that runs it inside ``unshare -rn`` depends on
+    getting a fresh answer, and a cached one would report the parent's.
+    """
+    from ari.assurance.sandbox import network_record, observed_network
+
+    assert network_record.__doc__ and observed_network.__doc__
+    assert set(network_record()) == set(observed_network())
