@@ -2371,3 +2371,170 @@ def test_effective_directives_stay_silent_without_a_second_side(tmp_path):
         used={key: ZERO_SHA256 for key in KCA_FROZEN_DIGESTS},
     )
     assert not sentinel & {"CK-KNW-013", "CK-KNW-014"}
+
+
+def _kca_harness_boundary_codes(
+    tmp_path, *, assurance_mode="enforce", **node_fields
+):
+    """Drive the PRODUCTION per-node K/C/A path over a node carrying
+    *node_fields* as its recorded assurance outcome, and return the CK-HAR
+    codes raised.
+
+    Enters at ``_kca_reports_for_node`` -- the real fan-out that
+    ``run_per_node_kernel_check`` calls -- so ``result_overridden`` can only
+    come from the runtime's own producer reading those recorded fields, never
+    from this test.
+    """
+    from types import SimpleNamespace
+
+    from ari.rqgm.kernel import ConstitutionalKernel
+    from ari.rqgm.runtime import RQGMRuntime
+
+    node_root = tmp_path / "rqgm" / "kca" / "nodes" / "n1"
+    node_root.mkdir(parents=True, exist_ok=True)
+    admission = SimpleNamespace(
+        knowledge_skill_lock_digest=None,
+        capability_binding_lock_digest=None,
+        verification_contract_digest="",
+        verification_environment_digest=None,
+        active_harness_lock_digest=None,
+        baseline_harness_lock_digest="sha256:" + "f" * 64,
+        modes=SimpleNamespace(assurance=assurance_mode),
+    )
+    rt = RQGMRuntime.__new__(RQGMRuntime)
+    rt.checkpoint_dir = tmp_path
+    rt._admission_artifacts = SimpleNamespace(documents={})
+    rt._capability_authorization_view = None
+    node = SimpleNamespace(
+        id="n1", attestation_refs=(), verified_target_digest="", **node_fields
+    )
+    reports = rt._kca_reports_for_node(
+        ConstitutionalKernel(), admission, node, "n1"
+    )
+    return {
+        v.code
+        for report in reports
+        for v in report.violations
+        if v.code.startswith("CK-HAR-")
+    }
+
+
+def test_result_overridden_comes_from_the_run_not_from_a_caller(tmp_path):
+    """CK-HAR-019 fires when a node's own assurance records contradict the
+    fixed verdict they carry, and stays silent when they agree.
+
+    ``result_overridden`` had no producer anywhere in production: the only
+    values that ever reached CK-HAR-019 were literals set by the evaluation
+    fixture, which made the rule inert in a real run.  The runtime now derives
+    it from what the assurance bridge actually recorded on the node, so every
+    assertion below is a claim about what the run did.
+
+    Two independent contradictions, because an override can land on either
+    field: the aggregate status can be rewritten better than the per-property
+    verdicts it was built from, or the frontier class can promote a verdict
+    that is not a pass.
+    """
+    promoted = _kca_harness_boundary_codes(
+        tmp_path / "promoted",
+        assurance_status="fail",
+        property_verdicts={"numerical-equivalence": "fail"},
+        frontier_class="scientific_frontier",
+    )
+    assert "CK-HAR-019" in promoted, (
+        "a failed verdict standing on the scientific frontier is an ignored "
+        "verdict"
+    )
+
+    debugged = _kca_harness_boundary_codes(
+        tmp_path / "debugged",
+        assurance_status="fail",
+        property_verdicts={"numerical-equivalence": "fail"},
+        frontier_class="debug_frontier",
+    )
+    assert "CK-HAR-019" not in debugged, (
+        "the same failure routed where the bridge routes it is an ordinary "
+        "failed experiment, not a constitutional violation"
+    )
+
+    claimed = _kca_harness_boundary_codes(
+        tmp_path / "claimed",
+        assurance_status="pass",
+        property_verdicts={"numerical-equivalence": "fail"},
+        frontier_class="scientific_frontier",
+    )
+    assert "CK-HAR-019" in claimed, (
+        "an aggregate status better than the verdicts it was built from is a "
+        "fail restated as a success"
+    )
+
+    honest = _kca_harness_boundary_codes(
+        tmp_path / "honest",
+        assurance_status="pass",
+        property_verdicts={"numerical-equivalence": "pass"},
+        frontier_class="scientific_frontier",
+    )
+    assert "CK-HAR-019" not in honest, (
+        "a node whose status matches its verdicts overrode nothing"
+    )
+
+
+def test_result_overridden_exempts_the_states_the_bridge_creates(tmp_path):
+    """The three exemptions are states the assurance bridge produces on
+    purpose, and CK-HAR-019 is ``block`` -- firing on one would mark a
+    correctly-classified node ``tampered``.
+
+    A quality-only failure belongs on the scientific frontier by design (a
+    correct answer that is slower than the reference is the finding);
+    ``audit`` posture puts EVERY status there; and an infrastructure error is
+    broken machinery rather than a suppressed verdict.  Each exemption is
+    matched against the neighbouring state that must still fire, so the
+    exemption cannot silently widen into a hole.
+    """
+    quality = _kca_harness_boundary_codes(
+        tmp_path / "quality",
+        assurance_status="fail",
+        property_verdicts={"performance-regression": "fail"},
+        frontier_class="scientific_frontier",
+    )
+    assert "CK-HAR-019" not in quality
+
+    mixed = _kca_harness_boundary_codes(
+        tmp_path / "mixed",
+        assurance_status="fail",
+        property_verdicts={
+            "performance-regression": "fail", "numerical-equivalence": "fail",
+        },
+        frontier_class="scientific_frontier",
+    )
+    assert "CK-HAR-019" in mixed, (
+        "one correctness failure beside the quality failure ends the exemption"
+    )
+
+    audited = _kca_harness_boundary_codes(
+        tmp_path / "audited",
+        assurance_mode="audit",
+        assurance_status="fail",
+        property_verdicts={"numerical-equivalence": "fail"},
+        frontier_class="scientific_frontier",
+    )
+    assert "CK-HAR-019" not in audited
+
+    infrastructure = _kca_harness_boundary_codes(
+        tmp_path / "infrastructure",
+        assurance_status="infrastructure_error",
+        property_verdicts={"numerical-equivalence": "fail"},
+        frontier_class="uncertified_frontier",
+    )
+    assert "CK-HAR-019" not in infrastructure
+
+    infrastructure_promoted = _kca_harness_boundary_codes(
+        tmp_path / "infrastructure_promoted",
+        assurance_status="infrastructure_error",
+        property_verdicts={"numerical-equivalence": "fail"},
+        frontier_class="scientific_frontier",
+    )
+    assert "CK-HAR-019" in infrastructure_promoted, (
+        "the enforce-mode fail-open path writes uncertified_frontier, so an "
+        "infrastructure error found on the scientific frontier was put there "
+        "by something else"
+    )

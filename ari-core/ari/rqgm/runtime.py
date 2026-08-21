@@ -3016,6 +3016,122 @@ class RQGMRuntime:
                 return candidate
         return {}
 
+    @staticmethod
+    def _fixed_verdict_overridden(admission, node) -> bool:
+        """Derive the CK-HAR-019 ``result_overridden`` signal from what the run
+        recorded about its own fixed verdict.
+
+        ``result_overridden`` had no producer: every value that ever reached
+        CK-HAR-019 was a literal set by the evaluation fixture, so the rule was
+        inert in a real run.  Everything read here is already on the node by
+        the time ``run_per_node_kernel_check`` runs -- ``assure_node`` is
+        called earlier in the same node turn -- and none of it comes from a
+        caller.
+
+        NOT the adversarial engine's ``fixed_verifier_claim_contradiction``.
+        That pre-signal greps the node's free text for a correctness claim
+        standing beside a failing Attestation.  It is a fine attention cue for
+        the replay pool, which only RECORDS it, but it is sign-blind -- an
+        honest evaluator writing "not numerically equivalent" matches the same
+        pattern as a liar writing "numerically equivalent" -- and CK-HAR-019 is
+        ``block``: firing it marks the node ``tampered`` and strips it from the
+        frontier.  Driving that from a regex over prose would turn an ordinary
+        failed experiment into a constitutional violation, which is precisely
+        what this check exists to avoid (plan 20 criterion 41).  So the same
+        accusation is made structurally, against records the assurance bridge
+        wrote:
+
+        1. THE STATUS IS BETTER THAN ITS OWN EVIDENCE.  ``assure``/``certify``
+           set ``assurance_status`` to the WORST of the per-property verdicts
+           they record beside it (``max`` over ``_VERDICT_RANK``), so the two
+           cannot disagree while the bridge is the one writing.  A status
+           ranking better than the worst verdict it carries means something
+           rewrote the aggregate after the verdict was fixed -- "claiming fail
+           as success" in the records instead of in the prose.
+        2. A NON-PASS VERDICT STANDS ON THE SCIENTIFIC FRONTIER.  This is the
+           engine's ``verifier_result_ignored`` predicate, and it does
+           transfer: ``_frontier`` never puts a non-pass verdict there outside
+           the exemptions below, so finding one there means the classification
+           was overwritten -- the fail was ignored rather than restated.
+
+        The two are complementary, not redundant.  An override landing on the
+        status hides from (2), because the status then reads ``pass``; an
+        override landing only on the frontier class leaves the status
+        consistent with its evidence and hides from (1).
+
+        EXEMPTIONS, each one a state the bridge itself produces on purpose:
+
+        * ``_QUALITY_PROPERTIES``.  ``_frontier`` deliberately routes a
+          candidate that failed ONLY quality properties to the scientific
+          frontier: a correct answer that is slower than the reference is the
+          finding itself, not a defect to debug.  That is the designed
+          outcome, not an override, and without this exemption CK-HAR-019
+          would mark most of the first generations ``tampered`` -- every
+          correct-but-not-yet-faster candidate.  It is read from the bridge
+          rather than restated here so the exemption cannot drift away from
+          the rule that creates the state it excuses.
+        * ``assurance`` admission mode ``audit``.  In that posture
+          ``_frontier`` returns ``scientific_frontier`` for EVERY status by
+          design, and ``assure_node``'s fail-open path does the same.  Such a
+          report is not enforced, but it is still written to the audit log --
+          a standing false positive on every non-pass node, on the one code
+          that flags a suppressed verdict.
+        * ``infrastructure_error``, for predicate (1) only.  When the bridge
+          raises part-way through ``certify``, ``certify_node`` rewrites the
+          status to ``infrastructure_error`` while the per-property verdicts
+          already merged into the node stay behind, manufacturing exactly the
+          mismatch (1) looks for.  Broken machinery is not a suppressed
+          verdict (plan 20 criterion 40).  Predicate (2) keeps running over
+          it: that same fail-open path writes ``uncertified_frontier``
+          whenever the mode is not ``audit``, so an infrastructure error found
+          on the SCIENTIFIC frontier was put there by something else.
+        """
+
+        from ari.rqgm.assurance_bridge import (
+            _QUALITY_PROPERTIES,
+            _VERDICT_RANK,
+        )
+
+        status = str(getattr(node, "assurance_status", "") or "")
+        if not status:
+            return False
+        verdicts = {
+            str(name): str(verdict)
+            for name, verdict in (
+                getattr(node, "property_verdicts", None) or {}
+            ).items()
+        }
+        ranked = [
+            _VERDICT_RANK[verdict]
+            for verdict in verdicts.values()
+            if verdict in _VERDICT_RANK
+        ]
+        # (1) Skipped rather than guessed when a verdict word is outside the
+        # bridge's ranking -- an unrankable pair says nothing about order.
+        if (
+            status != "infrastructure_error"
+            and status in _VERDICT_RANK
+            and ranked
+            and len(ranked) == len(verdicts)
+            and _VERDICT_RANK[status] < max(ranked)
+        ):
+            return True
+        # (2)
+        if status == "pass":
+            return False
+        frontier = str(getattr(node, "frontier_class", "") or "")
+        if frontier != "scientific_frontier":
+            return False
+        modes = getattr(admission, "modes", None)
+        if str(getattr(modes, "assurance", "") or "") == "audit":
+            return False
+        failed = {
+            name for name, verdict in verdicts.items() if verdict == "fail"
+        }
+        if status == "fail" and failed and failed <= _QUALITY_PROPERTIES:
+            return False
+        return True
+
     def _kca_harness_reports(self, kernel, admission, node, node_root: Path):
         if not admission.baseline_harness_lock_digest:
             return []
@@ -3027,6 +3143,9 @@ class RQGMRuntime:
                 getattr(node, "verified_target_digest", "") or ""
             ) or None,
             "active_harness_lock_digest": admission.active_harness_lock_digest,
+            "result_overridden": self._fixed_verdict_overridden(
+                admission, node
+            ),
         }
         paths = sorted(set(
             str(item) for item in getattr(node, "attestation_refs", ()) or ()
