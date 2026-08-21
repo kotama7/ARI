@@ -45,6 +45,31 @@ def repository_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def modified_paths() -> frozenset[str]:
+    """Repo-relative paths the working tree has changed and no commit contains.
+
+    Beside ``repository_commit`` because it asks git the same question for the
+    same reason: a digest of uncommitted bytes is a pin nothing can satisfy, in
+    exactly the way a source pin taken over a dirty tree names a commit whose
+    bytes are not the bytes that were measured.
+
+    Empty when git cannot be reached, because "no answer" must not read as "the
+    tree is dirty" and stop a caller that is merely running outside a checkout.
+    Callers that need certainty use ``repository_commit``, which refuses.
+    """
+    root = repository_root()
+    try:
+        status = subprocess.run(["git", "-C", str(root), "status", "--porcelain",
+                                 "--untracked-files=no"],
+                                capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return frozenset()
+    if status.returncode != 0:
+        return frozenset()
+    return frozenset(line[3:].strip() for line in status.stdout.splitlines()
+                     if line.strip())
+
+
 def repository_commit(*, allow_dirty: bool = False) -> str:
     """HEAD, and only if the tree is clean.
 

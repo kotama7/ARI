@@ -89,6 +89,44 @@ _DECLARED_BY_THE_OLD_PROMOTION = {
 _EVIDENCE_MODELS = {"HarnessRegistrationEvidenceV1", "HarnessPromotionApprovalV1"}
 
 
+@pytest.fixture(autouse=True)
+def _a_committed_tree(monkeypatch):
+    """These tests are about the surface, not about this checkout's cleanliness.
+
+    ``repin`` refuses to write a pin computed from uncommitted bytes, so every
+    test that exercises the write path would otherwise pass or fail on whether
+    someone happens to have an edit open in a covered file. The guard has its
+    own tests below and they opt IN by patching this the other way.
+    """
+    monkeypatch.setattr(repin_module, "dirty_covered_paths", lambda: [])
+
+
+def _requires_pins_current_against_the_working_tree() -> None:
+    """Skip where a covered file is uncommitted, because then nothing can pass.
+
+    Three tests below compare a re-pin against the SHIPPED manifest, which only
+    holds while that manifest pins the bytes the working tree has. With an edit
+    open in a file a derived pin is computed from, the shipped manifest is by
+    definition not those bytes -- so the assertion is about whose editor is
+    open, not about the surface. Asserting there reported a defect in this
+    module for a condition outside it, which is how a guard stops being read.
+
+    Deliberately NOT the patched ``dirty_covered_paths``: the autouse fixture
+    tells the SURFACE the tree is committed so the write path can be exercised,
+    and this has to ask the real question.
+    """
+    from ari.assurance.registration_run import modified_paths
+
+    changed = set(modified_paths())
+    covered = {str(path.relative_to(repin_module.REPO_ROOT))
+               for path in repin_module.covered_paths()}
+    dirty = sorted(changed & covered)
+    if dirty:
+        pytest.skip(f"{len(dirty)} file(s) a derived pin is computed from are "
+                    f"uncommitted, so no manifest can pin the working bytes and "
+                    f"the committed ones at once")
+
+
 def _forbid_writes(monkeypatch) -> None:
     """Any filesystem mutation from here on is a test failure, not a diff."""
 
@@ -332,6 +370,7 @@ def test_check_mode_reports_pins_and_writes_nothing(monkeypatch, capsys) -> None
     Exit 1 on drift is the hook's signal and is not an error here: whether a pin
     happens to be stale at HEAD is a fact about the tree, not about this mode.
     """
+    _requires_pins_current_against_the_working_tree()
     _forbid_writes(monkeypatch)
     code = repin_module.main(["check", "--json"])
     assert code in (0, 1)
@@ -366,6 +405,7 @@ def test_a_drifted_driver_digest_is_still_repairable() -> None:
     the registered manifest exactly -- every derived pin AND the digest over
     them -- or the repair is a different manifest wearing the same id.
     """
+    _requires_pins_current_against_the_working_tree()
     shipped = _shipped()
     assert not repin_module.stale_pins(shipped), (
         "this test compares a repair against the registered bytes, so it needs "
@@ -409,6 +449,7 @@ def test_the_re_pin_mode_writes_the_manifest_and_nothing_else(
     Exit 3 is "re-pinned, now commit": the gate report refuses a dirty tree, so
     it cannot run in the same invocation as the write that dirtied it.
     """
+    _requires_pins_current_against_the_working_tree()
     builtin = tmp_path / "builtin"
     builtin.mkdir()
     shipped = _shipped()
@@ -453,6 +494,7 @@ def test_a_passing_gate_report_still_writes_no_evidence(
     committer cannot promise. The gates it would run are pinned elsewhere; what
     is pinned here is what happens AFTER they pass.
     """
+    _requires_pins_current_against_the_working_tree()
     builtin = tmp_path / "builtin"
     builtin.mkdir()
     shipped = _shipped()
@@ -539,6 +581,7 @@ def test_the_generated_revisions_are_still_skipped(monkeypatch, capsys) -> None:
     blocking gate turns into three harnesses nobody can commit against, which is
     why the branch exists; splitting the two findings apart must not resurrect it.
     """
+    _requires_pins_current_against_the_working_tree()
     _forbid_writes(monkeypatch)
     code = repin_module.main(["check"])
     out = capsys.readouterr().out
@@ -563,3 +606,57 @@ def test_repin_refuses_an_unreadable_artifact_instead_of_claiming_progress(
     assert code == 5, out
     assert "will not load" in out and "file to repair" in out
     assert not written, f"it wrote {written} while refusing"
+
+
+# --- a pin is computed from bytes, so the bytes have to be in a commit --------
+
+def test_repin_refuses_to_pin_bytes_no_commit_contains(monkeypatch, capsys) -> None:
+    """THE DEFECT. This surface refused a dirty tree for the gate REPORT and
+    wrote the pin itself from whatever the working tree held.
+
+    MEASURED: one uncommitted edit to a file the perf digest covers put that
+    working-tree digest into two manifests; the commit was clean; ``check``
+    agreed with them afterwards, because it recomputes from the same working
+    bytes; and a checkout of that commit produced a different digest, so promote
+    refused on the far side with "pins a digest the code no longer has". A pin
+    no checkout can satisfy is worse than a stale one -- the stale one is
+    detected.
+    """
+    monkeypatch.setattr(repin_module, "dirty_covered_paths",
+                        lambda: ["ari-core/ari/assurance/native_perf_common.py"])
+    _forbid_writes(monkeypatch)
+    code = repin_module.main(["repin", MANIFEST_NAME])
+    out = capsys.readouterr().out
+    assert code == 6, out
+    assert "no commit contains" in out
+    assert "native_perf_common.py" in out
+
+
+def test_check_says_when_its_answer_is_about_the_working_tree(
+    monkeypatch, capsys
+) -> None:
+    """check recomputes from the working tree, and could not tell anyone so.
+
+    It is the pre-commit gate, so it must not refuse merely because the tree is
+    dirty -- that is a fact about the tree and not about the pins. What it can
+    do is stop letting "every manifest pins the code it is measured by" be read
+    as a statement about a commit when it is not.
+    """
+    monkeypatch.setattr(repin_module, "dirty_covered_paths",
+                        lambda: ["ari-core/ari/assurance/native_perf_common.py"])
+    _forbid_writes(monkeypatch)
+    repin_module.main(["check"])
+    out = capsys.readouterr().out
+    assert "not about any commit" in out
+
+
+def test_the_covered_set_is_observed_and_not_listed(monkeypatch) -> None:
+    """dirty_covered_paths must ask the digest functions what they read.
+
+    A hand-kept list of covered files drifts exactly the way the manifests did,
+    and it drifts silently: a path missing from it simply stops being guarded.
+    """
+    covered = repin_module.covered_paths()
+    assert len(covered) > 20, f"only {len(covered)} covered paths"
+    names = {path.name for path in covered}
+    assert "perf.py" in names and "sandbox.py" in names, sorted(names)[:12]

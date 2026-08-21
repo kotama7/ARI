@@ -336,6 +336,16 @@ def check(args) -> int:
         for where, reason in sorted(unreadable.items()):
             print(f"  {where} does not name a stale digest: the artifact behind "
                   f"it will not load -- {reason}")
+        # WHAT THIS MODE CANNOT SEE. It recomputes from the WORKING tree, so a
+        # manifest pinned against an uncommitted edit agrees with it and reads
+        # as current -- which is how a commit came to name a driver digest no
+        # checkout of it could produce. Saying so is not a refusal: whether the
+        # working tree is clean is a fact about the tree, not about the pins,
+        # and this mode is the pre-commit gate.
+        if dirty_covered_paths():
+            print(f"note: {len(dirty_covered_paths())} file(s) a derived pin is "
+                  f"computed from are uncommitted, so these answers are about "
+                  f"the working tree and not about any commit")
         print(f"{len(findings)} manifest(s) pin a digest the code no longer has"
               if findings else "every manifest pins the code it is measured by")
     return 1 if findings else 0
@@ -353,6 +363,18 @@ def paths(args) -> int:
     ``kernels/**`` reaches this through the glob perf_driver_digest walks, so a
     new kernel source is covered without anyone remembering.
     """
+    from ari.assurance.drivers.native import native_driver_digest
+    from ari.assurance.drivers.perf import perf_driver_digest
+    from ari.assurance.drivers.problem_correctness import (
+        problem_correctness_driver_digest)
+
+    for path in sorted(covered_paths()):
+        print(path.relative_to(REPO_ROOT))
+    return 0
+
+
+def covered_paths() -> set[Path]:
+    """Every file a derived pin is computed from."""
     from ari.assurance.drivers.native import native_driver_digest
     from ari.assurance.drivers.perf import perf_driver_digest
     from ari.assurance.drivers.problem_correctness import (
@@ -376,9 +398,31 @@ def paths(args) -> int:
         root = HARNESS_ROOT / tree
         if root.is_dir():
             covered |= {p for p in root.rglob("*") if p.is_file()}
-    for path in sorted(covered):
-        print(path.relative_to(REPO_ROOT))
-    return 0
+    return covered
+
+
+def dirty_covered_paths() -> list[str]:
+    """Covered files the working tree has changed and no commit contains.
+
+    A DIGEST OF UNCOMMITTED BYTES IS A PIN NOTHING CAN SATISFY. ``repin`` refused
+    a dirty tree for the gate REPORT and wrote the pin itself from whatever the
+    working tree happened to hold. Measured: with one uncommitted edit to a file
+    the perf digest covers, this surface wrote that digest into the manifest,
+    committed cleanly, and ``check`` then agreed with it -- because ``check``
+    recomputes from the same working bytes. The commit named a driver digest no
+    checkout of it can produce, and promote refused on the far side with "pins a
+    digest the code no longer has".
+    """
+    # ASKED THROUGH registration_run, NOT THROUGH subprocess HERE. This module
+    # is held to importing none of os, shutil, subprocess or tempfile, because
+    # they reach the filesystem by names ``str`` also has and the write scan
+    # over this file could then no longer tell a write from a substitution.
+    # The question is git's either way, so it is asked where git already lives.
+    from ari.assurance.registration_run import modified_paths
+
+    changed = set(modified_paths())
+    covered = {str(path.relative_to(REPO_ROOT)) for path in covered_paths()}
+    return sorted(changed & covered)
 
 
 def _files_read_by(digest_fn) -> set[Path]:
@@ -478,6 +522,24 @@ def repin_manifests(args) -> int:
     registrable again", which is what you want to know before spending container
     time on the surface that can actually re-register it.
     """
+    # A PIN IS COMPUTED FROM BYTES, SO THE BYTES HAVE TO BE IN A COMMIT. This
+    # surface refused a dirty tree for the gate report and then wrote the pin
+    # from whatever the working tree held. Measured: one uncommitted edit to a
+    # covered file put its digest into two manifests, the commit was clean, and
+    # ``check`` agreed with them afterwards because it recomputes from the same
+    # working bytes -- while a checkout of that commit produced a different
+    # digest and promote refused on the far side. A pin no checkout can satisfy
+    # is worse than a stale one: the stale one is detected.
+    dirty = dirty_covered_paths()
+    if dirty and not args.dry_run:
+        print(f"REFUSED: {len(dirty)} file(s) a derived pin is computed from are "
+              f"modified and uncommitted:")
+        for path in dirty:
+            print(f"  {path}")
+        print("A pin taken here would name bytes no commit contains. Commit or "
+              "stash them, or re-pin from a clean checkout.")
+        return 6
+
     loaded, needs_commit = [], []
     for name in args.manifests:
         path = BUILTIN / name
