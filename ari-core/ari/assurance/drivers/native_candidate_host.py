@@ -16,6 +16,14 @@ from pathlib import Path
 
 from ari.assurance.drivers.shared_library import (  # noqa: E402
     abi_adapter_kinds, run_shared_library)
+# IMPORTED AT THE TOP, and it has to be. Landlock is applied inside ``main``
+# before the candidate runs, and it excludes the verifier's own files -- so an
+# import issued after the restriction is denied. MEASURED: importing this one
+# lazily beside its first use produced
+# "PermissionError: ... Permission denied: .../assurance/sandbox.py" and turned
+# every case into a candidate failure. The restriction working is exactly why
+# the module has to be resident before it is applied.
+from ari.assurance.sandbox import observed_network  # noqa: E402
 
 
 _SYS_LANDLOCK_CREATE_RULESET = 444
@@ -69,7 +77,7 @@ def _handled_access(abi: int) -> int:
     return access
 
 
-def _restrict_candidate_filesystem(library: str) -> None:
+def _restrict_candidate_filesystem(library: str) -> int:
     """Fail closed into a Landlock view that excludes verifier/oracle files."""
 
     if os.uname().machine not in {"x86_64", "aarch64", "riscv64"}:
@@ -137,6 +145,9 @@ def _restrict_candidate_filesystem(library: str) -> None:
         _syscall(libc, _SYS_LANDLOCK_RESTRICT_SELF, ruleset_fd, ctypes.c_uint(0))
     finally:
         os.close(ruleset_fd)
+    # The ABI actually negotiated, handed back so the record says which
+    # Landlock this kernel enforced rather than that some Landlock did.
+    return abi
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -150,9 +161,32 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         case = json.loads(sys.stdin.read())
-        _restrict_candidate_filesystem(args.library)
+        # OBSERVED BEFORE THE RESTRICTION, and it has to be. The probe opens a
+        # socket and reads /proc/self/net/dev, and Landlock excludes the
+        # verifier's view -- MEASURED, taking it afterwards produced
+        # "Permission denied: .../python3.13/socket.py" and turned every case
+        # into a candidate failure. Landlock does not touch a network
+        # namespace, so before and after are the same answer; only one of them
+        # can be reached.
+        network = observed_network()
+        abi = _restrict_candidate_filesystem(args.library)
+        # WHAT THIS CHILD RAN UNDER, observed in the process the candidate is
+        # about to be called in. The filesystem half is a PRECONDITION here and
+        # not a finding: the call above fails closed, so a candidate never runs
+        # unrestricted and "True" is the only value that can reach this line.
+        # It is recorded anyway so a reader does not have to know that.
+        #
+        # The network half is a genuine observation and was missing entirely.
+        # This family's registration evidence declared network_isolation from
+        # the REQUEST, like the others did, and had nothing to derive it from.
+        sandbox = {"filesystem_isolation": True, "mechanism": "landlock",
+                   "landlock_abi": abi,
+                   "does_not_restrict": ["fork", "cpu", "network-by-itself",
+                                         "memory"]}
+        sandbox.update(network)
         result = run_shared_library(args.kind, args.library, case)
-        sys.stdout.write(json.dumps({"ok": True, "result": result}, allow_nan=True))
+        sys.stdout.write(json.dumps({"ok": True, "result": result,
+                                     "sandbox": sandbox}, allow_nan=True))
         return 0
     except Exception as exc:
         sys.stdout.write(

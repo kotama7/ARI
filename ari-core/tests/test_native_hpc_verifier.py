@@ -343,7 +343,21 @@ def test_candidate_host_landlock_hides_oracle_source(tmp_path):
         env=environment,
     )
     assert completed.returncode == 0, completed.stdout
-    assert json.loads(completed.stdout) == {"ok": True, "result": [6.0]}
+    envelope = json.loads(completed.stdout)
+    # THE CONTRACT, not the exact shape. This compared the whole envelope for
+    # equality, so adding the record of what the launch ran under failed a test
+    # about Landlock hiding the oracle -- a guard reporting a defect in the
+    # thing it is not watching. What it is for is that the candidate ran, was
+    # restricted, and returned the right answer.
+    assert envelope["ok"] is True
+    assert envelope["result"] == [6.0]
+    # AND THE RESTRICTION IT RAN UNDER, recorded rather than inferred from the
+    # absence of an error. Only True can reach here: the host fails closed, so
+    # a candidate that was not restricted never returns a result at all.
+    assert envelope["sandbox"]["filesystem_isolation"] is True
+    assert envelope["sandbox"]["mechanism"] == "landlock"
+    assert isinstance(envelope["sandbox"]["landlock_abi"], int)
+    assert "network_isolation" in envelope["sandbox"]
 
 
 def test_shared_library_import_does_not_preload_oracle_modules():
@@ -368,13 +382,28 @@ def test_shared_library_import_does_not_preload_oracle_modules():
     assert completed.returncode == 0, completed.stderr
 
 
+def _failing_report():
+    """A real report, because the worker now re-creates one.
+
+    The stub here was a SimpleNamespace with a model_dump_json lambda, which was
+    enough while the worker only serialised what it was handed. It re-creates
+    the report to attach the record of what the launches ran under -- a field
+    neither half can fill alone, since the family never launches and the worker
+    never verifies -- so a stand-in has to be the model.
+    """
+    from ari.assurance.native_hpc_common import NativeHPCVerificationReportV1
+
+    return NativeHPCVerificationReportV1.create(
+        kind="gemm", tier="screen", verdict="fail", case_results=(),
+        categories_covered=(), deterministic=True, oracle="test-oracle",
+        error_model="test", negative_control=False, sandbox={})
+
+
 def test_native_worker_scientific_fail_is_a_completed_process(monkeypatch, capsys):
     monkeypatch.setattr(
         native_worker,
         "verify_native_hpc",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            model_dump_json=lambda: '{"verdict":"fail"}'
-        ),
+        lambda *_args, **_kwargs: _failing_report(),
     )
 
     status = native_worker.main(
@@ -391,4 +420,13 @@ def test_native_worker_scientific_fail_is_a_completed_process(monkeypatch, capsy
     )
 
     assert status == 0
-    assert json.loads(capsys.readouterr().out) == {"verdict": "fail"}
+    # THE CLAIM, not the whole document. This compared the emitted report for
+    # equality against a two-key stub, so any field the worker legitimately adds
+    # fails a test about exit status. What it holds is that a scientifically
+    # wrong candidate leaves a COMPLETED process carrying a fail verdict, with
+    # non-zero status reserved for substrate failure.
+    emitted = json.loads(capsys.readouterr().out)
+    assert emitted["verdict"] == "fail"
+    assert emitted["schema_version"] == "ari.native-hpc-verification-report/v1"
+    # And the worker attached what it launched under, which only it can know.
+    assert "sandbox" in emitted
