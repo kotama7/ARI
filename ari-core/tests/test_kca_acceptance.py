@@ -188,7 +188,8 @@ def test_evidence_clerk_attestation_validation(tmp_path):
     its named reason, and the intact record is admitted.
 
     The mechanism is ``_type_specific_integrity_reason`` /
-    ``_harness_integrity_reason`` in ``ari/rqgm/governance/_evidence.py``.  The
+    ``_harness_integrity_reason`` / ``_artifact_integrity_reason`` in
+    ``ari/rqgm/governance/_evidence.py``.  The
     Clerk never raises and never silently drops: an inadmissible item lands in
     ``excluded_items`` with a reason a reader can act on, which is the only way
     "admits ONLY valid Attestations" is checkable after the fact.
@@ -289,6 +290,32 @@ def test_evidence_clerk_attestation_validation(tmp_path):
         ),
         tmp_path,
     ) == "artifact_digest_mismatch"
+
+    # The path is refused when it is reached through a symlink, even though the
+    # link resolves inside the root and the digest matches.  The intact record
+    # above reads the same file by its real path and is admitted, so the only
+    # difference here is the link — which is what keeps a later relink from
+    # changing what a re-read of the bundle sees.
+    linked = tmp_path / "rqgm" / "kca" / "admission-v1" / "linked.json"
+    linked.symlink_to(tmp_path / ATTESTATION_RELATIVE)
+    assert _exclusion_reason(
+        mutated(
+            artifact_refs=[
+                {
+                    "path": "rqgm/kca/admission-v1/linked.json",
+                    "content_digest": intact["artifact_refs"][0]["content_digest"],
+                }
+            ]
+        ),
+        tmp_path,
+    ) == "unsafe_artifact_reference"
+
+    # A ref that is not a mapping at all is excluded rather than raised on: the
+    # Clerk reports every inadmissible item, so one malformed ref may not abort
+    # the assembly of the bundle the rest of the epoch is judged from.
+    assert _exclusion_reason(
+        mutated(artifact_refs=[ATTESTATION_RELATIVE]), tmp_path
+    ) == "invalid_artifact_reference"
 
     # A record type outside the closed admissible map is excluded, not coerced.
     assert _exclusion_reason(
