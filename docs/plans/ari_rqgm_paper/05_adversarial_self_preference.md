@@ -88,7 +88,7 @@ that boundary machinery.
   pre-signal, evidence sources, trigger conditions, and its degradation behavior when no
   authorship corpus is present.
 - The one prompt template `ari-core/ari/prompts/rqgm/adversary_paper_self_preference.md`,
-  its registration in the four prompt-snapshot layers, and — so the eighth adversary is
+  its registration in the prompt-snapshot layers, and — so the eighth adversary is
   governed on exactly the terms of the seven, with no authority they lack and no immunity
   they lack — its two paper-mode-gated **founding rows** (`FOUNDING_PROMPT_TABLE` +
   `FOUNDING_COMPONENT_TABLE`, §5.6).
@@ -902,7 +902,7 @@ the §5.6 gap:
   dropped, and `resolve_emergency_quarantine` against it is **not** rejected as
   `unknown component` (transition_engine.py:692). One assertion each — the full T9–T19
   matrix is the fixed transition table's topology-agnostic inherited coverage
-  ([the four facades](../../concepts/rqgm_architecture.md#the-four-facades);
+  ([RQGM Schemas → The fixed transition table](../../reference/rqgm_schemas.md#the-fixed-transition-table);
   [Configuration → `rqgm.transition`](../../reference/configuration.md#rqgm-transition-—-registrytransitionengine-thresholds)).
 - **Governed bytes.** `GovernedPromptLoader` raises on tampered
   `rqgm/adversary_paper_self_preference.md` bytes (the frozen-spec refusal,

@@ -163,7 +163,7 @@ selection + copy, deterministic and resume-safe.
 
 **Normative (restatement, not a new rule).** The claim-evidence hard gate is the ONLY blocking
 gate of the integration, deterministic (no LLM), and RQGM-independent. Per
-[Execution Modes → Constitutional kernel (Layer 0)](../../guides/execution_modes.md#constitutional-kernel-layer-0), the
+[RQGM Schemas → The paper-phase must-not-break register](../../reference/rqgm_schemas.md#the-paper-phase-must-not-break-register-bp-1-bp-12), the
 ConstitutionalKernel never wraps the fixed verifier or the claim gate; the same holds here:
 
 1. The winning draft is submitted to `run_hard_gate(..., phase="final", write=True)` through the
