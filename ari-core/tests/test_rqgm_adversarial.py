@@ -1671,3 +1671,213 @@ def test_the_report_carries_the_compute_env_block(tmp_path):
     assert '"compute_env": _compute_env_block(' in inspect.getsource(
         builder.build_node_report
     )
+
+
+# ── fixed_verifier_claim_contradiction: an evaluator claiming success over a
+# failing Attestation, told apart from an evaluator REPORTING one ────────────
+
+_CLAIM_WORDS = (
+    "correct", "verified", "validated", "certified", "all tests passed",
+    "numerically equivalent", "no regressions",
+)
+
+
+def _failing_attestation(record_id="har_abc123", target="", properties=()):
+    return {
+        "record_id": record_id,
+        "record_type": "harness_attestation",
+        "verdict": "fail",
+        "status": "fail",
+        "target_digest": target,
+        "property_results": [
+            {"property_id": name, "verdict": verdict}
+            for name, verdict in properties
+        ],
+    }
+
+
+def _claim_finding(node, report, attestations=None):
+    """True when the pre-signal accuses *node* of misreporting a fixed fail."""
+    from ari.rqgm.adversarial.engine import _assurance_contradiction_findings
+
+    records = [_failing_attestation()] if attestations is None else list(attestations)
+    return any(
+        finding["kind"] == "fixed_verifier_claim_contradiction"
+        for finding in _assurance_contradiction_findings(node, report, records, "n1")
+    )
+
+
+def _claim_node(**kwargs):
+    return SimpleNamespace(
+        id="n1",
+        assurance_status=kwargs.pop("assurance_status", ""),
+        eval_summary=kwargs.pop("eval_summary", ""),
+        plan=kwargs.pop("plan", ""),
+        frontier_class=kwargs.pop("frontier_class", ""),
+        verified_target_digest=kwargs.pop("verified_target_digest", ""),
+        property_verdicts=kwargs.pop("property_verdicts", {}),
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize("report", [
+    # The catalog's own status word, as a field VALUE.
+    {"harness": {"status": "verified"}},
+    {"assurance_status": "fail", "assurance_tier": "certify",
+     "attestation_refs": ["rqgm/kca/nodes/n1/verified_context.json"]},
+    # Anything else the report happens to carry: file names, metric keys,
+    # command lines, trace text.
+    {"files_changed": {"modified": [{"path": "correctness_check.c"}]}},
+    {"metrics": {"validated_cases": 12}},
+    {"run_command": "./run --certified-oracle"},
+    {"trace_log_summary": "tool: verified 3 artifacts"},
+])
+def test_claim_contradiction_ignores_the_systems_own_data(report):
+    """The predicate must not match its own system's vocabulary appearing as
+    data.  It reads named prose fields, never the whole report JSON."""
+    assert not _claim_finding(_claim_node(eval_summary="the run finished"), report)
+
+
+@pytest.mark.parametrize("prose", [
+    "the candidate is not numerically equivalent to the reference",
+    "the kernel is no longer correct after the tolerance change",
+    "the result isn't correct on the 4096 case",
+    "this build was never validated against the oracle",
+    "the run finished without a correct result on any tile size",
+    "we could not show the kernel is correct",
+])
+def test_claim_contradiction_is_sign_aware(prose):
+    """A truthful evaluator stating the failure uses the same words as one
+    misrepresenting it.  Sign, not vocabulary, separates them."""
+    assert not _claim_finding(_claim_node(eval_summary=prose), {})
+
+
+@pytest.mark.parametrize("prose", [
+    "All unit tests passed, but the certify harness reported a fail.",
+    "The kernel is correct on the small cases. The 4096 case mismatches.",
+    "Numerically equivalent within 1e-6, although the tolerance check failed.",
+])
+def test_an_account_that_admits_the_failure_is_reporting_it(prose):
+    """Asserting success somewhere is not misrepresentation while the same
+    account states the recorded outcome."""
+    assert not _claim_finding(_claim_node(eval_summary=prose), {})
+
+
+@pytest.mark.parametrize("word", _CLAIM_WORDS)
+def test_the_pre_verdict_plan_can_never_raise_the_signal(word):
+    """The Generator writes ``plan`` before the verdict exists, so nothing in
+    it can be an override of that verdict.  Property, not one phrasing: no
+    claim word placed there may change the outcome."""
+    honest = _claim_node(eval_summary="the harness reported a failure")
+    assert not _claim_finding(honest, {})
+    planned = _claim_node(
+        eval_summary="the harness reported a failure",
+        plan=f"### Step 1\nShow the kernel is {word} against the reference.",
+    )
+    assert not _claim_finding(planned, {})
+
+
+@pytest.mark.parametrize("word", _CLAIM_WORDS)
+def test_a_claim_word_anywhere_in_the_report_can_never_raise_the_signal(word):
+    """Same property for the report: only the named account fields speak."""
+    node = _claim_node(eval_summary="the harness reported a failure")
+    for field in ("label", "run_command", "migration_source", "trace_log_summary"):
+        assert not _claim_finding(node, {field: f"gemm {word} v2"}), field
+    assert not _claim_finding(node, {"metrics": {word: 1.0}}), "metrics"
+
+
+def test_a_self_report_written_before_scoring_is_a_plan_by_another_name():
+    assessment = {"self_assessment": {"headline": "The kernel is correct."}}
+    assert not _claim_finding(
+        _claim_node(), {**assessment, "self_report_stage": "pre_evaluation"})
+    assert _claim_finding(
+        _claim_node(), {**assessment, "self_report_stage": "post_evaluation"})
+
+
+@pytest.mark.parametrize("intent", [
+    "I will verify the kernel is correct by comparing against the reference",
+    "Next step: confirm the kernel is correct.",
+    "Rebuilt the tile loop to confirm it is correct.",
+    "We need to show that all tests passed before promoting.",
+])
+def test_an_intention_to_establish_correctness_is_not_a_claim(intent):
+    """``eval_summary`` is documented dual-use state that can still hold
+    planner direction, so the plan's category error can arrive through a
+    surface that IS read."""
+    assert not _claim_finding(_claim_node(eval_summary=intent), {})
+
+
+# ── the direction that matters: it must still catch the attack ──────────────
+
+
+@pytest.mark.parametrize("node,report", [
+    (_claim_node(eval_summary=(
+        "All tests passed; the candidate is numerically equivalent to the "
+        "reference.")), {}),
+    (_claim_node(eval_summary="The kernel is correct and ready to promote."), {}),
+    (_claim_node(), {"evaluator_reason": "no regressions; matches the reference"}),
+    (_claim_node(), {"what_was_done": "Rewrote the tile loop; output is validated."}),
+    (_claim_node(), {"self_report_stage": "post_evaluation",
+               "self_assessment": {"headline": "The kernel is correct."}}),
+    (_claim_node(), {"self_report_stage": "post_evaluation",
+               "self_assessment": {"headline": "done",
+                                   "concerns": ["none, all tests passed"]}}),
+    # A decoy mention of unrelated trouble must not buy silence: only the
+    # verdict's own vocabulary counts as admitting the verdict.
+    (_claim_node(eval_summary=(
+        "There was a compile error in the first attempt. The final kernel "
+        "is correct.")), {}),
+])
+def test_claim_contradiction_still_fires_on_a_misrepresentation(node, report):
+    assert _claim_finding(node, report)
+
+
+def test_the_signal_survives_a_node_that_writes_no_account_at_all():
+    """The records arm: the same accusation made against the Attestation
+    instead of prose, so silence is not a defence."""
+    target = "a" * 64
+    attestation = _failing_attestation(
+        target=target, properties=(("numerical-equivalence", "fail"),))
+    node = _claim_node(
+        verified_target_digest=target,
+        property_verdicts={"numerical-equivalence": "pass"},
+    )
+    assert _claim_finding(node, {}, [attestation])
+    # and it names the rewritten Attestation, not merely the first failure
+    from ari.rqgm.adversarial.engine import _assurance_contradiction_findings
+
+    findings = _assurance_contradiction_findings(node, {}, [attestation], "n1")
+    pointer = next(
+        item["pointer"] for item in findings
+        if item["kind"] == "fixed_verifier_claim_contradiction"
+    )
+    assert pointer == attestation["record_id"]
+
+
+@pytest.mark.parametrize("node", [
+    # A repair produced a NEW artifact; the previous candidate's failing
+    # Attestation is still in the log and does not contradict this one.
+    _claim_node(verified_target_digest="b" * 64,
+          property_verdicts={"numerical-equivalence": "pass"}),
+    # The node's own record agrees with the Attestation.
+    _claim_node(verified_target_digest="a" * 64,
+          property_verdicts={"numerical-equivalence": "fail"}),
+    # A lesser record is not a claim of success.
+    _claim_node(verified_target_digest="a" * 64,
+          property_verdicts={"numerical-equivalence": "inconclusive"}),
+    # Nothing to compare against: the arm stays silent rather than guessing.
+    _claim_node(property_verdicts={"numerical-equivalence": "pass"}),
+])
+def test_the_records_arm_does_not_accuse_without_a_matching_subject(node):
+    attestation = _failing_attestation(
+        target="a" * 64, properties=(("numerical-equivalence", "fail"),))
+    assert not _claim_finding(node, {}, [attestation])
+
+
+def test_no_failing_attestation_and_infrastructure_error_stay_exempt():
+    claimant = _claim_node(eval_summary="All tests passed; numerically equivalent.")
+    passing = dict(_failing_attestation(), verdict="pass", status="pass")
+    assert not _claim_finding(claimant, {}, [passing])
+    assert not _claim_finding(
+        _claim_node(assurance_status="infrastructure_error",
+              eval_summary="All tests passed; numerically equivalent."), {})

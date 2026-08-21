@@ -272,11 +272,198 @@ def _collect_related_refs(ckpt) -> tuple:
     return tuple(refs) if isinstance(refs, (list, tuple)) else ()
 
 
-_CORRECTNESS_CLAIM_RE = re.compile(
+#: ``fixed_verifier_claim_contradiction`` vocabulary, split into the two
+#: things an account of a fixed verdict can say.  The SUCCESS side is the
+#: original pattern, unchanged on purpose: what counts as a success claim was
+#: never the defect, so widening it here would smuggle a coverage change into
+#: a precision repair.
+#:
+#: What WAS defective is how it was read.  Matching this pattern against
+#: ``eval_summary + node.plan + json.dumps(report)`` fired on three things
+#: that are not misrepresentations at all:
+#:
+#: * an honest failure report -- "the candidate is not numerically
+#:   equivalent" matches ``numerically equivalent``, so a truthful evaluator
+#:   and a lying one were indistinguishable, which is the entire distinction
+#:   the finding exists to draw;
+#: * a Generator plan -- "I will verify the kernel is correct by comparing
+#:   ..." matches ``correct``, but the plan is written BEFORE the verdict
+#:   exists and so cannot be an override of it;
+#: * the system's own data -- a report carrying ``{"harness": {"status":
+#:   "verified"}}`` matches ``verified``, the catalog's own status word
+#:   appearing as a field VALUE.
+_SUCCESS_CLAIM_RE = re.compile(
     r"\b(correct|verified|validated|certified|all\s+tests?\s+pass(?:ed)?|"
     r"numerically\s+equivalent|no\s+regressions?)\b",
     re.I,
 )
+
+#: The other half of the discriminator: the words by which an account ADMITS
+#: the recorded outcome.  An account that states the failure is reporting it,
+#: whatever else it also says; only an account that asserts success *and*
+#: never admits the failure is misrepresenting one.
+#:
+#: Restricted to the verdict itself rather than to trouble in general: if an
+#: incidental "compile error" counted as owning up to a failed Attestation, a
+#: misrepresentation could buy silence with one unrelated sentence.
+_FAILURE_ADMISSION_RE = re.compile(
+    r"\b(fail(?:s|ed|ing|ure|ures)?|did\s+not\s+pass|does\s+not\s+pass|"
+    r"mismatch(?:es|ed)?|discrepanc(?:y|ies)|diverg(?:e|es|ed|ence)|"
+    r"incorrect(?:ly|ness)?|wrong|regressions?|inconclusive|tampered|"
+    r"exceed(?:s|ed)?\s+(?:the\s+)?tolerance|tolerance\s+exceeded)\b",
+    re.I,
+)
+
+#: Left-context markers that invert a term.  A NEGATED success word is not a
+#: weaker claim, it is an admission ("not numerically equivalent" says the
+#: same thing the Attestation says); a negated failure word ("no mismatch")
+#: is not an admission.
+_CLAIM_NEGATION_RE = re.compile(
+    r"(\bnot\b|\bno\b|\bnever\b|\bnor\b|\bneither\b|\bwithout\b|"
+    r"\bcannot\b|\bunable\s+to\b|\blacks?\b|\bmissing\b|\babsent\b|"
+    r"\bfail(?:s|ed)\s+to\b|\b(?:is|are|was|were|does|do|did|has|have|had|"
+    r"would|could|should|will|ca|wo)n['’]t\b)",
+    re.I,
+)
+
+#: Left-context markers that make a sentence a PROPOSAL rather than a report.
+#: An intention to establish correctness is not a claim to have established
+#: it.  ``node.plan`` is excluded outright, but ``eval_summary`` is
+#: documented dual-use state that can still hold planner direction when no
+#: evaluator ran (``node_report/builder.py``), so the same category error can
+#: arrive through a surface that is legitimately read.
+_CLAIM_HEDGE_RE = re.compile(
+    r"\b(will|would|shall|should|must|may|might|could|"
+    r"plans?\s+to|planned\s+to|planning\s+to|intends?\s+to|intended\s+to|"
+    r"aims?\s+to|aimed\s+to|expects?\s+to|expected\s+to|hopes?\s+to|"
+    r"tr(?:y|ies|ied)\s+to|attempts?\s+to|attempted\s+to|going\s+to|"
+    r"needs?\s+to|needed\s+to|wants?\s+to|in\s+order\s+to|so\s+that|"
+    r"to\s+(?:confirm|ensure|check|prove|show|demonstrate|establish|verify)|"
+    r"if|whether|unless|todo|next\s+step)\b",
+    re.I,
+)
+
+#: Clause boundary.  Sentence terminators are kept at the END of the clause
+#: they close so an interrogative can be told from an assertion, and
+#: contrastive conjunctions split too, so "the kernel is correct but the
+#: harness reported a fail" is read as a claim beside its own retraction
+#: rather than as one undifferentiated string.
+_CLAUSE_SPLIT_RE = re.compile(
+    r"(?<=[.;!?\n])\s*|\b(?:but|however|although|though|whereas|yet)\b",
+    re.I,
+)
+
+#: How far back a negation or hedge is allowed to reach.  Unbounded
+#: left-context leaks both ways: a marker several clauses back would silence a
+#: real claim, and splitting more aggressively (on commas) would strip a
+#: negation off the term it modifies.  English puts both kinds of marker close
+#: to what they modify.
+_CLAIM_CONTEXT_CHARS = 96
+
+
+def _account_polarity(text: str) -> tuple[bool, bool]:
+    """Read *text* as an account of a fixed verdict.
+
+    Returns ``(asserts_success, admits_failure)``.  The two are independent:
+    text can do both (an honest mixed report), neither (a bare failure
+    detail), or one alone.  Only ``asserts and not admits`` misrepresents.
+    """
+
+    asserts = False
+    admits = False
+    for clause in _CLAUSE_SPLIT_RE.split(text or ""):
+        clause = (clause or "").strip()
+        if not clause or clause.endswith("?"):
+            continue
+        for match in _SUCCESS_CLAIM_RE.finditer(clause):
+            left = clause[max(0, match.start() - _CLAIM_CONTEXT_CHARS):match.start()]
+            if _CLAIM_NEGATION_RE.search(left):
+                admits = True
+            elif not _CLAIM_HEDGE_RE.search(left):
+                asserts = True
+        for match in _FAILURE_ADMISSION_RE.finditer(clause):
+            left = clause[max(0, match.start() - _CLAIM_CONTEXT_CHARS):match.start()]
+            if not _CLAIM_NEGATION_RE.search(left):
+                admits = True
+    return asserts, admits
+
+
+def _claim_surfaces(node, report) -> str:
+    """The node's own account of the OUTCOME, and only that.
+
+    Excluded, each for a different reason:
+
+    * ``node.plan`` -- written by the Generator before the verdict exists.
+      Whatever it says about correctness is a proposal, and a proposal cannot
+      override a result that has not happened yet.
+    * ``json.dumps(report)`` -- the report carries the catalog's own status
+      vocabulary as field VALUES, plus file names, metric keys, command lines
+      and trace text.  A detector that matches its own system's data is
+      matching noise.  Named prose fields are read instead.
+    * ``self_assessment`` unless ``self_report_stage`` is ``post_evaluation``
+      -- the report records whether the agent wrote its self-review after
+      being scored.  When it did not, that text is a plan by another name.
+    """
+
+    parts = [str(getattr(node, "eval_summary", "") or "")]
+    if isinstance(report, dict):
+        parts.append(str(report.get("evaluator_reason", "") or ""))
+        parts.append(str(report.get("what_was_done", "") or ""))
+        if str(report.get("self_report_stage", "") or "") == "post_evaluation":
+            assessment = report.get("self_assessment")
+            if isinstance(assessment, dict):
+                parts.append(str(assessment.get("headline", "") or ""))
+                parts.extend(
+                    str(item) for item in (assessment.get("concerns") or ())
+                )
+    return "\n".join(part for part in parts if part)
+
+
+def _verdicts_misreported_against(node, attestations) -> str:
+    """``record_id`` of a failing Attestation whose failed properties the
+    node's own merged ``property_verdicts`` records as ``pass``.
+
+    The same accusation as the prose arm, made against records instead of
+    words, so it survives an attacker who writes nothing -- or writes
+    carefully.  The bridge merges the WORST verdict per property from the
+    Attestations it just wrote, so ``pass`` standing against a ``fail`` for
+    the same property on the same artifact means the merge was rewritten
+    after the verdict was fixed.  Only ``pass`` counts: ``inconclusive``
+    beside ``fail`` is a lesser record, not a claim of success.
+
+    Scoped to Attestations bound to the node's CURRENT
+    ``verified_target_digest`` -- after a repair the audit log still holds the
+    previous candidate's failing Attestation, and a pass on a different
+    artifact does not contradict it.  Without both digests the comparison has
+    no subject, so this arm stays silent rather than guessing; the prose arm
+    is unaffected by that silence.
+    """
+
+    target = str(getattr(node, "verified_target_digest", "") or "")
+    claimed = {
+        str(name): str(verdict)
+        for name, verdict in (getattr(node, "property_verdicts", None) or {}).items()
+    }
+    if not target or not claimed:
+        return ""
+    for item in attestations:
+        if not isinstance(item, dict) or str(item.get("verdict", "")) != "fail":
+            continue
+        if str(item.get("target_digest", "") or "") != target:
+            continue
+        nested = item.get("attestation")
+        results = item.get("property_results") or (
+            (nested.get("property_results") or ())
+            if isinstance(nested, dict) else ()
+        )
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            if str(result.get("verdict", "")) != "fail":
+                continue
+            if claimed.get(str(result.get("property_id", "") or "")) == "pass":
+                return str(item.get("record_id", ""))
+    return ""
 
 
 def _kca_audit_records(ckpt, node_id: str):
@@ -332,18 +519,24 @@ def _assurance_contradiction_findings(node, report, attestations, node_id):
     if status == "infrastructure_error":
         return []
     findings: list[dict] = []
-    claim_text = "\n".join((
-        str(getattr(node, "eval_summary", "") or ""),
-        str(getattr(node, "plan", "") or ""),
-        json.dumps(report, ensure_ascii=False, sort_keys=True),
-    ))
     failed = [item for item in attestations if item.get("verdict") == "fail"]
-    if failed and _CORRECTNESS_CLAIM_RE.search(claim_text):
-        findings.append({
-            "kind": "fixed_verifier_claim_contradiction",
-            "path": "rqgm_audit.jsonl",
-            "pointer": str(failed[0].get("record_id", "")),
-        })
+    if failed:
+        # Two independent arms for one accusation -- an evaluator asserting
+        # success over a failing Attestation -- because it can be made in
+        # either medium.  The records arm is checked first so its pointer,
+        # which names the exact Attestation whose properties were rewritten,
+        # wins over the prose arm's first-failing-record pointer.
+        pointer = _verdicts_misreported_against(node, attestations)
+        if not pointer:
+            asserts, admits = _account_polarity(_claim_surfaces(node, report))
+            if asserts and not admits:
+                pointer = str(failed[0].get("record_id", ""))
+        if pointer:
+            findings.append({
+                "kind": "fixed_verifier_claim_contradiction",
+                "path": "rqgm_audit.jsonl",
+                "pointer": pointer,
+            })
     if status == "inconclusive" and not attestations:
         findings.append({
             "kind": "required_attestation_missing",

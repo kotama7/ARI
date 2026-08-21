@@ -3086,17 +3086,17 @@ class RQGMRuntime:
         caller.
 
         NOT the adversarial engine's ``fixed_verifier_claim_contradiction``.
-        That pre-signal greps the node's free text for a correctness claim
-        standing beside a failing Attestation.  It is a fine attention cue for
-        the replay pool, which only RECORDS it, but it is sign-blind -- an
-        honest evaluator writing "not numerically equivalent" matches the same
-        pattern as a liar writing "numerically equivalent" -- and CK-HAR-019 is
+        That pre-signal reads the node's own account of the outcome for a
+        success claim standing beside a failing Attestation.  It is no longer
+        sign-blind -- an honest evaluator writing "not numerically equivalent"
+        is read as ADMITTING the failure rather than as claiming success -- but
+        its prose arm is still an inference from language, and CK-HAR-019 is
         ``block``: firing it marks the node ``tampered`` and strips it from the
-        frontier.  Driving that from a regex over prose would turn an ordinary
-        failed experiment into a constitutional violation, which is precisely
-        what this check exists to avoid (plan 20 criterion 41).  So the same
-        accusation is made structurally, against records the assurance bridge
-        wrote:
+        frontier.  One phrasing the polarity reader mis-parses would turn an
+        ordinary failed experiment into a constitutional violation, which is
+        precisely what this check exists to avoid (plan 20 criterion 41).  So
+        the same accusation is made structurally, against records the assurance
+        bridge wrote:
 
         1. THE STATUS IS BETTER THAN ITS OWN EVIDENCE.  ``assure``/``certify``
            set ``assurance_status`` to the WORST of the per-property verdicts
