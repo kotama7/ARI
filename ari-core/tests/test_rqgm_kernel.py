@@ -2916,3 +2916,239 @@ def test_gate_name_inference_can_only_subtract_authority():
     #    it does mean this gate must never be read as the thing that grants.
     assert default_tool_policy("persist_registry_row", {}) is None
     assert gated.call_tool("persist_registry_row", {}) == {"result": "ok"}
+
+
+# ── Task 20 criterion 42: claiming a fail as a success leaves evidence ───────
+
+
+def _misrepresentation_evidence(checkpoint, *, assurance_mode="enforce", **node_fields):
+    """Drive the PRODUCTION per-node kernel check and read back what it WROTE.
+
+    Enters at ``run_per_node_kernel_check`` -- the run loop's own call -- so
+    the finding, the audit append and the eligibility decision all come from
+    the runtime.  The admitted baseline Lock is the clean one, so a node that
+    misrepresents nothing raises nothing at all and every code that does
+    appear is attributable to the misrepresentation under test.
+    """
+    import json as _json
+
+    from ari.rqgm.runtime import RQGMRuntime  # noqa: F401  (imported by _kca_runtime)
+
+    checkpoint.mkdir(parents=True, exist_ok=True)
+    lock = _kca_baseline_harness_lock()
+    runtime = _kca_runtime(
+        {
+            "baseline_harness_lock.json": lock,
+            "verification_contract.json": {},
+            "harness_catalog_snapshot.json": {},
+        },
+        checkpoint,
+    )
+    runtime.cfg = SimpleNamespace(
+        rqgm=SimpleNamespace(kernel=SimpleNamespace(enforcement="standard"))
+    )
+    runtime._epoch_state = SimpleNamespace(
+        prompts=None, epoch=SimpleNamespace(epoch_id="epoch_000")
+    )
+    runtime._kca_feature_enabled = True
+    admission = _kca_harness_admission(lock)
+    admission.modes = SimpleNamespace(
+        knowledge="enforce", capability_binding="enforce", assurance=assurance_mode
+    )
+    runtime._run_admission = admission
+
+    node = SimpleNamespace(
+        id="node-1",
+        verified_target_digest="",
+        attestation_refs=(),
+        metrics={"_valid_for_frontier": True},
+        **node_fields,
+    )
+    emitted = runtime.run_per_node_kernel_check(node)
+
+    audit = checkpoint / "rqgm_audit.jsonl"
+    events = [
+        _json.loads(line)
+        for line in (
+            audit.read_text(encoding="utf-8").splitlines() if audit.is_file() else ()
+        )
+    ]
+    reports = [
+        event for event in events if event.get("event_type") == "kernel_report"
+    ]
+    return SimpleNamespace(
+        node=node,
+        emitted=emitted,
+        reports=reports,
+        codes={
+            code
+            for event in reports
+            for code in ((event.get("payload") or {}).get("codes") or ())
+        },
+    )
+
+
+def _misrepresentation_adversary_types(findings):
+    """The adversary types whose pre-signal turns *findings* into evidence.
+
+    Enumerated from ``ADVERSARY_SPECS`` rather than named here: a test that
+    listed the consumers would keep passing when a consumer is removed, and
+    the claim is that the misrepresentation reaches the attack surface at all.
+    """
+    from ari.rqgm.adversarial.engine import ADVERSARY_SPECS, ArtifactBundle
+
+    bundle = ArtifactBundle(
+        node_id="node-1", score=0.7, verification_findings=tuple(findings)
+    )
+    return {
+        name: spec.pre_signal(bundle)
+        for name, spec in ADVERSARY_SPECS.items()
+        if spec.pre_signal(bundle)
+    }
+
+
+def test_fail_misrepresentation_evidence(tmp_path):
+    """Task 20 criterion 42: an Evaluator/Reviewer restating a fixed fail as a
+    success creates governance evidence.
+
+    THE SYSTEM HAS TWO CHANNELS FOR THIS and a guard over one of them would be
+    a guard over half the criterion.
+
+    KERNEL CHANNEL.  ``_fixed_verdict_overridden`` derives CK-HAR-019 from what
+    the run recorded on the node, and ``run_per_node_kernel_check`` appends the
+    finding to the immutable audit log.  Both of the predicate's shapes are
+    exercised, because an override lands on either the aggregate status or the
+    frontier class and each hides from the other.  The ``audit`` posture case
+    is the one that separates "evidence" from "enforcement": the finding is
+    still written where it is not acted on.
+
+    ADVERSARIAL CHANNEL.  The same misrepresentation is what
+    ``_assurance_contradiction_findings`` accuses a node of, and the adversary
+    pre-signals turn that accusation into evidence refs an attack is built
+    from.  Which adversary types consume it is read out of ``ADVERSARY_SPECS``.
+
+    The honest control runs against the same clean baseline Lock and produces
+    nothing in either channel, so "evidence appeared" is not "evidence always
+    appears".
+    """
+
+    honest = _misrepresentation_evidence(
+        tmp_path / "honest",
+        assurance_status="pass",
+        property_verdicts={"numerical-equivalence": "pass"},
+        frontier_class="scientific_frontier",
+    )
+    assert honest.emitted >= 1, "the per-node kernel check did not run at all"
+    assert honest.codes == set(), (
+        "an honest node left governance evidence, so the codes below say "
+        "nothing about misrepresentation"
+    )
+    assert honest.node.assurance_status == "pass"
+    assert honest.node.frontier_class == "scientific_frontier"
+
+    claimed = _misrepresentation_evidence(
+        tmp_path / "claimed",
+        assurance_status="pass",
+        property_verdicts={"numerical-equivalence": "fail"},
+        frontier_class="scientific_frontier",
+    )
+    assert "CK-HAR-019" in claimed.codes, (
+        "a status better than the verdicts it was built from left no evidence"
+    )
+    assert claimed.codes == {"CK-HAR-019"}
+    persisted = [
+        event
+        for event in claimed.reports
+        if "CK-HAR-019" in ((event.get("payload") or {}).get("codes") or ())
+    ]
+    assert persisted, "CK-HAR-019 was raised but never written to the audit log"
+    payload = persisted[0].get("payload") or {}
+    assert payload.get("check") == "harness_integrity"
+    assert payload.get("node_id") == "node-1"
+    assert claimed.node.assurance_status == "tampered"
+    assert claimed.node.frontier_class == "uncertified_frontier"
+    assert claimed.node.metrics["_valid_for_frontier"] is False
+
+    ignored = _misrepresentation_evidence(
+        tmp_path / "ignored",
+        assurance_status="fail",
+        property_verdicts={"numerical-equivalence": "fail"},
+        frontier_class="scientific_frontier",
+    )
+    assert "CK-HAR-019" in ignored.codes, (
+        "a failed verdict standing on the scientific frontier left no evidence"
+    )
+
+    audited = _misrepresentation_evidence(
+        tmp_path / "audited",
+        assurance_mode="audit",
+        assurance_status="pass",
+        property_verdicts={"numerical-equivalence": "fail"},
+        frontier_class="scientific_frontier",
+    )
+    assert "CK-HAR-019" in audited.codes, (
+        "audit posture stopped recording the finding instead of stopping at "
+        "not enforcing it"
+    )
+    assert audited.node.assurance_status == "pass", (
+        "an audit-posture finding changed eligibility"
+    )
+
+    # ── the adversarial channel ──────────────────────────────────────────
+    from ari.rqgm.adversarial.engine import _assurance_contradiction_findings
+
+    target = "a" * 64
+    attestation = {
+        "record_id": "har_misreported",
+        "record_type": "harness_attestation",
+        "verdict": "fail",
+        "status": "fail",
+        "target_digest": target,
+        "property_results": [
+            {"property_id": "numerical-equivalence", "verdict": "fail"}
+        ],
+    }
+    misreporting = SimpleNamespace(
+        id="node-1",
+        assurance_status="pass",
+        eval_summary="",
+        plan="",
+        frontier_class="scientific_frontier",
+        verified_target_digest=target,
+        property_verdicts={"numerical-equivalence": "pass"},
+    )
+    findings = _assurance_contradiction_findings(
+        misreporting, {}, [attestation], "node-1"
+    )
+    kinds = {item["kind"] for item in findings}
+    assert "fixed_verifier_claim_contradiction" in kinds
+
+    left_standing = SimpleNamespace(
+        id="node-1",
+        assurance_status="fail",
+        eval_summary="",
+        plan="",
+        frontier_class="scientific_frontier",
+        verified_target_digest=target,
+        property_verdicts={"numerical-equivalence": "fail"},
+    )
+    standing = _assurance_contradiction_findings(
+        left_standing, {}, [attestation], "node-1"
+    )
+    assert "verifier_result_ignored" in {item["kind"] for item in standing}
+
+    consumers = _misrepresentation_adversary_types(findings + standing)
+    assert consumers, (
+        "no adversary type turns a misrepresented fixed verdict into evidence"
+    )
+    pointers = {
+        (ref.path, ref.pointer)
+        for refs in consumers.values()
+        for ref in refs
+    }
+    assert pointers <= {
+        (item["path"], item["pointer"]) for item in findings + standing
+    }, "an adversary raised evidence that does not point at the finding"
+    assert not _misrepresentation_adversary_types(()), (
+        "the adversary pre-signals fire without any finding at all"
+    )
