@@ -748,9 +748,24 @@ def test_the_report_carries_no_host_path():
 
     observed = {"filesystem_isolation": True, "mechanism": "landlock",
                 "landlock_abi": 6, "does_not_restrict": ["fork"],
-                "writable_root": "/tmp/tmpEXAMPLE"}
+                "writable_root": "/tmp/tmpEXAMPLE",
+                "network_isolation": True,
+                "network_mechanism": "network-namespace",
+                "interfaces_beyond_loopback": 0,
+                "network_probe": "ENETUNREACH",
+                "network_does_not_restrict": ["loopback"],
+                # A SECOND DECOY, of the same kind as writable_root and for the
+                # same reason. The network observation could have reported WHICH
+                # interfaces it saw, and interface names are site detail: ib0
+                # and enp3s0f1 say what hardware a node has. It reports a count
+                # instead, and this key must not survive if a future version
+                # starts collecting them.
+                "interfaces": ["lo", "ib0", "enp3s0f1"]}
     kept = sandbox_record(observed)
     assert "writable_root" not in kept
+    assert "interfaces" not in kept, (
+        "the record carries interface names, which are host configuration in "
+        "published, digested evidence")
     assert set(kept) == set(SANDBOX_RECORD_KEYS)
 
 

@@ -165,4 +165,87 @@ def sandbox_record(writable: Path | str | None = None) -> dict:
     }
 
 
-__all__ = ["SandboxUnavailable", "landlock_abi", "restrict_to", "sandbox_record"]
+#: RFC 5737 TEST-NET-1, reserved for documentation and assigned to nobody. The
+#: probe below aims a connect() at it, so on a host WITH a route the packet
+#: leaves and is answered by no one; on a host without one the kernel refuses
+#: before anything is sent. Nothing reachable is contacted either way.
+_UNROUTABLE = ("192.0.2.1", 9)
+
+#: Long enough that a refusal is a refusal and not a slow kernel, short enough
+#: that a routed host is not held up. A routed host TIMES OUT here, and a
+#: timeout is reported as "not proved" rather than as isolation: a probe that
+#: read silence as absence would call a firewalled network an isolated one.
+_PROBE_SECONDS = 0.25
+
+
+def network_record() -> dict:
+    """Whether THIS process can reach a network, observed rather than declared.
+
+    WHY IT IS OBSERVED HERE. ``network_isolation`` in a registration bundle read
+    "proved" whenever every execution's request had said ``network: deny``, and
+    every layer under it restated the same declaration: ``execution.py`` computes
+    ``network_report`` as "isolated" if the request denied, so the runner's check
+    that the two agree compares a declaration with itself. The executor really
+    does pass ``--network none``, and that flag really is enforced by the
+    container runtime -- but nothing in the evidence was a record of the
+    condition, only of the intent. This is the record.
+
+    TWO INDEPENDENT FACTS, because either alone is weak. The namespace's
+    interfaces answer "is there anything here but loopback", and a connect()
+    answers "does the kernel have a route". A container started with
+    ``--network none`` has exactly ``lo`` and refuses instantly with
+    ENETUNREACH; a host with a default route has more interfaces and times out.
+
+    NO HOST CONFIGURATION LEAVES THIS FUNCTION. Interface NAMES are site
+    detail -- ``ib0`` and ``enp3s0f1`` say what hardware a node has -- so only
+    the count beyond loopback is reported, alongside the errno the probe saw.
+    """
+    import errno as _errno
+    import socket
+
+    # ``/proc/self/net``, NOT ``/sys/class/net``. procfs's net directory is
+    # per-namespace by construction and ``self`` resolves it for the calling
+    # process; sysfs shows whatever sysfs was mounted, which in a namespace
+    # entered without remounting it is still the HOST's interface list.
+    # MEASURED: inside ``unshare -rn`` the connect probe answered ENETUNREACH
+    # while /sys/class/net still listed all ten of the host's interfaces, so a
+    # probe reading sysfs would have reported an isolated namespace as open.
+    beyond_loopback = None
+    try:
+        with open("/proc/self/net/dev", encoding="utf-8") as handle:
+            names = {line.split(":", 1)[0].strip()
+                     for line in handle.read().splitlines()[2:] if ":" in line}
+        beyond_loopback = len(names - {"lo"})
+    except OSError:
+        beyond_loopback = None
+
+    probe = "unknown"
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(_PROBE_SECONDS)
+        sock.connect(_UNROUTABLE)
+        probe = "connected"
+    except socket.timeout:
+        probe = "timeout"
+    except OSError as exc:
+        probe = _errno.errorcode.get(exc.errno, f"errno{exc.errno}")
+    finally:
+        sock.close()
+
+    # FAIL CLOSED. Isolation is claimed only when both facts say so: the kernel
+    # refused for want of a route AND nothing but loopback is present. Anything
+    # else -- a timeout, a connection, an unreadable /sys -- is "not shown".
+    unreachable = probe in {"ENETUNREACH", "EHOSTUNREACH", "ENETDOWN"}
+    return {
+        "network_isolation": bool(unreachable and beyond_loopback == 0),
+        "network_mechanism": "network-namespace" if beyond_loopback == 0 else None,
+        "interfaces_beyond_loopback": beyond_loopback,
+        "network_probe": probe,
+        # Named so a reader does not infer more than was done: an empty
+        # namespace is not a promise about what a candidate may do inside it.
+        "network_does_not_restrict": ["unix-sockets", "loopback", "shared-memory"],
+    }
+
+
+__all__ = ["SandboxUnavailable", "landlock_abi", "network_record", "restrict_to",
+           "sandbox_record"]

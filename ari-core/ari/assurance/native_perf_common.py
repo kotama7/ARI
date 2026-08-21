@@ -172,6 +172,13 @@ FLAG_MAX_TOKENS = 32
 #: which is the part a reader of the evidence needs.
 SANDBOX_RECORD_KEYS: tuple[str, ...] = (
     "filesystem_isolation", "mechanism", "landlock_abi", "does_not_restrict",
+    # THE NETWORK, OBSERVED. The four keys below are a record of the condition
+    # the launch ran under, not of the intent it was launched with -- see
+    # ``sandbox.network_record``. Interface NAMES are deliberately not among
+    # them: a count answers "was anything but loopback here" without writing
+    # what hardware a node has into published evidence.
+    "network_isolation", "network_mechanism", "interfaces_beyond_loopback",
+    "network_probe", "network_does_not_restrict",
 )
 
 
@@ -1139,9 +1146,16 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
     # So: probe in the parent. If this kernel CAN enforce it, the child must --
     # a failure in preexec_fn propagates and kills the launch. If it cannot, no
     # attempt is made and ``sandbox_status`` says the run was unprotected.
-    from ari.assurance.sandbox import SandboxUnavailable, restrict_to, sandbox_record
+    from ari.assurance.sandbox import (SandboxUnavailable, network_record,
+                                       restrict_to, sandbox_record)
 
     status = sandbox_record(out_path.parent)
+    # OBSERVED IN THE PARENT, at the same point and for the same reason: this
+    # process is in the namespace the child will inherit, so what it can reach
+    # is what the child can reach. Recorded whatever the answer -- a launch that
+    # was NOT isolated has to be able to say so, which is the whole difference
+    # between this and reading the request back.
+    status.update(network_record())
     if status.get("filesystem_isolation"):
         def _restrict():                    # pragma: no cover - runs post-fork
             restrict_to(out_path.parent)    # no except: fail closed
