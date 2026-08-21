@@ -28,8 +28,20 @@ from ari.protocols.integrity import bytes_digest
 SHA = "sha256:" + ("2" * 64)
 BODY = "# Procedure\nUse a compile capability. Never bypass verification.\n"
 
+#: A second Knowledge body, so criterion 11's "ordered" has something to order.
+# Chosen so its digest sorts BEFORE the first body's. Otherwise the
+#: lock's order and lexical order coincide and the sort check below
+#: cannot fail -- an assertion that cannot fail is not one.
+_SECOND_BODY = "# Tiling\n\nBlock the loops (1).\n"
+_PROPOSED_ORDER: tuple = ()
 
-def _fixture(status="verified"):
+
+def _body_for(digest: str) -> str:
+    from ari.protocols.integrity import bytes_digest as _bd
+    return _SECOND_BODY if digest == _bd(_SECOND_BODY.encode()) else BODY
+
+
+def _fixture(status="verified", second_skill=False):
     contract = CapabilityContractV1.create(
         capability_ref="ari.execution.compile/v1",
         contract_version="v1",
@@ -82,14 +94,41 @@ def _fixture(status="verified"):
         importer_version="test/v1",
         status=status,
     )
+    entries = (entry,)
+    proposed = (manifest.exact_ref(),)
+    if second_skill:
+        # A SECOND Skill in a different composition slot, so the lock has a
+        # non-degenerate order to carry. Proposed FIRST while composing SECOND
+        # (lower priority), so an identity that echoed the request order rather
+        # than the lock's would come out wrong.
+        second = manifest.model_copy(update={
+            "id": "hpc.gemm.tiling",
+            "title": "Tiling",
+            "description": "Tiling procedure",
+            "source": manifest.source.model_copy(update={
+                "path": "knowledge-skills/hpc.gemm.tiling",
+                "body_sha256": bytes_digest(_SECOND_BODY.encode()),
+            }),
+            "composition": KnowledgeCompositionV1(slot="execution-strategy", priority=10),
+        })
+        second_entry = KnowledgeSkillEntryV1.create(
+            manifest=second,
+            body_store_key=second.source.body_sha256,
+            registration_report_digest=SHA,
+            importer_version="test/v1",
+            status=status,
+        )
+        entries = (entry, second_entry)
+        proposed = (second.exact_ref(), manifest.exact_ref())
+        globals()["_PROPOSED_ORDER"] = (second.source.body_sha256, body_digest)
     catalog = build_catalog_snapshot(
-        catalog_source_revision="test", importer_version="test/v1", entries=(entry,)
+        catalog_source_revision="test", importer_version="test/v1", entries=entries
     )
     proposal = KnowledgeSkillSelectionProposalV1.create(
         run_id="run-1",
         epoch_id="epoch_000",
         research_contract_digest=SHA,
-        proposed=(manifest.exact_ref(),),
+        proposed=proposed,
         reason="GEMM task",
         router_component_id="proposal_router_v1",
         router_prompt_hash="router-hash",
@@ -140,13 +179,24 @@ def test_instruction_identity_skill_hashes():
     than being handed in.
     """
 
-    ontology, catalog, proposal, context = _fixture()
+    ontology, catalog, proposal, context = _fixture(second_skill=True)
     lock = admit_knowledge_skills(
         proposal=proposal, catalog=catalog, ontology=ontology, context=context, mode="enforce"
     )
+    # TWO Skills, and the proposal deliberately names them in the OPPOSITE
+    # order to the one the lock admits. With one Skill the criterion's word
+    # "ordered" is degenerate -- a 1-tuple compares equal under every ordering,
+    # so the assertion would hold for a composer that sorted, reversed, or
+    # ignored the lock entirely.
+    assert len(lock.admitted) == 2, "the ordering claim needs more than one hash"
+    admitted = tuple(item.body_sha256 for item in lock.admitted)
+    assert len(set(admitted)) == 2, "the two bodies must be distinguishable"
+    assert admitted != tuple(reversed(_PROPOSED_ORDER)) or admitted != _PROPOSED_ORDER
+
     rendered, node_use, identity = compose_knowledge_instructions(
         lock=lock,
-        body_by_sha256={lock.admitted[0].body_sha256: BODY},
+        body_by_sha256={item.body_sha256: _body_for(item.body_sha256)
+                        for item in lock.admitted},
         run_id="run-1",
         node_id="node-1",
         base_prompt_hash="base12",
@@ -158,9 +208,11 @@ def test_instruction_identity_skill_hashes():
     )
     assert 'authority="instruction-only"' in rendered
     assert "Never bypass verification" in rendered
-    assert identity.ordered_knowledge_skill_hashes == (
-        lock.admitted[0].body_sha256,
-    )
+    # THE LOCK'S ORDER, not the proposal's and not a sort.
+    assert identity.ordered_knowledge_skill_hashes == admitted
+    assert admitted != tuple(sorted(admitted)), (
+        "the two digests sort into the lock's own order, so this case cannot "
+        "tell a composer that sorts from one that reads the lock")
     assert node_use.knowledge_composition_digest == identity.knowledge_composition_digest
 
 
