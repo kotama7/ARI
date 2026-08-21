@@ -221,7 +221,12 @@ class KnowledgeSkillEntryV1(DigestBoundModel):
         "ari.knowledge-skill-entry/v1"
     )
     manifest: KnowledgeSkillManifestV1
-    body_store_key: str
+    #: THE KEY THE BODY IS FETCHED BY, so it is a trust anchor and not a label:
+    #: whatever this names is what a node's prompt is composed from. It was a
+    #: bare ``str`` and accepted "", "a" * 12 and an uppercase digest, while
+    #: every producer supplied a full content address -- the same shape as the
+    #: sibling on the next line, which had the constraint all along.
+    body_store_key: str = Field(pattern=SHA256_DIGEST_PATTERN)
     registration_report_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     importer_version: str
     status: KnowledgeCatalogStatus

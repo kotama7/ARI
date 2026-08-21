@@ -121,13 +121,49 @@ def _kca_contract_models() -> dict[str, type[BaseModel]]:
 
 
 def _is_anchor_name(name: str) -> bool:
-    """A field name that declares the value is a digest ARI trusts."""
+    """A field NAME that declares the value is a digest ARI trusts.
+
+    Kept, and no longer the only selector -- see ``_anchor_fields``. Selecting
+    an inventory of trust anchors by the SUFFIX of its name misses every anchor
+    named for its ROLE rather than its mechanism, and there was one: measured,
+    ``HarnessAttestationV1.execution_identity`` carries
+    ``Field(pattern=SHA256_DIGEST_PATTERN)`` and is invisible to this, so
+    deleting that constraint left the criterion's test green while the field
+    then accepted "" and "a" * 12.
+    """
 
     lowered = name.lower()
     return (
         lowered.endswith(("digest", "digests", "hash", "hashes"))
         or "sha256" in lowered
     )
+
+
+#: Trust anchors named for their ROLE rather than their mechanism, so the name
+#: rule below cannot see them. PINNED BY NAME, deliberately, and not derived
+#: from the constraint being present.
+#:
+#: Deriving this from `Field(pattern=...)` looks better and is worse: the
+#: inventory then shrinks exactly when the mechanism does, so DELETING the
+#: constraint removes the field from the inventory and the test goes green on
+#: the defect it exists to catch. Measured -- that version passed with
+#: `execution_identity`'s constraint deleted, which is the same self-defeating
+#: derivation this file's criterion-35 sibling had.
+#:
+#: A list is the right shape here BECAUSE it is a classification and not a
+#: coverage claim: a new anchor whose name does not announce it has to be added
+#: here by hand, which is the deliberate act, and `_no_stale_role_anchors`
+#: below fails if one is renamed or removed.
+_ROLE_NAMED_ANCHORS = {
+    ("ari.assurance.models.HarnessAttestationV1", "execution_identity"):
+        "ties an Attestation to the execution it is about",
+    ("ari.knowledge.models.KnowledgeSkillEntryV1", "body_store_key"):
+        "the key a Skill BODY is fetched by",
+}
+
+
+def _is_role_named_anchor(key: str, name: str) -> bool:
+    return (key, name) in _ROLE_NAMED_ANCHORS
 
 
 #: Task 16 section 9 invariant 1 keeps ONE carve-out: "Existing RQGM ``hash12``
@@ -144,7 +180,14 @@ def _kca_anchor_fields() -> list[tuple[str, str, object]]:
     anchors: list[tuple[str, str, object]] = []
     for key, model in sorted(_kca_contract_models().items()):
         for name, field in model.model_fields.items():
-            if not _is_anchor_name(name) or _is_hash12_compatibility(name):
+            # TWO SELECTORS, because either alone has a blind spot. The NAME
+            # finds an anchor that ought to carry the constraint and does not
+            # -- which is the defect the criterion is about. The CONSTRAINT
+            # finds an anchor named for its role rather than its mechanism,
+            # which the name misses entirely: `execution_identity` was one.
+            if not (_is_anchor_name(name) or _is_role_named_anchor(key, name)):
+                continue
+            if _is_hash12_compatibility(name):
                 continue
             annotated = field.annotation
             if field.metadata:
@@ -1282,3 +1325,19 @@ def test_node_kca_provenance_complete(tmp_path):
     expected_tools = sorted(bound_tool_refs(binding_lock))
     assert len(expected_tools) > 1, expected_tools
     assert node.bound_tool_refs == expected_tools
+
+
+def test_every_role_named_anchor_still_exists_where_it_is_pinned():
+    """The hand-pinned list cannot go stale without saying so.
+
+    A list is only honest while it still describes the tree. If one of these is
+    renamed or removed, this fails rather than quietly narrowing the inventory
+    the criterion-49 test walks.
+    """
+    models = _kca_contract_models()
+    for (key, name), reason in sorted(_ROLE_NAMED_ANCHORS.items()):
+        assert key in models, f"{key} no longer exists ({reason})"
+        assert name in models[key].model_fields, (
+            f"{key}.{name} no longer exists ({reason})")
+        assert not _is_anchor_name(name), (
+            f"{key}.{name} is now found by its name; drop it from the list")
