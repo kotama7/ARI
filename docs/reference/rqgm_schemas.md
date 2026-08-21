@@ -139,7 +139,7 @@ never renumbered.
 | `CK-ACC-001`, `CK-ACC-002` | `validate_capability` — `CAPABILITY_MATRIX` miss or a denied Task-11 meta-action flag; retired-prompt-text access (unreadable for every role) | block |
 | `CK-EPO-001` | `validate_epoch_invariance` — a record whose `prompt_hash` lies outside the epoch's frozen active set | warn |
 | `CK-EPO-002` | `validate_epoch_invariance` — a non-emergency status-change event inside the epoch | block |
-| `CK-REG-001`…`CK-REG-007` | `validate_transition` — edge absent from the T1–T21 table, boundary-only edge stamped mid-epoch, declared `rule_id` contradicting the table, `produced_by` not the RegistryTransitionEngine, required supporting refs missing, invalid emergency shape, `from_status` contradicting the registry | block |
+| `CK-REG-001`…`CK-REG-007` | `validate_transition` — edge absent from the [T1–T21 table](#the-fixed-transition-table), boundary-only edge stamped mid-epoch, declared `rule_id` contradicting the table, `produced_by` not the RegistryTransitionEngine, required supporting refs missing, invalid emergency shape, `from_status` contradicting the registry | block |
 | `CK-REG-101` | `validate_authority_non_expansion` — a candidate declaring more authority than its incumbent (invariant 18) | block |
 | `CK-ROL-001`, `CK-ROL-002`, `CK-ROL-003` | `validate_role_separation` — impeachment motion not authored by the Auditor, evidence bundle not by the EvidenceClerk, same-role accusation | warn |
 | `CK-ROL-901` | `validate_role_separation` / `validate_capability` — anyone but the RegistryTransitionEngine writing the registry or activating candidates (invariant 10) | block |
@@ -208,8 +208,9 @@ the record-specific fields):
 
 Closed vocabularies:
 
-- **Status lifecycle** (shared by prompts and components; legal
-  transitions are the T1–T21 table in `ari/rqgm/transition_rules.py`):
+- **Status lifecycle** (shared by prompts and components; the legal
+  transitions are the [T1–T21 table](#the-fixed-transition-table) in
+  `ari/rqgm/transition_rules.py`):
   `candidate → validated → shadow → probationary_active → active`, then
   `active → warning | probation | quarantine`, and
   `quarantine → retired → banned`.  `active` and `probationary_active`
@@ -888,9 +889,9 @@ the entire generator context besides the committed
 
 **Purpose:** the single output record of one RegistryTransitionEngine
 boundary resolution, audited to `rqgm_audit.jsonl` as an
-`epoch_transition` record.  Every status change pins a fixed T1–T21
-`rule_id` row of `ari/rqgm/transition_rules.py` (the T1–T19 base table plus
-the role-scoped T20 / T21 supersession rows); only the
+`epoch_transition` record.  Every status change pins a fixed
+`rule_id` row of the [T1–T21 table](#the-fixed-transition-table) below (the
+T1–T19 base table plus the role-scoped T20 / T21 supersession rows); only the
 `rqgm.transition.*` numeric thresholds are configurable.  **Owning
 module:** `ari/rqgm/transition_engine.py` — the sole registry status
 writer (`produced_by` is const `registry_transition_engine`, kernel
@@ -906,6 +907,100 @@ CK-REG-004).
 | `clean_room_requests` | Regeneration requests handed to Task 08 |
 | `next_active_components` / `fallbacks` | The next epoch's frozen active set + no-vacancy fallbacks |
 | `kernel_validation` (+ optional `kernel_violation`) | The kernel verdict on the transaction |
+
+### The fixed transition table
+
+`ari/rqgm/transition_rules.py` holds the complete, non-evolving transition
+table for governed components and prompts, and **both** the
+RegistryTransitionEngine (which resolves an edge) and the ConstitutionalKernel's
+TransitionValidator (which accepts or refuses it) import that one module — a
+single source of truth, so the engine's idea of a legal edge and the kernel's
+cannot drift apart.  It is pure data: no LLM call, no I/O, no randomness, no
+wall clock.  Only the `rqgm.transition.*` numeric thresholds are configurable;
+the *topology* rides inside `constitution_hash`, so adding, removing, or
+re-guarding an edge is a constitutional amendment — a code change plus a hand
+re-pin of the hash in `ari-core/tests/test_rqgm_kernel.py` — and never a config
+value.  The absence of a config escape hatch is the decision, not an oversight:
+a table that the running institution could widen would let it vote itself new
+powers between two audits.
+
+The ten statuses are Task 02's closed vocabulary
+([above](#shared-envelope-rqgm-defs-schema-json)), mirrored member for member by
+`transition_rules.ComponentStatus`.  `warning` and `probation` are **serving**
+states — the component stays in the epoch's frozen active set and only its
+governance posture changes — while `quarantine` removes it from the serving
+set.  There is deliberately no `rejected` status: a candidate or shadow that
+fails out **without ever having served** takes `retired` as its terminal
+disposition (T2 / T5), with the reason carried in the event payload and with
+**no** `RetirementEvent` and **no** `CleanRoomGenerationRequest` — those two are
+exclusive to T17, the retirement of something that actually served.  `banned` is
+absorbing.  A status a reader does not recognise is treated as ineligible for
+the active set and logged, never raised.
+
+Three universal guards apply to **every** row, on top of the per-edge guards in
+the table:
+
+| | Universal guard |
+|---|---|
+| **G1** | Only the RegistryTransitionEngine may write a status (global invariant 10 — a Judge writing the registry is a named kernel violation). |
+| **G2** | The change commits inside a committed epoch-boundary transaction — the single ⚡ emergency edge is the only exception. |
+| **G3** | `ConstitutionalKernel.validate_transition` passed (`CK-REG-001`…`CK-REG-007`). |
+
+⚖ marks the spec-mandated spine; unmarked rows are the auxiliary
+recovery/rejection edges that make the machine total; ⚡ is the sole mid-epoch
+edge.  The **Guards** column names the deterministic guard predicates the
+*engine* evaluates — the kernel itself checks only table membership, `rule_id`
+parity, `from_status` agreement with the registry, and the boundary/emergency
+shape.
+
+| # | From → To | Triggering input, and the decision the row encodes | Edge-specific guards |
+|---|---|---|---|
+| T1 ⚖ | `candidate` → `validated` | `candidate_validation_passed` — Task 07's `PromptCandidateValidation`: static validation, constitutional validation, and the schema dry-run all pass.  Validation is a gate, not an endorsement: clearing it only makes the candidate eligible to be *measured*. | `candidate_cap_not_exceeded` (`rqgm.prompt_evolution.max_candidates_per_role_per_epoch`), `constitutional_constraints_present` — a PromptSpec that declares no constraints cannot be validated at all |
+| T2 | `candidate` → `retired` | `validation_failed_or_candidate_expired` — any blocking validation failure, or a candidate that waited longer than `candidate_max_age_epochs`. | `never_served_rejection`: terminal, and deliberately *not* a retirement — no `RetirementEvent`, no clean-room request.  The failure summary is kept for the Task 08 abstract-evidence bundle |
+| T3 ⚖ | `validated` → `shadow` | `replay_and_anchor_evaluation_passed` — replay score ≥ `replay_pass_threshold` over ≥ `replay_min_cases`, and the anchor evaluation shows no regression against the incumbent. | `shadow_slot_available` (`rqgm.shadow.max_shadow_calls_per_epoch`); boundary only |
+| T4 | `shadow` → `validated` | `insufficient_shadow_samples` — after `shadow_max_epochs` the candidate still has fewer than `shadow_min_samples` comparisons.  Under-measured is not the same as failed, so it is re-scheduled rather than rejected. | `shadow_retry_within_limit` (`shadow_retry_limit`); past that limit the disposition is T5 |
+| T5 | `shadow` → `retired` | `shadow_quality_below_threshold` — agreement/quality below `shadow_pass_threshold` *with enough samples to say so*. | `never_served_rejection`, exactly as T2 |
+| T6 ⚖ | `shadow` → `probationary_active` | `shadow_agreement_passed` — the GovernanceReport's shadow section shows agreement/quality ≥ `shadow_pass_threshold` over ≥ `shadow_min_samples` live-shadow comparisons.  This is the adoption edge, and it lands in *probation*: nothing is ever adopted straight into `active`. | `role_opening_available` (the incumbent is in probation/quarantine/retired, or the role is unfilled), `one_adoption_per_role_per_boundary` (`max_adoptions_per_role_per_boundary`); boundary only |
+| T7 ⚖ | `probationary_active` → `active` | `clean_probation_record` — the GovernanceReport attributes zero upheld `ValidatedAttackRecord`s to it and its performance is at least the incumbent baseline over the probation window.  **This is the only way a component earns a full seat.**  Every serving component has served a probation first, so nothing is ever trusted on its evaluation scores alone: the evidence that promotes it is behaviour observed while it was already answering, under intensified scrutiny and reversible by a single boundary. | `probation_min_epochs_served` (`probation_min_epochs` full epochs); boundary only |
+| T8 | `probationary_active` → `quarantine` | `upheld_impeachment_or_reliability_collapse` — a probationer loses its provisional seat on the same evidence that would unseat an incumbent. | boundary, or ⚡ as one of the T16 shapes |
+| T9 ⚖ | `active` → `warning` | `reliability_warning_or_low_severity_attacks` — GovernanceReport reliability warnings, or validated attacks of `severity: low`. | `component_keeps_serving`; boundary only |
+| T10 ⚖ | `active` → `probation` | `repeated_warnings_or_medium_severity_attacks` — ≥ `warning_escalation_count` consecutive warning epochs, or medium-severity validated attacks. | `component_keeps_serving`, under intensified shadow comparison; boundary only |
+| T11 ⚖ | `active` → `quarantine` | `upheld_impeachment_or_critical_attack_pattern` — an upheld `ImpeachmentOutcome`, or a high/critical-severity validated attack pattern the GovernanceReport attributes to it. | `fallback_assigned` — the role is never left vacant; boundary, or ⚡ as one of the T16 shapes |
+| T12 | `warning` → `active` | `clean_epoch` — a full epoch with no new warnings or attacks in the GovernanceReport.  A warning is a posture, not a debt: it clears itself, and nothing has to be filed to lift it. | boundary only |
+| T13 | `warning` → `probation` | `warning_recurrence_within_memory` — recurrence inside `warning_memory_epochs`. | boundary only |
+| T14 | `probation` → `active` | `rehabilitation_clean_epochs` — clean epochs served under intensified scrutiny.  Rehabilitation is a real path, not a formality: a sanction is not a slow death sentence. | `probation_min_epochs_served`; boundary only |
+| T15 | `probation` → `quarantine` | `continued_degradation_or_upheld_impeachment` | boundary, or ⚡ as one of the T16 shapes |
+| T16 ⚡ | `probationary_active` \| `active` \| `warning` \| `probation` → `quarantine` | `constitutional_emergency` — a deterministic ConstitutionalKernel critical-violation record naming the component.  **The only mid-epoch edge in the table.**  Performance signals never qualify: a component that is merely slow or disappointing waits for the boundary, because the epoch freeze is what makes a run auditable and only a constitutional violation is worth breaking it for.  The edge force-closes the current epoch and commits the quarantine plus a freshly fingerprinted epoch-open in the same transaction, so "mid-epoch" never means "outside a boundary transaction". | `emergency_flag_set` (`transition.emergency == true`), `kernel_violation_attached`, `single_sanction`; `boundary_only` is `False` on this row alone |
+| T17 ⚖ | `quarantine` → `retired` | `adjudication_confirmed_retirement` — at a boundary, a ReplayBoard confirmation over ≥ `retirement_replay_min_cases` cases (inside the `rqgm.replay.max_cases_for_retirement` budget) upholds the impeachment.  Quarantine is a suspension; retirement is the verdict, and the verdict needs evidence re-run *after* the accusation rather than the evidence that raised it. | `replay_board_confirmation`, `emits_retirement_event` — this edge, and only this edge, emits the `RetirementEvent` + `CleanRoomGenerationRequest` and hands the retired `prompt_hash` set to frontier repair; boundary only |
+| T18 | `quarantine` → `probationary_active` | `exoneration` — the GovernanceSelfAudit or the AdjudicationPanel overturns the impeachment.  Re-entry is **into probation, never straight back to `active`**: exoneration restores standing, not seniority. | `re_enters_under_probation`; boundary only |
+| T19 ⚖ | `retired` → `banned` | `contamination_or_critical_finding` — prompt-injection content, audit-log tampering attributed to it, or repeated clean-room-descendant failure traced to its lineage.  Retirement ends a component's service; a ban additionally forbids its *text* from being read again, which is why it is a separate, heavier finding. | `absorbing`; bans reuse of its text and few-shots as a clean-room reference beyond the abstract failure summary; boundary only |
+| T20 | `active` → `retired` | `superseded_by_adopted_successor` — the `utility_policy` supersession edge.  The utility policy is the evaluation *criterion*, not a behavioural actor, so it is replaced by supersession rather than by sanction: a validated, shadow-passed successor displaces the **healthy** incumbent and retires it carrying the **old** `utility_policy_hash`, which is exactly what makes `frontier_repair` invalidate every node scored under it.  Without this row the score-rewrite spine was dead — T6 needs a role opening that a healthy passive policy never yields. | `supersession_successor_adopted` — emitted only inside a same-role T6 adoption, so a displacement can never happen without a successor to justify it; `utility_policy_role_only`; `emits_retirement_event` |
+| T21 | `active` → `shadow` | `superseded_by_adopted_successor` — the paper-role supersession edge (`paper_writer` / `paper_reviewer`).  Paper-role co-evolution is prompt-level, so when a successor prompt adopts, the incumbent has to go somewhere: it is demoted to a **reinstatable** `shadow` standby, which keeps exactly one active entry per paper role instead of leaving two co-active behind a latest-wins rollup.  Unlike T20 this is not a retirement and deletes nothing — a later boundary can re-climb the standby through T6. | `supersession_successor_adopted`, `paper_prompt_role_only` (`transition_rules.PAPER_SUPERSESSION_ROLES`), `reinstatable_standby` |
+
+T20 and T21 are the **only** two exceptions to the sanction-only replacement
+model, and each is kernel-guarded to one role family: for every behavioural role
+`active → retired` and `active → shadow` stay forbidden and the kernel rejects
+them (`CK-REG-001`), so a behavioural component still leaves its seat only
+through quarantine.
+
+**How T16 is encoded.**  The table is a `dict` keyed by
+`(from_status, to_status)` with exactly 21 entries, one per rule id — which is
+what the `|S|×|S|` complement test enumerates.  T16 spans four `from` statuses,
+and three of those pairs (`probationary_active` / `active` / `probation` →
+`quarantine`) already have boundary rules of their own — T8, T11, T15 — and keep
+those rule ids as their table entry.  The T16 *row* is therefore the one pair
+with no boundary edge of its own, `warning → quarantine`.  The full four-shape
+emergency set lives in `transition_rules.EMERGENCY_EDGE`, and a mid-epoch commit
+is legal only as an emergency transition over one of those four shapes.
+
+**Everything not in the table is forbidden**, and four of the absences are
+load-bearing rather than accidental: there is no `candidate → active` edge (no
+instant activation, global invariant 15); no resurrection out of `retired`; no
+edge out of `banned`, which is absorbing; and no in-place substitution of prompt
+text without a status edge (global invariant 3), because a prompt that changed
+without a transition would be an unaudited change of who is answering.  The
+kernel rejects the whole complement: the test suite enumerates the `|S|×|S|`
+matrix and asserts that exactly these 21 rows are accepted.
 
 ## Frontier-repair schemas (Task 10)
 
@@ -1032,9 +1127,9 @@ this schema: it is frozen code in `ari.rqgm.kernel_rules.UTILITY_POLICY_RULES`,
 inside `constitution_hash`, and enforced by CK-UTL-001..008 before a candidate
 can ever score a node.  Adoption happens **only** through the
 RegistryTransitionEngine boundary transaction — the role-agnostic T1→T6 spine,
-plus the Task-14 supersession edge **T20** `superseded_by_adopted_successor`
-(`ari/rqgm/transition_rules.py`; the sole `active → retired` edge, kernel-guarded
-to `utility_policy` only) — never through this record.  The evolved policy body
+plus the Task-14 supersession edge **[T20](#the-fixed-transition-table)**
+`superseded_by_adopted_successor` (the sole `active → retired` edge,
+kernel-guarded to `utility_policy` only) — never through this record.  The evolved policy body
 is written write-once to `rqgm_prompts/<candidate_id>.json` (referenced by
 source, never inlined), and the adopted policy is what
 `ari/rqgm/state.py:capture_utility_policy` freezes into `epoch_state.json`.

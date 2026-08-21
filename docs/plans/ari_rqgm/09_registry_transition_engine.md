@@ -206,6 +206,20 @@ accepted as THIS plan's base table (the shipped `TRANSITION_TABLE` is T1–T21:
 these 19 plus the role-scoped amendments T20/T21, see §5.2's amendment note)
 (Section 9).
 
+> **Given a permanent home, 2026-08-22.** This table is no longer the only copy.
+> The shipped T1–T21 table — every row's triggering input, its edge-specific
+> guards, the three universal guards, the T16 `(from, to)` encoding decision, and
+> the forbidden-complement rule — is reproduced in
+> [`docs/reference/rqgm_schemas.md`, "The fixed transition table"](../../reference/rqgm_schemas.md#the-fixed-transition-table),
+> in all three languages
+> ([ja](../../ja/reference/rqgm_schemas.md#固定遷移表) ·
+> [zh](../../zh/reference/rqgm_schemas.md#固定转换表)), and
+> [`docs/concepts/rqgm_architecture.md`, "The epoch cycle"](../../concepts/rqgm_architecture.md#the-epoch-cycle)
+> links to it. The permanent copy is written against the shipped
+> `TRANSITION_TABLE` (21 rows, T20/T21 included), so where it and the 19-row
+> planning table above differ, the permanent page is the one to read. Nothing
+> above is amended: the §5.2 text stays as the record of what was designed.
+
 ### 5.3 Epoch-boundary transaction semantics
 
 The transition commits as a five-step transaction at the `_run_loop` epoch

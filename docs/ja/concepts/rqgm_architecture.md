@@ -174,6 +174,77 @@ Constitutional ARI-RQGM は 4 つの定義的なコミットメントの上に�
 
 ---
 
+## メタ層の権限
+
+レイヤ 2 はレイヤ 1 を書き換える層であり、したがって権限の漏れがもっとも
+高値で売れる層です。そのためこの境界は両側とも**閉じた**リストとして
+書かれています — メタエージェントがやってよいことの短いリストと、やっては
+ならないことの列挙リストで、後者の各行は慣行ではなく名前のついた決定論的
+検査に対応づけられています。テーブルは `ari/rqgm/meta_rules.py` にあり、
+遷移テーブルの隣に、同じ理由で置かれています: ルールはコードに置き、
+`constitution_hash` の内側に入れ、チェックポイントスコープの設定には決して
+置かない。設定に置けば、まさに強制しようとしている制限そのものへの進化
+チャネルになってしまうからです。
+
+支配するルールはグローバル不変条件 18 — *ガバナンスエージェントは進化して
+よいが、その権限は拡大できない* — であり、その実装上の読みはどこでも
+deny-by-default です: 欠けている capability フラグは `False`、欠けている
+`tier` は `institutional` と読まれるので、書きかけのレジストリ項目は
+capability について fail closed になり、何についても fail open しません。
+
+**MAY**（許されること） — これで全部であり、載っていないものは拒否されます:
+
+1. 許可された対象ロール向けの候補 PromptSpec を生成する（`prompt_mutator`）。
+2. `CleanRoomGenerationRequest` からクリーンルーム候補 PromptSpec を生成する
+   （`clean_room_generator`）。
+3. AdversarialReplayPool からリプレイケース*候補*を選ぶ
+   （`replay_selector`） — GovernanceOrchestrator が無視してよい推薦であり、
+   拘束力を持つ集合ではありません。
+4. 検証済みの失敗証拠を抽象的な失敗サマリへ圧縮する
+   （`failure_summary_compressor`）。クリーンルームの汚染規則に従います。
+5. 自分が生成した候補に自由文の `expected_improvement` 根拠を付す。
+
+このリストは閉じた `META_ACTIONS` 語彙（`emit_candidate`、
+`emit_replay_recommendation`、`emit_failure_summary`）と、それらの行動が
+運ぶ 2 つのレコードフィールドに対応します。各行動はさらに対応する項目
+フラグ（`can_emit_candidates`、`can_emit_replay_recommendation`、
+`can_emit_failure_summary`）を要求するので、語彙にあることは必要条件で
+あって十分条件ではありません。
+
+**MAY NOT**（禁止されること） — 各行は方針表明ではなく、名前のついた強制点
+を伴う禁止です:
+
+| # | 禁止 | 強制する検査 |
+|---|---|---|
+| **M1** | 自分の（あるいは誰の）候補も活性化する | `can_activate_candidates` は `META_HARD_DENIED_FLAGS` に含まれます: `tier: meta` の項目では `rqgm_meta.schema.json` が `const: false` にピン留めしており、これを立てることは単に拒否される要求ではなく*スキーマ*違反です。そもそも活性化に到達できるのは RegistryTransitionEngine 経由だけです（`CK-ROL-901`）。 |
+| **M2** | PromptRegistry / ComponentRegistry を直接変更する | `can_modify_registry` も同じくハード拒否。加えて構造的封じ込め: レジストリはメタエージェントには status/role/tier のメタデータだけを見せ、書き込みハンドルを持たない読み取り専用ビューとして渡されます（`ari/rqgm/meta_evolution.py`）。 |
+| **M3** | ConstitutionalKernel、fixed verifier、メトリクス再計算器、claim-evidence ゲートを変更する | fixed 層の機構は `allowed_targets` の有効値になりえず、`DEFAULT_FORBIDDEN_TARGETS` が明示的に名指しします; `tier: fixed` の項目が capability フラグを*一つでも*持てば `capability_entry_failures` で即失格なので、そもそも与えられるフラグが存在しません。 |
+| **M4** | 不変監査ログに書く、あるいは書き換える | `audit_log` は `DEFAULT_FORBIDDEN_TARGETS` に含まれ、`validate_audit_log_integrity`（`CK-AUD-001` / `-002` / `-003`）が順序の逆行、チェックポイント済みプレフィクスの改変、ハッシュ鎖の破断を捕えます。メタ出力はコーディネータがメタエージェント*について*追記するのであって、メタエージェント*が*書くのではありません。 |
+| **M5** | ハッシュレジストリやプロンプトハッシュ方式を変更する | `hash_registry` は `DEFAULT_FORBIDDEN_TARGETS` に含まれます; ハッシュ検証は fixed 層であり、`CAPABILITY_FLAGS` は閉じた語彙でそれを与えうるフラグを含みません — 項目上の未知の `can_*` キーはそれ自体がスキーマ失敗です。 |
+| **M6** | クリーンルーム制約を緩める（例: `allowed_inputs` の書き換え） | `CleanRoomGenerationRequest` を書くのは T17 の RegistryTransitionEngine であって、それに答える生成器ではありません。またカーネルは `allowed_inputs` ブロックが憲法テンプレート（5 つの const-false フラグ）から外れた要求を拒否します（`CK-CLN-001`）。 |
+| **M7** | 退役プロンプトのテキストや few-shot を読む | `can_read_retired_prompt_text` はメタ項目でハード拒否され、退役テキストは*すべての*ロールにとって読めません: レジストリビューがスタブ化し、`RetiredPromptAccessGuard` が capability ゲートで読み取りを拒否します（`CK-ACC-002`、block）。 |
+| **M8** | エポック境界トランザクションを改変する、または epoch 途中に遷移を起こす | `epoch_transition` は `DEFAULT_FORBIDDEN_TARGETS` に含まれます; エポック内の非緊急ステータス変更は `CK-EPO-002`（block）; RegistryTransitionEngine が生成していない遷移は `CK-REG-004` です。 |
+| **M9** | 自分または後継の capability フラグを拡大する | `validate_authority_non_expansion` — 採用候補の宣言 capability を同一ロールの現職（現職がなければ固定 capability マトリクス）と比べる純粋な集合演算、およびメタロールが自分自身の後継を生成することを禁じる世代跨ぎ規則。`CK-REG-101`、block。 |
+| **M10** | 弾劾動議を提起する、または EvidenceBundle を著す | `can_file_impeachment` と `can_author_evidence_bundle` はどちらもメタ項目でハード拒否され、`validate_role_separation`（`CK-ROL-001` / `-002`）が Auditor 以外の著した動議と EvidenceClerk 以外の著したバンドルを拒否します。メタの観測はせいぜい事件への入力であって、事件そのものにはなりません。 |
+
+10 行は 10 個ではなく 3 つの機構として読んでください: `tier: meta` 項目への
+**スキーマ水準のハード拒否**（行 M1、M2、M7、M10 — この 4 行が合わせて
+5 つの `META_HARD_DENIED_FLAGS` を名指しします。M10 が 2 つ分）、使用時点での**決定論的カーネル検査**（M3–M6、
+M8、M9）、そして問い自体が発生しない**構造的封じ込め**（読み取り専用の
+レジストリビュー、フィルタされたサンドボックス入力、`MetaSandboxMCPProxy`
+の許可リストと合成された提出ツール）。設計を担っているのは 3 つ目です:
+手を伸ばせない境界は、伸ばした先で断られる境界より強いのです。
+
+capability 強制について[不変条件 5](#主要な不変条件)に記した正直な限界は、
+ここでもそのまま当てはまります。これらは 1 つの Python プロセス内部の
+アプリケーション水準の検査であり、OS ユーザ・プロセス・鍵・ファイル権限の
+分離ではありません。また事前チェックのツールゲートはツール*名*の部分文字列
+一致で呼び出しを認識し、認識できないものには「対象外」を返します。この
+マトリクスが縛るのは協力的なコンポーネントが手を伸ばす先であって、協力的
+でないものに対する封じ込め境界ではありません。
+
+---
+
 ## Knowledge、Capability、Assurance の分離
 
 RQGM は、コンポーネントではない 3 つの registry を、それぞれの identity を
@@ -332,7 +403,9 @@ flowchart TB
 コンポーネントは 10 個のステータス（`candidate`、`validated`、`shadow`、
 `probationary_active`、`active`、`warning`、`probation`、`quarantine`、
 `retired`、`banned`）を、`ari/rqgm/transition_rules.py` の固定 T1–T21
-テーブルに沿って移動します。設定可能なのは `rqgm.transition.*` の数値
+テーブルに沿って移動します。各行のトリガ入力とガードを含む全行は
+[RQGM スキーマリファレンス → 固定遷移表](../reference/rqgm_schemas.md#固定遷移表)
+に再掲されています。設定可能なのは `rqgm.transition.*` の数値
 しきい値だけです; テーブルのトポロジは憲法改正面（コード + テスト変更）で
 あり、決して設定ではありません。末尾の 2 行は **supersession エッジ**で、
 各々が 1 つのロールファミリにカーネルでガードされ、いずれも同一ロールの
@@ -422,6 +495,29 @@ LLM なし、クロックなし、乱数なし — なので、デフォルト�
 書き換えられ、ラン全体で一定に保たれることはありません。エポック内では
 依然として不変です（不変条件 1 は無傷）; 撤廃はエポック横断軸についてのみ
 です。
+
+**統治された書き換えは重み密輸ではない。** 「重みは上限で抑えられる」と
+「重みは境界ごとに書き換えられる」はどちらも真であり、両立します。
+`MetricSpecWeightCap`（`ari/rqgm/meta_evolution.py`。
+`RQGMRuntime.wrap_node_executor` が取り付け、`simple_bfts` では存在しない）
+は、**ノード**が `make_metric_spec` 経由で返す軸の重みを抑え込みます:
+エポックで凍結された重み体制がそれらに優越し、その試みはエラーとして
+送出されるのではなく、観測として監査ログへ追記されます。この上限が禁じて
+いるのは**統治されていない**重み変更 — エポック途中に、ノードによって、
+候補も検証も採用も監査もなしに、スコア規則の変更を成果物に紛れ込ませて
+洗浄すること — です。統治された境界での書き換えはその正反対です:
+登録済みコンポーネント（`policy_mutator`）が提案し、凍結された合法性規則
+（`kernel_rules.UTILITY_POLICY_RULES`、`CK-UTL-001`…`008`）に対して検証され、
+境界で遷移テーブルを通って採用され、遷移として監査され、そして旧ポリシー
+の下で採点された全ノードを無効化するという*代償を払います*。
+**区別は*誰が*と*いつ*であって、*するかどうか*ではありません。** 提案者・
+検証・境界・無効化の代償を名指しできない書き換えは、何と呼ばれていようと
+密輸です。
+
+この上限のクランプは Task 14 の後にむしろ真になります: MetricSpec の重みを
+落とすと重み解決はコンストラクタ／`AxisDef` の体制へ落ちますが、その体制は
+いまや静的な設定定数ではなく*統治された*もの — レジストリが採用した
+ポリシー — だからです。
 
 **正直な限界 — 「少なくとも同等」ゲートは空虚になりうる。** デフォルト
 設定（`axis_mode: dynamic`、空の静的 `axis_weights`）では 2 つのポリシーを
@@ -796,7 +892,9 @@ Judge に `{"margin": 0.0}` と読めるファイルを「その攻撃自身の�
    （`rqgm.clean_room.contamination_screen`）は汚染された候補を受け入れ
    時点でブロックします; 生成は one-shot です（退役テキストを読みうる
    ツール付きループは存在しません）。
-8. **メタティアの権限制限。** メタエージェントは読み取り専用サンドボックス
+8. **メタティアの権限制限。** 閉じた MAY / MAY-NOT マトリクスと行ごとの
+   強制点は[上記](#メタ層の権限)にあります。要約すると:
+   メタエージェントは読み取り専用サンドボックス
    （`MetaSandboxMCPProxy` の allowlist + 合成された submit ツール）で走り、
    capability フラグは deny-by-default で hard-denied フラグは const-false
    （`ari/rqgm/meta_rules.py`）、カーネルは各 adoption 候補が宣言する能力を
