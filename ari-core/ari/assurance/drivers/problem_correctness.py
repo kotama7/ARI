@@ -290,6 +290,12 @@ class ProblemCorrectnessDriver:
                     "problem_digest": report.problem_digest,
                     "dataset_revision": report.dataset_revision,
                     "candidate_toolchain": report.candidate_toolchain,
+                    # WHAT THE LAUNCH RAN UNDER, observed. registration evidence
+                    # derives network_isolation from the REQUEST, and every
+                    # layer under that field restates the same declaration, so
+                    # the record of the condition has to reach the digest-bound
+                    # attestation before anything can be derived from it.
+                    "sandbox": report.sandbox,
                     "build_error": report.build_error,
                     "interface_error": report.interface_error,
                 },

@@ -105,3 +105,49 @@ def test_the_publishable_view_keeps_the_observation() -> None:
     kept = sandbox_record({**network_record(), "writable_root": "/tmp/x"})
     assert "writable_root" not in kept
     assert "network_isolation" in kept and "network_probe" in kept
+
+
+# --- the observation has to reach the evidence, and agree with it -------------
+
+def _shipped_bundles():
+    import yaml as _yaml
+
+    root = ARI_CORE / "config" / "harnesses"
+    document = _yaml.safe_load((root / "catalog.yaml").read_text(encoding="utf-8"))
+    return [(entry["id"], (root / entry["registration_evidence"]).parent)
+            for entry in document["entries"]]
+
+
+def _observed_networks(bundle: Path) -> list[bool | None]:
+    """What each attestation in a bundle recorded about its own namespace."""
+    seen: list[bool | None] = []
+    for path in sorted(bundle.glob("*.attestation.json")):
+        body = json.loads(path.read_text(encoding="utf-8"))
+        for result in body.get("property_results", []):
+            sandbox = (result.get("oracle_comparison") or {}).get("sandbox") or {}
+            seen.append(sandbox.get("network_isolation"))
+    return seen
+
+
+@pytest.mark.parametrize("harness,bundle", _shipped_bundles(),
+                         ids=[row[0] for row in _shipped_bundles()])
+def test_no_shipped_bundle_claims_more_than_it_observed(harness, bundle) -> None:
+    """The declaration may not outrun the record where a record exists.
+
+    NOT "every bundle must observe". Three of the five families run a verifier
+    whose report has no sandbox field at all, so their attestations cannot carry
+    this yet and requiring it would turn a gap into five red harnesses without
+    making any of them more isolated. What is required is the thing that is
+    always checkable: where a run DID record the condition, the evidence must
+    not say "proved" over a run that recorded otherwise.
+    """
+    evidence = json.loads((bundle / "registration_evidence.json")
+                          .read_text(encoding="utf-8"))
+    observed = [value for value in _observed_networks(bundle) if value is not None]
+    if not observed:
+        pytest.skip(f"{harness} ships no run that recorded its own namespace")
+    if evidence["network_isolation"] == "proved":
+        assert all(observed), (
+            f"{harness} declares network_isolation: proved and "
+            f"{observed.count(False)} of its {len(observed)} runs recorded that "
+            f"they could reach a network")

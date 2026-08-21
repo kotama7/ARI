@@ -434,6 +434,12 @@ class NativePerfDriver:
                     "crossed_compiler_boundary": report.crossed_compiler_boundary,
                     # A timing is a statement about a machine.
                     "placement": report.placement,
+                    # AND WHAT IT RAN UNDER, observed. registration evidence
+                    # derives network_isolation from the REQUEST -- every layer
+                    # under that field restates the same declaration -- so the
+                    # record of the condition has to reach the digest-bound
+                    # attestation before anything can be derived from it.
+                    "sandbox": report.sandbox,
                 },
                 covered_atom_digests=(atom.atom_digest,),
                 evidence_artifact_refs=evidence,
