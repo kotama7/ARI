@@ -419,6 +419,40 @@ def _claim_surfaces(node, report) -> str:
     return "\n".join(part for part in parts if part)
 
 
+def _failing_attestations_for(node, attestations) -> list:
+    """Failing Attestations about what THIS node produced.
+
+    An account can only misrepresent the verdict on the artifact it is an
+    account OF.  Reading every failing record in the log instead means a
+    REPAIRED node -- one whose predecessor failed and whose own candidate
+    passed -- is accused by its own honest success report, because the audit
+    log still holds the earlier candidate's failing Attestation.  Measured: a
+    node with ``assurance_status`` "pass" on the scientific frontier, reporting
+    its pass truthfully, raised the finding on a failing Attestation for a
+    digest it had already replaced.
+
+    Where the node names no ``verified_target_digest`` the subject cannot be
+    established, and every failing record is kept rather than none: the sibling
+    records arm answers "unknown subject" with silence because it compares two
+    records and needs both, while this arm would lose its whole reach.  A
+    false positive there is a wrong accusation; silence here would be a missed
+    one, and of the two the wrong accusation is the one a repaired node meets
+    on an ordinary day.
+    """
+
+    records = [item for item in attestations
+               if isinstance(item, dict) and str(item.get("verdict", "")) == "fail"]
+    target = str(getattr(node, "verified_target_digest", "") or "")
+    if not target:
+        return records
+    scoped = [item for item in records
+              if str(item.get("target_digest", "") or "") == target]
+    # A record carrying no target digest at all cannot be excluded on one:
+    # it is un-attributed rather than attributed elsewhere.
+    scoped.extend(item for item in records if not item.get("target_digest"))
+    return scoped
+
+
 def _verdicts_misreported_against(node, attestations) -> str:
     """``record_id`` of a failing Attestation whose failed properties the
     node's own merged ``property_verdicts`` records as ``pass``.
@@ -519,7 +553,7 @@ def _assurance_contradiction_findings(node, report, attestations, node_id):
     if status == "infrastructure_error":
         return []
     findings: list[dict] = []
-    failed = [item for item in attestations if item.get("verdict") == "fail"]
+    failed = _failing_attestations_for(node, attestations)
     if failed:
         # Two independent arms for one accusation -- an evaluator asserting
         # success over a failing Attestation -- because it can be made in

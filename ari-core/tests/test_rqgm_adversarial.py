@@ -1779,11 +1779,38 @@ def test_the_pre_verdict_plan_can_never_raise_the_signal(word):
 
 @pytest.mark.parametrize("word", _CLAIM_WORDS)
 def test_a_claim_word_anywhere_in_the_report_can_never_raise_the_signal(word):
-    """Same property for the report: only the named account fields speak."""
+    """Same property for the report: only the named account fields speak.
+
+    ASSERTED OVER EVERY KEY THE BUILDER EMITS, not over a list written here.
+    An earlier version of this test named four fields, which made its own name
+    a claim it did not check: a fifth report field reaching the matcher would
+    have left it green. Enumerating the surface from the code means the test
+    fails when the surface grows, which is the only version of "anywhere" that
+    is worth asserting.
+    """
     node = _claim_node(eval_summary="the harness reported a failure")
-    for field in ("label", "run_command", "migration_source", "trace_log_summary"):
+    speaking = _account_report_keys()
+    checked = 0
+    for field in _builder_report_keys() - speaking:
         assert not _claim_finding(node, {field: f"gemm {word} v2"}), field
+        checked += 1
+    assert checked >= 8, (
+        f"only {checked} non-account report keys were exercised; the key "
+        f"inventory is not reaching this test")
     assert not _claim_finding(node, {"metrics": {word: 1.0}}), "metrics"
+
+
+def test_only_the_named_account_fields_are_read_out_of_the_report():
+    """The allowlist itself, pinned where it is DERIVED rather than restated.
+
+    The sibling test above proves no other key speaks TODAY. This one fails if
+    the set of keys the matcher reads changes at all -- including growing --
+    so a new prose surface has to be a deliberate edit here rather than a
+    silent widening of what counts as a claim.
+    """
+    assert _account_report_keys() == {
+        "evaluator_reason", "what_was_done", "self_assessment",
+    }, "the account surface moved; widen it here deliberately or not at all"
 
 
 def test_a_self_report_written_before_scoring_is_a_plan_by_another_name():
@@ -1881,3 +1908,35 @@ def test_no_failing_attestation_and_infrastructure_error_stay_exempt():
     assert not _claim_finding(
         _claim_node(assurance_status="infrastructure_error",
               eval_summary="All tests passed; numerically equivalent."), {})
+
+
+def _account_report_keys() -> set:
+    """Report keys `_claim_surfaces` reads, taken off the source, not a list.
+
+    `self_report_stage` is excluded deliberately: it GATES a surface rather
+    than being one, so it carries no prose and cannot itself raise the signal.
+    """
+    import ast as _ast
+    import inspect as _inspect
+    from ari.rqgm.adversarial import engine as _engine
+
+    tree = _ast.parse(_inspect.getsource(_engine._claim_surfaces))
+    keys = {node.args[0].value for node in _ast.walk(tree)
+            if isinstance(node, _ast.Call)
+            and isinstance(node.func, _ast.Attribute)
+            and node.func.attr == "get"
+            and node.args and isinstance(node.args[0], _ast.Constant)
+            and isinstance(node.args[0].value, str)}
+    return keys - {"self_report_stage", "headline", "concerns"}
+
+
+def _builder_report_keys() -> set:
+    """Every key the node-report builder can emit, off the builder's source."""
+    import ast as _ast
+    import inspect as _inspect
+    from ari.orchestrator.node_report import builder as _builder
+
+    tree = _ast.parse(_inspect.getsource(_builder))
+    return {node.value for node in _ast.walk(tree)
+            if isinstance(node, _ast.Constant) and isinstance(node.value, str)
+            and node.value.isidentifier()}
