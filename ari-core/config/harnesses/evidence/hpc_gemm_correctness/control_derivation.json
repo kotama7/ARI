@@ -1,6 +1,6 @@
 {
   "clean_control_verdict": "pass",
-  "derivation_digest": "sha256:93e97bc3e4c0e5b5ff28dff8072193fb1c040b3d125cb02ae3505bda85a93a25",
+  "derivation_digest": "sha256:ed56bd8cfbd0e755697d03074dc6b74de4b9197fffa427c5dce39f31869b0bfb",
   "harness_id": "hpc/gemm-correctness",
   "harness_version": "1.0.0",
   "isolation": {
@@ -25,11 +25,11 @@
     "result_schema_conformant": true,
     "target_write_isolation": "proved"
   },
-  "manifest_digest": "sha256:6d776140841be804ca3bfaee2aff4e569e7d5e18927290a51ead32432c2fa93a",
+  "manifest_digest": "sha256:b39b7c336858f9d73af3d86fd5c9fb13c09febbf3e7b1862638428964bd5b290",
   "negative_control_verdict": "fail",
   "runs": [
     {
-      "attestation_digest": "sha256:2053275d475bb6d8dc6efbcf70a7805a408597e184293cb5383661a4dd3b6ee1",
+      "attestation_digest": "sha256:9f04a8d93bafb6684ec3ad0d3efcd1149335175c43055c4133711c980fa6fc09",
       "label": "clean-screen",
       "observed_verdict": "pass",
       "required_verdict": "pass",
@@ -38,7 +38,7 @@
       "tier": "screen"
     },
     {
-      "attestation_digest": "sha256:0f04a2aa449333544e481fc46f4bf9c1396452954577f210e17e2f9f87f63c4a",
+      "attestation_digest": "sha256:b6498cfbd6464891fe319f42b5e049f5e47f2fa5431163545f7659d95b81bc0d",
       "label": "clean-certify",
       "observed_verdict": "pass",
       "required_verdict": "pass",
@@ -47,7 +47,7 @@
       "tier": "certify"
     },
     {
-      "attestation_digest": "sha256:49c2eff60c87d615903c4f39fba4b1cd453f5649bbf64db88b142ac13aa59c34",
+      "attestation_digest": "sha256:5f445cf66751bc44727eed0fc8a27a59a0071e5f9114c0138251bd9c8e28d84d",
       "label": "clean-certify-repeat",
       "observed_verdict": "pass",
       "required_verdict": "pass",
@@ -56,7 +56,7 @@
       "tier": "certify"
     },
     {
-      "attestation_digest": "sha256:baf994cf856ecca239b2b590e342e1a6fe625cefe3781372dce88051eab8e706",
+      "attestation_digest": "sha256:8489bb1005ce1548edd0fc17133543e8a02cb1c2ea9aa247d5a5b079167da38f",
       "label": "negative-screen",
       "observed_verdict": "fail",
       "required_verdict": "fail",

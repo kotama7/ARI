@@ -1,6 +1,6 @@
 {
   "clean_control_verdict": "pass",
-  "derivation_digest": "sha256:a34ed6517d37363b463ef1cc7cfba3c9e4e471165809de000fef16b4b487c88c",
+  "derivation_digest": "sha256:9d83fc682f65b8afe4cca50be230d7b71bee942f862bd310e5ca5040c29d1395",
   "harness_id": "hpc/stencil-correctness",
   "harness_version": "1.0.0",
   "isolation": {
@@ -25,11 +25,11 @@
     "result_schema_conformant": true,
     "target_write_isolation": "proved"
   },
-  "manifest_digest": "sha256:dffd69bc10abdf461ed706d0ca9b1d9f6f0b29d806e60e8245157287723ccb80",
+  "manifest_digest": "sha256:fab8a2ac7f4b5483ac24f06f88581ff9539acae88a7121aa683de27af9538e42",
   "negative_control_verdict": "fail",
   "runs": [
     {
-      "attestation_digest": "sha256:8da2edf1e17628c2fcceb7a18ac65f64fadc24a66eee652307d81833be5cc5b9",
+      "attestation_digest": "sha256:49e52a9837f4655574d103c9a474a024e7fc67b73cdab374d5a3d4a67f5fabe4",
       "label": "clean-screen",
       "observed_verdict": "pass",
       "required_verdict": "pass",
@@ -38,7 +38,7 @@
       "tier": "screen"
     },
     {
-      "attestation_digest": "sha256:8b9285e73eee9e92c06e877a79ba19fa2f7b3b11c6cf5bf7b0729270792ced00",
+      "attestation_digest": "sha256:7551ebc43afdc5ac962c18be6d33eb98cdf49060cf3be6ebca46246ccc49ebde",
       "label": "clean-certify",
       "observed_verdict": "pass",
       "required_verdict": "pass",
@@ -47,7 +47,7 @@
       "tier": "certify"
     },
     {
-      "attestation_digest": "sha256:4acdb5d4753d0b9978bb0fd52b73c5ebe3c3f24cbc502c695832a55bc47f90e1",
+      "attestation_digest": "sha256:70333d810b7693724a7e45695b05e82067b5775dfc40650f20d5814f509deec0",
       "label": "clean-certify-repeat",
       "observed_verdict": "pass",
       "required_verdict": "pass",
@@ -56,7 +56,7 @@
       "tier": "certify"
     },
     {
-      "attestation_digest": "sha256:8d9f2c1e321ded5e171cf64a82479244ed46ef0a8f7d127055c4ceaa6e093ff1",
+      "attestation_digest": "sha256:179a1bc28d3215e3ec47830972a5325f96c869ca0d6b810c85b4f1fc8aed5f06",
       "label": "negative-screen",
       "observed_verdict": "fail",
       "required_verdict": "fail",
