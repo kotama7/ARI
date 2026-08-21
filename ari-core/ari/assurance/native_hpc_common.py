@@ -49,6 +49,19 @@ class NativeHPCVerificationReportV1(DigestBoundModel):
     oracle: str
     error_model: str
     negative_control: bool
+    #: WHAT THE CANDIDATE'S LAUNCHES RAN UNDER, observed by the worker that
+    #: spawns them, because a family verifies a Callable and never launches.
+    #: The two halves answer different kinds of question: the filesystem entry
+    #: is a PRECONDITION -- the isolated host fails closed, so a candidate never
+    #: runs unrestricted and only True can reach the record -- while the network
+    #: entry is a genuine observation of the namespace the child inherited.
+    #:
+    #: Absent before this, and its absence had a consequence: this family's
+    #: registration evidence declared ``network_isolation`` from the REQUEST,
+    #: like the other two once did, and had nothing anywhere to derive it from.
+    #: Free-form for the same reason the perf report's is: what a host can
+    #: observe is not this schema's to enumerate.
+    sandbox: dict[str, Any] = Field(default_factory=dict)
     report_digest: str
 
 

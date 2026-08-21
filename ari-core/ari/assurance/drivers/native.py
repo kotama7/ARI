@@ -169,6 +169,11 @@ class NativeHPCDriver:
                 oracle_comparison={
                     "oracle": report.oracle,
                     "report_digest": report.report_digest,
+                    # AND WHAT THE LAUNCHES RAN UNDER, so the evidence can be
+                    # derived from a record instead of restating the request.
+                    # This family was the last of the three whose attestation
+                    # carried nothing to derive network_isolation from.
+                    "sandbox": report.sandbox,
                 },
                 covered_atom_digests=(atom.atom_digest,),
                 evidence_artifact_refs=evidence,
