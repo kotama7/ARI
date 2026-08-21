@@ -93,12 +93,27 @@ _MAX_CLEAN_SPREAD = MAX_TRUSTED_SPREAD
 #: small for this one, which is the opposite instruction: quieten the node
 #: versus enlarge the case.
 #:
+#: WHY AN ABSOLUTE DURATION IS THE RIGHT SHAPE, and which part of it is the
+#: machine's. Read the same sweep as ABSOLUTE deviation -- ``spread x median``
+#: -- and the curve flattens: across a 23-fold range of durations the error
+#: stays between 0.32 and 1.18 ms, eight of the ten points inside 0.7-1.2 ms.
+#: The instrument has a fixed jitter of roughly a millisecond and the relative
+#: spread is nothing but that jitter divided by how long the case ran.
+#:
+#: So the quantity that travels between machines is the JITTER, not the
+#: duration, and a floor is ``jitter / _MAX_CLEAN_SPREAD``. To re-derive it on
+#: another host: measure the clean control at several budgets, multiply each
+#: spread by its median, and divide the typical product by the bound.
+#:
+#: THE VALUE STILL COMES FROM THE CROSSING, not from that division. Worst-case
+#: jitter over the bound gives 11.8 ms, and the measured crossing is at most
+#: 10.74 ms -- the two do not agree, because the worst jitter did not occur at
+#: the crossing. The model says the floor is a duration; the sweep says which
+#: one. 7.5 ms strayed 0.112 and 10.7 ms strayed 0.090, so it is in between.
+#:
 #: STILL A LABEL AND NOT A BOUND. ``resolved`` is decided by the measured spread
 #: alone; this only chooses which of the two explanations ``resolution_note``
-#: gives. It refuses nothing the spread bound was not already refusing. And it
-#: is an absolute duration standing in for a ratio, so it is a proxy: on a host
-#: with much faster cores the same 10 ms buys more work and the crossing moves.
-#: The number is honest about the machine it was measured on and no other.
+#: gives. It refuses nothing the spread bound was not already refusing.
 _MIN_RESOLVING_SECONDS = 0.010
 
 @contextlib.contextmanager

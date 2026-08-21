@@ -125,6 +125,32 @@ MEASURED_DEVIATION_BY_DURATION = {
 }
 
 
+def test_the_error_is_a_fixed_jitter_and_not_a_fixed_ratio():
+    """The claim the floor's SHAPE rests on, held as a measurement.
+
+    A floor stated in seconds is only meaningful if the instrument's error is
+    roughly constant in seconds. Re-read as ``spread x median`` the sweep says
+    it is: across a 23-fold range of durations the absolute deviation stays
+    inside a 3.7-fold band while the relative deviation moves 33-fold. That is
+    what makes the relative spread "jitter divided by duration" rather than a
+    property of the case, and it is what says the quantity to carry to another
+    machine is the jitter and not this number of milliseconds.
+    """
+    durations = sorted(MEASURED_DEVIATION_BY_DURATION)
+    absolute = [seconds * MEASURED_DEVIATION_BY_DURATION[seconds]
+                for seconds in durations]
+    relative = [MEASURED_DEVIATION_BY_DURATION[seconds] for seconds in durations]
+    duration_span = durations[-1] / durations[0]
+    assert duration_span > 20, duration_span
+    assert max(relative) / min(relative) > 20, (
+        "the relative deviation barely moved, so it is not dominated by the "
+        "duration and this whole account of the floor is wrong")
+    assert max(absolute) / min(absolute) < 5, (
+        f"the absolute deviation spans {max(absolute) / min(absolute):.1f}x "
+        f"across {duration_span:.0f}x of duration, so it is not a fixed jitter "
+        f"and a floor stated in seconds does not describe it")
+
+
 def test_the_resolving_floor_is_where_the_clean_control_re_enters_the_band():
     """Derived, not chosen, and derived from the quantity it labels.
 
