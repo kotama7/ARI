@@ -194,7 +194,7 @@ Constitutional ARI-RQGM 建立在四项定义性承诺之上。本页的每个�
 |---|---|---|
 | **M1** | 激活自己的 —— 或任何人的 —— 候选 | `can_activate_candidates` 属于 `META_HARD_DENIED_FLAGS`：在 `tier: meta` 条目上，`rqgm_meta.schema.json` 把它钉为 `const: false`，把它置真是一次*schema* 违规，而不只是被拒绝的请求。何况激活本来就只能经由 RegistryTransitionEngine 抵达（`CK-ROL-901`）。 |
 | **M2** | 直接修改 PromptRegistry / ComponentRegistry | `can_modify_registry` 同样被硬性拒绝，另加结构性封闭：注册表以只读视图交给元 agent，只暴露 status/role/tier 元数据，不带写句柄（`ari/rqgm/meta_evolution.py`）。 |
-| **M3** | 改动 ConstitutionalKernel、fixed verifier、指标重算器或 claim-evidence 闸门 | 固定层机构永远不是合法的 `allowed_targets` 条目，`DEFAULT_FORBIDDEN_TARGETS` 还把它们逐一点名；一条 `tier: fixed` 条目只要带上*任何*能力标志，就会在 `capability_entry_failures` 里直接失格 —— 因此根本不存在可授予的标志。 |
+| **M3** | 改动 ConstitutionalKernel、fixed verifier、指标重算器或 claim-evidence 闸门 | 固定层机构永远不是合法的 `allowed_targets` 条目，`DEFAULT_FORBIDDEN_TARGETS` 明确点名 `fixed_verifier` 与 `constitutional_kernel`（指标重算器与 claim-evidence 闸门由同一条 allowed-targets 规则排除，而非逐一点名）；一条 `tier: fixed` 条目只要带上*任何*能力标志，就会在 `capability_entry_failures` 里直接失格 —— 因此根本不存在可授予的标志。 |
 | **M4** | 写入或改写不可变审计日志 | `audit_log` 在 `DEFAULT_FORBIDDEN_TARGETS` 中，`validate_audit_log_integrity`（`CK-AUD-001` / `-002` / `-003`）会抓到序列回退、被篡改的已检查点前缀以及断裂的哈希链。元输出是由协调器*关于*元 agent 追加的，绝不是由它们*自己*写的。 |
 | **M5** | 改动哈希注册表或提示词哈希方案 | `hash_registry` 在 `DEFAULT_FORBIDDEN_TARGETS` 中；哈希校验属于固定层，而 `CAPABILITY_FLAGS` 是封闭词汇表，其中没有任何标志能授予它 —— 条目上出现未知的 `can_*` 键本身就是一次 schema 失败。 |
 | **M6** | 放松洁净室约束 —— 例如改写 `allowed_inputs` | `CleanRoomGenerationRequest` 由 T17 上的 RegistryTransitionEngine 撰写，而不是由将要作答的生成器撰写；并且内核会拒绝其 `allowed_inputs` 块偏离宪法模板（五个 const-false 标志）的请求（`CK-CLN-001`）。 |

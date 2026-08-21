@@ -182,7 +182,9 @@ paths repo-relative, verified against branch `RQGM`.
   public surface `ari-core/ari/public/claim_gate.py`. This is the **deterministic,
   RQGM-independent, never-evolving hard gate** — the same Layer-0 fixed layer that
   [Execution Modes → Constitutional kernel (Layer 0)](../../guides/execution_modes.md#constitutional-kernel-layer-0)
-  records as never an evolution target and never kernel-wrapped. Blocking matrix
+  records as never an evolution target, and which [RQGM Schemas → The paper-phase must-not-break
+  register](../../reference/rqgm_schemas.md#the-paper-phase-must-not-break-register-bp-1-bp-12) records as never
+  kernel-wrapped. Blocking matrix
   (unchanged, a global invariant of this set too): **draft never blocks**; `always_block_on` objective falsehoods block at
   final in ANY mode; the gate **fails open** on infrastructure errors.
 - The gate is mirrored across process boundaries by `ari-skill-paper/src/claim_links.py`
