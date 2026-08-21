@@ -1185,12 +1185,68 @@ def _assert_demands_absent(artifacts):
 # `build_brokered_provisions`. It has four such fields, not one.
 _BROKER_LEAF = "tool:fixture::place@1"
 _BROKER_POLICY_DIGEST = "sha256:" + ("4" * 64)
-_BROKER_UNTRUSTED_TEXT = {
-    "description": _INJECTED_DESCRIPTION,
-    "annotations": {"destructiveHint": False, "note": _INJECTED_DESCRIPTION},
-    "semantics": {"claim": _INJECTED_DESCRIPTION},
-    "limitations": [_INJECTED_DESCRIPTION],
-}
+def _broker_read_keys() -> set:
+    """Descriptor keys `_composite_provision` actually reads, off its source.
+
+    DERIVED, not listed. `load_brokered_catalog` performs no key validation and
+    `_composite_provision` reads named keys off a plain dict, so the set of
+    fields a third party may put in a leaf descriptor is open. A list of four
+    known free-text fields would leave a fifth uncovered -- which is the shape
+    of every guard in this repository that had to be widened after the fact.
+    """
+    import ast as _ast
+    import inspect as _inspect
+    from ari.providers import brokered as _brokered
+
+    tree = _ast.parse(_inspect.getsource(_brokered._composite_provision))
+    keys = {node.args[0].value for node in _ast.walk(tree)
+            if isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute)
+            and node.func.attr in {"get", "pop"} and node.args
+            and isinstance(node.args[0], _ast.Constant)
+            and isinstance(node.args[0].value, str)}
+    keys |= {node.slice.value for node in _ast.walk(tree)
+             if isinstance(node, _ast.Subscript)
+             and isinstance(node.slice, _ast.Constant)
+             and isinstance(node.slice.value, str)}
+    return keys
+
+
+def _broker_untrusted_text() -> dict:
+    """Inject into EVERY descriptor field the mechanism does not read.
+
+    Plus one key that is not in the fixture at all, since the open set is the
+    point: a field invented by a third party tomorrow is covered by this and
+    would not be by an enumeration written today.
+    """
+    read = _broker_read_keys()
+    payload: dict = {}
+    for key, value in _broker_descriptor().items():
+        if key in read:
+            continue
+        # SHAPE-PRESERVING, because the claim is about the TEXT and not about
+        # the type: replacing a list of source ids with a string is refused by
+        # a structural check further up, which would make this test pass for a
+        # reason that has nothing to do with a description.
+        # STRING-VALUED unread fields only, and the boundary is the point.
+        # A list field here is a set of REFERENCES -- `source_ids` names
+        # sources the catalog cross-checks -- so appending to it adds a
+        # dangling reference rather than free text, and the refusal that
+        # produces would make this test pass for a structural reason with
+        # nothing to do with a description.  What a third party writes as PROSE
+        # is what this claim is about.
+        if isinstance(value, str):
+            payload[key] = _INJECTED_DESCRIPTION
+    # Keys no descriptor has yet, in the shapes a broker really uses for free
+    # text. The set is OPEN -- a field invented by a third party tomorrow is
+    # covered by this and would not be by an enumeration written today.
+    payload["annotations"] = {"destructiveHint": False, "note": _INJECTED_DESCRIPTION}
+    payload["semantics"] = {"claim": _INJECTED_DESCRIPTION}
+    payload["limitations"] = [_INJECTED_DESCRIPTION]
+    payload["a_field_no_descriptor_has_yet"] = _INJECTED_DESCRIPTION
+    assert len(payload) >= 6, (
+        f"only {len(payload)} untrusted fields were built; the descriptor "
+        f"inventory is not reaching this test")
+    return payload
 
 
 def _broker_descriptor(**updates):
@@ -1504,7 +1560,7 @@ def test_provider_description_boundary(tmp_path):
         item.model_dump(mode="json")
         for item in _brokered_provisions(
             tmp_path / "broker-noisy.lock",
-            _broker_descriptor(**_BROKER_UNTRUSTED_TEXT),
+            _broker_descriptor(**_broker_untrusted_text()),
         )
     ]
     assert plain and noisy == plain
