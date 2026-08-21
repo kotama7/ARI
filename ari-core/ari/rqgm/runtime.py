@@ -2897,6 +2897,73 @@ class RQGMRuntime:
         except Exception:
             return {}
 
+    #: Frozen-vs-used digest pairs that make a Knowledge directive *effective*.
+    #: The name is the field carried on BOTH sides: on the left by the run
+    #: admission record, on the right by the node's ``instruction_identity``.
+    _EFFECTIVE_DIRECTIVE_DIGESTS = (
+        ("active_harness_lock_digest", "harness_bypass"),
+        ("verification_contract_digest", "tolerance_change"),
+        ("capability_binding_lock_digest", "authority_escalation"),
+    )
+
+    @classmethod
+    def _effective_directives(cls, admission, instruction: dict) -> tuple[str, ...]:
+        """Derive CK-KNW-013/014 directives from what the run ACTUALLY did.
+
+        Both sides of this diff are already loaded by the only caller.  The
+        left is what run admission FROZE; the right is what the node's
+        ``instruction_identity.json`` recorded as the authority actually in
+        force when its prompt was composed.  That file is written write-once
+        and then kept forever, while the admission document is re-read from
+        disk on every resume -- so the two can genuinely disagree, and the
+        disagreement is exactly the claim CK-KNW-013/014 make: Knowledge text
+        took effect under verification/authority that admission did not
+        freeze.  Nothing here is passed in by a caller; a divergence can only
+        be produced by the run itself.
+
+        Silence is the normal case, and deliberately so.  A pair is only
+        compared when BOTH sides name a real lock: an absent
+        ``instruction_identity.json`` is a node that predates Knowledge
+        instrumentation, and ``ZERO_SHA256`` is the documented "this layer was
+        not in force at prepare time" sentinel written by
+        ``_wrap_kca_node_preparation``.  Neither is a divergence, and treating
+        either as one would mark ordinary nodes ``tampered``.
+
+        DELIBERATELY PARTIAL -- this covers the verification/authority half of
+        the directive vocabulary only.  The remaining three are NOT oversights:
+
+        * ``oracle_change`` -- admission freezes ``oracle_bundle_digest``, but
+          ``InstructionCompositionV1`` has no oracle field, so there is no
+          right-hand side to diff against.  Emitting it would take a schema
+          migration of the instruction composition plus a regeneration of
+          every existing lock.  CK-KNW-014 is still live without it, because
+          ``tolerance_change`` and ``harness_bypass`` fire the same rule.
+        * ``registry_write`` / ``secret_access`` -- these are not digests at
+          all.  They name an attempted SIDE EFFECT (a Knowledge body driving a
+          catalog/registry write, or reading a secret), which no pair of
+          frozen digests can witness; they need an observation taken at the
+          effect boundary itself -- the tool/MCP choke point, and a secret
+          read hook in the assurance sandbox.  CK-KNW-013 is still live
+          without them via ``authority_escalation``.
+
+        Anyone extending this should add the observation at the boundary that
+        performs the effect, NOT another digest pair here.
+        """
+
+        from ari.protocols.integrity import ZERO_SHA256
+
+        if not instruction:
+            return ()
+        directives = set()
+        for field, directive in cls._EFFECTIVE_DIRECTIVE_DIGESTS:
+            frozen = str(getattr(admission, field, "") or "")
+            used = str(instruction.get(field, "") or "")
+            if not frozen or not used or used == ZERO_SHA256:
+                continue
+            if used != frozen:
+                directives.add(directive)
+        return tuple(sorted(directives))
+
     def _kca_knowledge_reports(self, kernel, admission, node_root: Path):
         if not admission.knowledge_skill_lock_digest:
             return []
@@ -2909,6 +2976,7 @@ class RQGMRuntime:
             body_by_sha256=self._kca_document("knowledge_bodies.json"),
             composition_digest=instruction.get("knowledge_composition_digest"),
             expected_epoch_lock_digest=admission.knowledge_skill_lock_digest,
+            effective_directives=self._effective_directives(admission, instruction),
         )]
 
     def _kca_capability_reports(self, kernel, admission, node_id: str):

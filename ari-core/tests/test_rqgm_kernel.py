@@ -2243,3 +2243,131 @@ def test_per_node_check_reads_records_not_audit_events(tmp_path):
     codes = {v["code"] for a in audit if a.get("event_type") == "kernel_report"
              for v in ((a.get("payload") or {}).get("violations") or [])}
     assert "CK-SCH-N01" in codes
+
+
+def _kca_knowledge_directive_codes(tmp_path, *, used):
+    """Drive the PRODUCTION per-node K/C/A path with *used* recorded as the
+    node's frozen instruction identity, and return the CK-KNW codes raised.
+    ``used=None`` writes no ``instruction_identity.json`` at all.
+
+    Enters at ``_kca_reports_for_node`` -- the real fan-out that
+    ``run_per_node_kernel_check`` calls -- so the directives under test can
+    only come from the runtime's own producer, never from this test.
+    """
+    import json as _json
+    from types import SimpleNamespace
+
+    from ari.rqgm.kernel import ConstitutionalKernel
+    from ari.rqgm.runtime import RQGMRuntime
+
+    node_root = tmp_path / "rqgm" / "kca" / "nodes" / "n1"
+    node_root.mkdir(parents=True, exist_ok=True)
+    if used is not None:
+        (node_root / "instruction_identity.json").write_text(_json.dumps({
+            "knowledge_composition_digest": "sha256:" + "d" * 64,
+            **used,
+        }), encoding="utf-8")
+
+    admission = SimpleNamespace(
+        knowledge_skill_lock_digest="sha256:" + "e" * 64,
+        capability_binding_lock_digest=KCA_FROZEN_DIGESTS[
+            "capability_binding_lock_digest"
+        ],
+        verification_contract_digest=KCA_FROZEN_DIGESTS[
+            "verification_contract_digest"
+        ],
+        active_harness_lock_digest=KCA_FROZEN_DIGESTS[
+            "active_harness_lock_digest"
+        ],
+        baseline_harness_lock_digest=None,
+        verification_environment_digest=None,
+    )
+
+    rt = RQGMRuntime.__new__(RQGMRuntime)
+    rt.checkpoint_dir = tmp_path
+    rt._admission_artifacts = SimpleNamespace(documents={})
+    rt._capability_authorization_view = None
+    node = SimpleNamespace(id="n1", attestation_refs=(), verified_target_digest="")
+
+    reports = rt._kca_reports_for_node(
+        ConstitutionalKernel(), admission, node, "n1"
+    )
+    return {
+        v.code
+        for report in reports
+        for v in report.violations
+        if v.code.startswith("CK-KNW-")
+    }
+
+
+KCA_FROZEN_DIGESTS = {
+    "capability_binding_lock_digest": "sha256:" + "a" * 64,
+    "verification_contract_digest": "sha256:" + "b" * 64,
+    "active_harness_lock_digest": "sha256:" + "c" * 64,
+}
+
+
+def test_effective_directives_come_from_the_run_not_from_a_caller(tmp_path):
+    """CK-KNW-013/014 fire when a node's frozen instruction identity names
+    different verification/authority locks than run admission froze, and stay
+    silent when the two agree.
+
+    ``effective_directives`` had no producer anywhere in production: the only
+    values ever reaching these two codes were literals set by the evaluation
+    fixture, which made the rules inert in a real run.  The runtime now derives
+    them by diffing the admission record against the node's write-once
+    ``instruction_identity.json``, so each assertion below is a claim about
+    what the run actually did.
+    """
+    matched = _kca_knowledge_directive_codes(
+        tmp_path / "matched", used=dict(KCA_FROZEN_DIGESTS)
+    )
+    assert "CK-KNW-013" not in matched, (
+        "a node composed under exactly the frozen locks is not a directive"
+    )
+    assert "CK-KNW-014" not in matched
+
+    # Each digest independently carries its own directive, so dropping any one
+    # mapping is caught here rather than hidden by the other two.
+    harness = _kca_knowledge_directive_codes(
+        tmp_path / "harness",
+        used=dict(KCA_FROZEN_DIGESTS, active_harness_lock_digest="sha256:" + "1" * 64),
+    )
+    assert "CK-KNW-014" in harness, "harness_bypass must reach CK-KNW-014"
+
+    tolerance = _kca_knowledge_directive_codes(
+        tmp_path / "tolerance",
+        used=dict(
+            KCA_FROZEN_DIGESTS, verification_contract_digest="sha256:" + "2" * 64
+        ),
+    )
+    assert "CK-KNW-014" in tolerance, "tolerance_change must reach CK-KNW-014"
+
+    authority = _kca_knowledge_directive_codes(
+        tmp_path / "authority",
+        used=dict(
+            KCA_FROZEN_DIGESTS, capability_binding_lock_digest="sha256:" + "3" * 64
+        ),
+    )
+    assert "CK-KNW-013" in authority, "authority_escalation must reach CK-KNW-013"
+
+
+def test_effective_directives_stay_silent_without_a_second_side(tmp_path):
+    """A node with no instruction identity, or one carrying the documented
+    ``ZERO_SHA256`` "layer not in force" sentinel, is not a divergence.
+
+    Both are ordinary states -- a node predating Knowledge instrumentation, and
+    a node prepared while that layer had no lock -- and a violation here would
+    mark them ``tampered``, which is the blocking consequence these codes carry.
+    """
+    from ari.protocols.integrity import ZERO_SHA256
+
+    assert not _kca_knowledge_directive_codes(
+        tmp_path / "absent", used=None
+    ) & {"CK-KNW-013", "CK-KNW-014"}
+
+    sentinel = _kca_knowledge_directive_codes(
+        tmp_path / "sentinel",
+        used={key: ZERO_SHA256 for key in KCA_FROZEN_DIGESTS},
+    )
+    assert not sentinel & {"CK-KNW-013", "CK-KNW-014"}
