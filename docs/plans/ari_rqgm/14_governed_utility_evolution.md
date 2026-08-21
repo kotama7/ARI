@@ -723,6 +723,20 @@ allocator, no store, no schema, and rides `tree.json` so it survives resume.
   MetricSpec weights lets `_resolve_axis_weights` fall through to the ctor/AxisDef weights — exactly
   the regime `capture_utility_policy` froze at the epoch boundary" — becomes **more** true under
   Task 14, because the regime it falls through to is now the governed one.
+
+  > **Given a permanent home, 2026-08-22.** R8 warned that this distinction
+  > would read as a contradiction once the plan file is gone, and until now it
+  > survived only in `MetricSpecWeightCap`'s class docstring. It is now also
+  > stated in
+  > [`docs/concepts/rqgm_architecture.md`, "Governed utility evolution"](../../concepts/rqgm_architecture.md#governed-utility-evolution)
+  > — the paragraph "A governed rewrite is not weight smuggling", placed
+  > directly under the "the weights are rewritten at every boundary" claim that
+  > creates the apparent contradiction — in all three languages
+  > ([ja](../../ja/concepts/rqgm_architecture.md#統治された-utility-進化) ·
+  > [zh](../../zh/concepts/rqgm_architecture.md#被治理的效用进化)). Note for the
+  > maintainer: §12 asks for "the permanent RQGM developer guide" and no page
+  > carries that name; the RQGM architecture page is where the claim this
+  > paragraph disambiguates lives, so that is where the distinction went.
 - **Score comparability is already handled** (§3, §5.5 T17). The `INVALIDATE_ROLES` decision
   (`frontier_repair.py:96-101`) and the by-value `frozen_policy` (`records.py:616-618`,
   `engine.py:947-948`) are the answer, and this plan cites them rather than rebuilding them. In

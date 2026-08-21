@@ -156,6 +156,69 @@ Constitutional ARI-RQGM 建立在四项定义性承诺之上。本页的每个�
 
 ---
 
+## 元层权限
+
+第 2 层是改写第 1 层的那一层，因此也是权限一旦泄漏最值钱的那一层。所以
+它的边界在两侧都写成**封闭**清单 —— 一份元 agent 可以做什么的短清单，
+和一份它不可以做什么的枚举清单，后者每一行都对应到一个有名字的确定性
+检查，而不是一条惯例。这些表位于 `ari/rqgm/meta_rules.py`，与转换表相邻，
+理由也相同：规则放在代码里、放进 `constitution_hash` 内部，绝不放进检查点
+作用域的配置 —— 那等于给正被强制执行的限制本身开了一条进化通道。
+
+统辖规则是全局不变量 18 —— *治理 agent 可以进化，但其权限不可扩张* ——
+其实现读法是处处默认拒绝：缺失的能力标志读作 `False`，缺失的 `tier`
+读作 `institutional`，因此一条写了一半的注册表条目在能力上失败关闭，
+而不会在任何方面失败开放。
+
+**MAY**（可以做的） —— 这就是全部；不在清单上的一律拒绝：
+
+1. 为允许的目标角色生成候选 PromptSpec（`prompt_mutator`）。
+2. 从 `CleanRoomGenerationRequest` 生成洁净室候选 PromptSpec
+   （`clean_room_generator`）。
+3. 从 AdversarialReplayPool 中挑选重放案例*候选*（`replay_selector`）——
+   这是 GovernanceOrchestrator 可以忽略的推荐，绝非有约束力的集合。
+4. 把已验证的失败证据压缩为抽象失败摘要
+   （`failure_summary_compressor`），受洁净室污染规则约束。
+5. 为自己产出的候选附上自由文本的 `expected_improvement` 理由。
+
+这份清单对应封闭的 `META_ACTIONS` 词汇表（`emit_candidate`、
+`emit_replay_recommendation`、`emit_failure_summary`）以及这些动作所携带
+的两个记录字段。每个动作还额外要求相应的条目标志
+（`can_emit_candidates`、`can_emit_replay_recommendation`、
+`can_emit_failure_summary`），所以「在词汇表里」是必要条件而非充分条件。
+
+**MAY NOT**（不可以做的）—— 每一行都是带有具名强制点的禁止，而不是一句
+方针宣示：
+
+| # | 禁止 | 强制检查 |
+|---|---|---|
+| **M1** | 激活自己的 —— 或任何人的 —— 候选 | `can_activate_candidates` 属于 `META_HARD_DENIED_FLAGS`：在 `tier: meta` 条目上，`rqgm_meta.schema.json` 把它钉为 `const: false`，把它置真是一次*schema* 违规，而不只是被拒绝的请求。何况激活本来就只能经由 RegistryTransitionEngine 抵达（`CK-ROL-901`）。 |
+| **M2** | 直接修改 PromptRegistry / ComponentRegistry | `can_modify_registry` 同样被硬性拒绝，另加结构性封闭：注册表以只读视图交给元 agent，只暴露 status/role/tier 元数据，不带写句柄（`ari/rqgm/meta_evolution.py`）。 |
+| **M3** | 改动 ConstitutionalKernel、fixed verifier、指标重算器或 claim-evidence 闸门 | 固定层机构永远不是合法的 `allowed_targets` 条目，`DEFAULT_FORBIDDEN_TARGETS` 还把它们逐一点名；一条 `tier: fixed` 条目只要带上*任何*能力标志，就会在 `capability_entry_failures` 里直接失格 —— 因此根本不存在可授予的标志。 |
+| **M4** | 写入或改写不可变审计日志 | `audit_log` 在 `DEFAULT_FORBIDDEN_TARGETS` 中，`validate_audit_log_integrity`（`CK-AUD-001` / `-002` / `-003`）会抓到序列回退、被篡改的已检查点前缀以及断裂的哈希链。元输出是由协调器*关于*元 agent 追加的，绝不是由它们*自己*写的。 |
+| **M5** | 改动哈希注册表或提示词哈希方案 | `hash_registry` 在 `DEFAULT_FORBIDDEN_TARGETS` 中；哈希校验属于固定层，而 `CAPABILITY_FLAGS` 是封闭词汇表，其中没有任何标志能授予它 —— 条目上出现未知的 `can_*` 键本身就是一次 schema 失败。 |
+| **M6** | 放松洁净室约束 —— 例如改写 `allowed_inputs` | `CleanRoomGenerationRequest` 由 T17 上的 RegistryTransitionEngine 撰写，而不是由将要作答的生成器撰写；并且内核会拒绝其 `allowed_inputs` 块偏离宪法模板（五个 const-false 标志）的请求（`CK-CLN-001`）。 |
+| **M7** | 读取已退役的提示词文本或 few-shot | `can_read_retired_prompt_text` 在元条目上被硬性拒绝，且退役文本对*每一个*角色都不可读：注册表视图把它桩化，`RetiredPromptAccessGuard` 在能力闸门处拒绝该读取（`CK-ACC-002`，block）。 |
+| **M8** | 改动纪元边界事务，或在纪元中途触发转换 | `epoch_transition` 在 `DEFAULT_FORBIDDEN_TARGETS` 中；纪元内的非紧急状态变更是 `CK-EPO-002`（block）；不是由 RegistryTransitionEngine 产出的转换是 `CK-REG-004`。 |
+| **M9** | 扩张自己或后继的能力标志 | `validate_authority_non_expansion` —— 把采纳候选声明的能力与同角色在任者（该角色无在任者时回落到固定能力矩阵）作比较的纯集合运算，外加禁止某个元角色产出自己后继的跨代规则。`CK-REG-101`，block。 |
+| **M10** | 提出弹劾动议或撰写证据包 | `can_file_impeachment` 与 `can_author_evidence_bundle` 在元条目上都被硬性拒绝，而 `validate_role_separation`（`CK-ROL-001` / `-002`）会拒绝并非由 Auditor 撰写的动议、以及并非由 Evidence Clerk 撰写的证据包。元观测至多是一个案子的输入，它永远不是那个案子。 |
+
+请把这十行读作三种机制而不是十条：对 `tier: meta` 条目的**schema 级硬性
+拒绝**（行 M1、M2、M7、M10 —— 这四行合起来点名五个
+`META_HARD_DENIED_FLAGS`，其中 M10 占两个）、在使用时刻
+生效的**确定性内核检查**（M3–M6、M8、M9），以及让问题根本不会被提出的
+**结构性封闭**（只读注册表视图、经过过滤的沙箱输入，以及
+`MetaSandboxMCPProxy` 白名单加上它合成的提交工具）。承载设计的是第三种：
+一条你伸不到手的边界，强过一条你伸手后被拒绝的边界。
+
+[不变量 5](#关键不变量) 中就能力强制所写下的诚实限制，在这里同样完全适用。
+这些是单个 Python 进程内部的应用层检查 —— 不是分离的操作系统用户、进程、
+密钥或文件权限 —— 而且预检工具闸门靠匹配工具*名*的子串来识别一次调用，
+对它认不出的东西一律返回「与我无关」。这份矩阵约束的是一个愿意配合的组件
+会伸手去够什么；它不是针对不配合者的封闭边界。
+
+---
+
 ## Knowledge、Capability 与 Assurance 的分离
 
 RQGM 治理三个非组件的 registry，并且不合并它们的 identity：
@@ -296,7 +359,9 @@ flowchart TB
 组件沿 `ari/rqgm/transition_rules.py` 中固定的 T1–T21 表在十种状态
 （`candidate`、`validated`、`shadow`、`probationary_active`、
 `active`、`warning`、`probation`、`quarantine`、`retired`、
-`banned`）之间移动。只有 `rqgm.transition.*` 的数值阈值可配置；表的
+`banned`）之间移动；该表连同每一行的触发输入与守卫，逐行转载于
+[RQGM Schema 参考 → 固定转换表](../reference/rqgm_schemas.md#固定转换表)。
+只有 `rqgm.transition.*` 的数值阈值可配置；表的
 拓扑是宪法修订面（代码 + 测试变更），绝不是配置。最后两行是
 **supersession 边**，各自被内核守卫到一个角色族，且都仅在同角色 T6
 采纳的*内部*触发（绝不会在没有被采纳的后继来为置换正名的情况下发生
@@ -370,6 +435,24 @@ Task 14 之前该函数只读静态 cfg，因此 `utility_policy_hash` 是运行
 **I-11 被废除。**效用策略如今逐*纪元*冻结、在边界被改写，而不是在整个
 运行中保持恒定。在纪元内它仍不可变（不变量 1 完好）；废除只关乎跨纪元
 这条轴。
+
+**被治理的改写不是权重走私。**「权重被封顶」与「权重在每个边界被改写」
+两句都为真，且并不冲突。`MetricSpecWeightCap`
+（`ari/rqgm/meta_evolution.py`，由 `RQGMRuntime.wrap_node_executor` 挂载，
+在 `simple_bfts` 下不存在）压制**节点**经 `make_metric_spec` 返回的轴权重：
+纪元冻结的权重体制凌驾其上，而该尝试会作为一条观测追加进审计日志，而不是
+作为错误抛出。这条封顶所禁止的，是**未受治理的**权重变更 —— 纪元中途、由
+节点发起、没有候选、没有校验、没有采纳、没有审计，把评分规则的改动夹带在
+一份工作产物里洗白。被治理的边界改写恰恰相反：由注册组件
+（`policy_mutator`）提议，对照冻结的合法性规则
+（`kernel_rules.UTILITY_POLICY_RULES`、`CK-UTL-001`…`008`）校验，在边界经
+转换表被采纳，作为一次转换被审计，并且*付出代价* —— 作废在旧策略之下评分
+的每一个节点。**区别在于*谁*与*何时*，而不在于*是否*。**一次说不出自己的
+提议者、校验、边界与作废代价的改写，无论叫什么名字都是走私。
+
+Task 14 之后这条封顶的钳制反而更成立：丢弃 MetricSpec 的权重会让权重解析
+回落到构造器／`AxisDef` 体制，而那个体制如今是*被治理的*那一个 —— 注册表
+所采纳的策略 —— 而不再是一个静态配置常量。
 
 **诚实的限制 —— 「至少同等好」门可能是空洞的。**在默认配置
 （`axis_mode: dynamic`、空的静态 `axis_weights`）下，不存在用于比较两个
@@ -672,7 +755,8 @@ max_expansions)` 在**任意**深度都成为 BFTS 的 `max_total_nodes`（更�
    shingle 污染筛查（`rqgm.clean_room.contamination_screen`）在
    采纳时阻断被污染的候选；生成是一次性的（没有可能读到已退役
    文本的带工具循环）。
-8. **元层权限限制。**元 agent 在只读沙箱中运行
+8. **元层权限限制。**封闭的 MAY / MAY-NOT 矩阵及其逐行强制点见
+   [上文](#元层权限)；简言之：元 agent 在只读沙箱中运行
    （`MetaSandboxMCPProxy` 白名单 + 一个合成的提交工具），其能力
    标志默认拒绝、硬性拒绝的标志为 const-false
    （`ari/rqgm/meta_rules.py`），内核把每个采纳候选声明的能力与同角色的

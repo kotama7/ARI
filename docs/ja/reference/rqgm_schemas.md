@@ -137,7 +137,7 @@ Id 形式（すべてゼロ埋め、チェックポイントごとのカウン�
 | `CK-ACC-001`、`CK-ACC-002` | `validate_capability` — `CAPABILITY_MATRIX` に無い、または Task 11 のメタ操作フラグで拒否; 退役プロンプト本文へのアクセス（全ロールで読めません） | block |
 | `CK-EPO-001` | `validate_epoch_invariance` — `prompt_hash` がそのエポックの凍結 active set の外にあるレコード | warn |
 | `CK-EPO-002` | `validate_epoch_invariance` — エポック途中の非緊急のステータス変更イベント | block |
-| `CK-REG-001`…`CK-REG-007` | `validate_transition` — T1–T21 表に無い辺、境界限定の辺をエポック途中で打刻、宣言された `rule_id` が表と矛盾、`produced_by` が RegistryTransitionEngine でない、必要な裏付け参照の欠落、緊急遷移の形状不正、`from_status` が台帳と矛盾 | block |
+| `CK-REG-001`…`CK-REG-007` | `validate_transition` — [T1–T21 表](#固定遷移表)に無い辺、境界限定の辺をエポック途中で打刻、宣言された `rule_id` が表と矛盾、`produced_by` が RegistryTransitionEngine でない、必要な裏付け参照の欠落、緊急遷移の形状不正、`from_status` が台帳と矛盾 | block |
 | `CK-REG-101` | `validate_authority_non_expansion` — 現職より広い権限を宣言する候補（不変条件 18） | block |
 | `CK-ROL-001`、`CK-ROL-002`、`CK-ROL-003` | `validate_role_separation` — 弾劾動議の著者が Auditor でない、証拠バンドルが EvidenceClerk でない、同一ロールによる告発 | warn |
 | `CK-ROL-901` | `validate_role_separation` / `validate_capability` — RegistryTransitionEngine 以外による台帳書き込みまたは候補の活性化（不変条件 10） | block |
@@ -206,7 +206,8 @@ id / ハッシュ形式。**所有モジュール:** `ari/rqgm/events.py`（語�
 閉じた語彙:
 
 - **ステータスライフサイクル**（プロンプトとコンポーネントで共有; 合法な
-  遷移は `ari/rqgm/transition_rules.py` の T1–T21 テーブル）:
+  遷移は `ari/rqgm/transition_rules.py` の
+  [T1–T21 表](#固定遷移表)）:
   `candidate → validated → shadow → probationary_active → active`、次いで
   `active → warning | probation | quarantine`、そして
   `quarantine → retired → banned`。`active` と `probationary_active` が
@@ -869,8 +870,8 @@ RetirementEvent（`EpochTransition.clean_room_requests`）から生成され、
 
 **目的:** RegistryTransitionEngine の境界解決 1 回の単一の出力レコードで、
 `epoch_transition` レコードとして `rqgm_audit.jsonl` に監査されます。
-すべてのステータス変更は `ari/rqgm/transition_rules.py` の固定 T1–T21
-`rule_id` 行（T1–T19 のベーステーブル + ロールスコープの T20 / T21
+すべてのステータス変更は、下記の [T1–T21 表](#固定遷移表)の
+固定 `rule_id` 行（T1–T19 のベーステーブル + ロールスコープの T20 / T21
 supersession 行）をピン留めします; 設定可能なのは `rqgm.transition.*` の
 数値しきい値のみです。**所有モジュール:** `ari/rqgm/transition_engine.py` —
 レジストリステータスの唯一の書き込み手（`produced_by` は const
@@ -886,6 +887,99 @@ supersession 行）をピン留めします; 設定可能なのは `rqgm.transit
 | `clean_room_requests` | Task 08 へ渡される再生成要求 |
 | `next_active_components` / `fallbacks` | 次エポックの凍結アクティブ集合 + 空席なしフォールバック |
 | `kernel_validation`（+ 任意の `kernel_violation`） | トランザクションに対するカーネル判定 |
+
+### 固定遷移表
+
+`ari/rqgm/transition_rules.py` は、統治対象のコンポーネントとプロンプトに
+対する完全かつ非進化の遷移テーブルを保持しており、RegistryTransitionEngine
+（エッジを解決する側）と ConstitutionalKernel の TransitionValidator
+（それを受理または拒否する側）の**両方**がこの 1 モジュールを import します —
+単一の真実源であり、エンジンが考える合法エッジとカーネルが考えるそれが
+乖離しえません。純粋なデータです: LLM 呼び出しなし、I/O なし、乱数なし、
+実時計なし。設定可能なのは `rqgm.transition.*` の数値しきい値だけで、
+*トポロジ* は `constitution_hash` の内側に乗ります。したがってエッジの追加・
+削除・ガード変更は憲法改正 — コード変更に加えて
+`ari-core/tests/test_rqgm_kernel.py` のハッシュを手で再ピン留めすること —
+であって、設定値ではありません。設定の抜け道が存在しないのは見落としでは
+なく決定です: 稼働中の制度が自ら広げられるテーブルは、監査と監査の間に
+自分へ新しい権限を与えることを許してしまいます。
+
+10 個のステータスは Task 02 の閉じた語彙（上記の「共有エンベロープ」節）
+であり、`transition_rules.ComponentStatus` がメンバ単位で写しています。`warning` と
+`probation` は**サービス継続**状態です — コンポーネントはエポックの凍結
+アクティブ集合に留まり、変わるのはガバナンス姿勢だけです — 一方
+`quarantine` はサービス集合から外します。`rejected` ステータスは意図的に
+存在しません: **一度もサービスせずに**脱落した候補やシャドウは終端処分と
+して `retired` を取り（T2 / T5）、理由はイベントペイロードが運び、
+`RetirementEvent` も `CleanRoomGenerationRequest` も**発行されません** —
+この 2 つは、実際にサービスしたものの退役である T17 の専用です。`banned`
+は吸収状態です。読み手が知らないステータスはアクティブ集合に不適格として
+扱いログされ、例外にはなりません。
+
+以下の 3 つの普遍ガードは、テーブル内のエッジ固有ガードに加えて**すべての
+行**に適用されます:
+
+| | 普遍ガード |
+|---|---|
+| **G1** | ステータスを書けるのは RegistryTransitionEngine だけ（グローバル不変条件 10 — Judge がレジストリに書くことは名指しのカーネル違反）。 |
+| **G2** | 変更はコミット済みのエポック境界トランザクションの内側でコミットされる — 唯一の ⚡ 緊急エッジだけが例外。 |
+| **G3** | `ConstitutionalKernel.validate_transition` が通っている（`CK-REG-001`…`CK-REG-007`）。 |
+
+⚖ は仕様が要求する背骨、印のない行は機械を全域化するための補助的な復帰／
+却下エッジ、⚡ は唯一の epoch 途中エッジです。**ガード**列は*エンジン*が
+評価する決定論的ガード述語の名前です — カーネル自身はテーブル所属、
+`rule_id` の一致、レジストリと `from_status` の一致、境界／緊急の形しか
+検査しません。
+
+| # | From → To | トリガ入力と、その行が符号化している決定 | エッジ固有ガード |
+|---|---|---|---|
+| T1 ⚖ | `candidate` → `validated` | `candidate_validation_passed` — Task 07 の `PromptCandidateValidation`: 静的検証・憲法検証・スキーマ dry-run がすべて通過。検証はゲートであって推薦ではありません: 通過は候補を*測定*される資格へ進めるだけです。 | `candidate_cap_not_exceeded`（`rqgm.prompt_evolution.max_candidates_per_role_per_epoch`）、`constitutional_constraints_present` — 制約を宣言しない PromptSpec はそもそも検証できません |
+| T2 | `candidate` → `retired` | `validation_failed_or_candidate_expired` — ブロッキング検証失敗、または `candidate_max_age_epochs` を超えて待った候補。 | `never_served_rejection`: 終端であり、意図的に退役では*ありません* — `RetirementEvent` もクリーンルーム要求もなし。失敗サマリは Task 08 の抽象証拠バンドル用に保持されます |
+| T3 ⚖ | `validated` → `shadow` | `replay_and_anchor_evaluation_passed` — `replay_min_cases` 件以上でリプレイスコアが `replay_pass_threshold` 以上、かつアンカー評価が現職に対する退行を示さない。 | `shadow_slot_available`（`rqgm.shadow.max_shadow_calls_per_epoch`）; 境界のみ |
+| T4 | `shadow` → `validated` | `insufficient_shadow_samples` — `shadow_max_epochs` を経てもなお比較数が `shadow_min_samples` に届かない。測定不足は失敗と同じではないので、却下ではなく再スケジュールされます。 | `shadow_retry_within_limit`（`shadow_retry_limit`）; 上限を越えた先の処分は T5 |
+| T5 | `shadow` → `retired` | `shadow_quality_below_threshold` — *そう言えるだけのサンプル数がある上で*、一致度／品質が `shadow_pass_threshold` を下回る。 | `never_served_rejection`、T2 とまったく同じ |
+| T6 ⚖ | `shadow` → `probationary_active` | `shadow_agreement_passed` — GovernanceReport のシャドウ節が、`shadow_min_samples` 件以上のライブシャドウ比較で一致度／品質 `shadow_pass_threshold` 以上を示す。これが採用エッジであり、着地先は*保護観察*です: 何ものも `active` へ直接採用されません。 | `role_opening_available`（現職が probation/quarantine/retired、またはロールが空席）、`one_adoption_per_role_per_boundary`（`max_adoptions_per_role_per_boundary`）; 境界のみ |
+| T7 ⚖ | `probationary_active` → `active` | `clean_probation_record` — GovernanceReport が支持された `ValidatedAttackRecord` を 1 件もそれに帰属させず、保護観察期間を通じて性能が現職ベースライン以上。**コンポーネントが正式な席を得る唯一の道がこれです。** サービス中のコンポーネントはすべて先に保護観察を務めており、したがって評価スコアだけで信頼されるものは一つもありません: 昇格の根拠は、すでに応答している最中に強化された監視下で観測された挙動であり、境界 1 回で覆せます。 | `probation_min_epochs_served`（`probation_min_epochs` 完全エポック）; 境界のみ |
+| T8 | `probationary_active` → `quarantine` | `upheld_impeachment_or_reliability_collapse` — 保護観察者は、現職を降ろすのと同じ証拠で暫定の席を失います。 | 境界、または T16 の形の 1 つとして ⚡ |
+| T9 ⚖ | `active` → `warning` | `reliability_warning_or_low_severity_attacks` — GovernanceReport の信頼性警告、または `severity: low` の検証済み攻撃。 | `component_keeps_serving`; 境界のみ |
+| T10 ⚖ | `active` → `probation` | `repeated_warnings_or_medium_severity_attacks` — `warning_escalation_count` 回以上連続した警告エポック、または中重大度の検証済み攻撃。 | 強化されたシャドウ比較の下で `component_keeps_serving`; 境界のみ |
+| T11 ⚖ | `active` → `quarantine` | `upheld_impeachment_or_critical_attack_pattern` — 支持された `ImpeachmentOutcome`、または GovernanceReport がそれに帰属させた high/critical 重大度の検証済み攻撃パターン。 | `fallback_assigned` — ロールが空席になることはありません; 境界、または T16 の形の 1 つとして ⚡ |
+| T12 | `warning` → `active` | `clean_epoch` — GovernanceReport に新しい警告も攻撃もない完全な 1 エポック。警告は姿勢であって負債ではありません: 自ら解け、解除のために何かを申し立てる必要はありません。 | 境界のみ |
+| T13 | `warning` → `probation` | `warning_recurrence_within_memory` — `warning_memory_epochs` 内の再発。 | 境界のみ |
+| T14 | `probation` → `active` | `rehabilitation_clean_epochs` — 強化された監視下で務めたクリーンなエポック。更生は形式ではなく実在の経路です: 制裁は緩慢な死刑ではありません。 | `probation_min_epochs_served`; 境界のみ |
+| T15 | `probation` → `quarantine` | `continued_degradation_or_upheld_impeachment` | 境界、または T16 の形の 1 つとして ⚡ |
+| T16 ⚡ | `probationary_active` \| `active` \| `warning` \| `probation` → `quarantine` | `constitutional_emergency` — コンポーネントを名指しする決定論的な ConstitutionalKernel の critical 違反レコード。**テーブル中で唯一の epoch 途中エッジ。** 性能シグナルは決して該当しません: 単に遅い・期待外れというだけのコンポーネントは境界を待ちます。エポックの凍結こそが実行を監査可能にしているのであり、それを破る価値があるのは憲法違反だけだからです。このエッジは現在のエポックを強制クローズし、隔離と、新しくフィンガープリントされたエポック開始を同一トランザクションでコミットします。したがって「epoch 途中」が「境界トランザクションの外」を意味することはありません。 | `emergency_flag_set`（`transition.emergency == true`）、`kernel_violation_attached`、`single_sanction`; `boundary_only` が `False` なのはこの行だけ |
+| T17 ⚖ | `quarantine` → `retired` | `adjudication_confirmed_retirement` — 境界において、`retirement_replay_min_cases` 件以上（`rqgm.replay.max_cases_for_retirement` 予算の内側）の ReplayBoard 確認が弾劾を支持する。隔離は停職であり、退役は判決です。そして判決には、告発を引き起こした証拠ではなく、告発の*後*に再実行された証拠が要ります。 | `replay_board_confirmation`、`emits_retirement_event` — このエッジだけが `RetirementEvent` + `CleanRoomGenerationRequest` を発行し、退役した `prompt_hash` 集合をフロンティア修復へ渡します; 境界のみ |
+| T18 | `quarantine` → `probationary_active` | `exoneration` — GovernanceSelfAudit または AdjudicationPanel が弾劾を覆す。復帰先は**保護観察であって、`active` へ直接ではありません**: 免罪が回復するのは地位であって、年功ではありません。 | `re_enters_under_probation`; 境界のみ |
+| T19 ⚖ | `retired` → `banned` | `contamination_or_critical_finding` — プロンプトインジェクション内容、それに帰属される監査ログ改竄、またはその系統に辿れるクリーンルーム子孫の反復失敗。退役はコンポーネントの職務を終わらせますが、禁止はさらにその*テキスト*を再び読むことを禁じます。だからこそ別個の、より重い認定なのです。 | `absorbing`; 抽象失敗サマリを超えて、そのテキストや few-shot をクリーンルーム参照として再利用することを禁じます; 境界のみ |
+| T20 | `active` → `retired` | `superseded_by_adopted_successor` — `utility_policy` の取って代わりエッジ。ユーティリティポリシーは評価*基準*であって振る舞いの主体ではないため、制裁ではなく取って代わりで置換されます: 検証済みでシャドウを通過した後継が**健全な**現職を押しのけ、**旧** `utility_policy_hash` を持たせたまま退役させます。これこそが `frontier_repair` に、その下で採点された全ノードを無効化させるものです。この行がなければスコア書き換えの背骨は死んでいました — T6 は健全な受動的ポリシーが決して生まない空席を必要とするからです。 | `supersession_successor_adopted` — 同一ロールの T6 採用の内側でのみ発行されるので、押しのけを正当化する後継なしに押しのけが起きることはありません; `utility_policy_role_only`; `emits_retirement_event` |
+| T21 | `active` → `shadow` | `superseded_by_adopted_successor` — paper ロールの取って代わりエッジ（`paper_writer` / `paper_reviewer`）。paper ロールの共進化はプロンプト水準なので、後継プロンプトが採用されると現職はどこかへ行かねばなりません: **復帰可能な** `shadow` 待機へ降格され、latest-wins ロールアップの裏に 2 つを共存させる代わりに、paper ロールごとにちょうど 1 つのアクティブ項目を保ちます。T20 と違いこれは退役ではなく、何も削除しません — 後の境界が T6 でこの待機を再び登らせられます。 | `supersession_successor_adopted`、`paper_prompt_role_only`（`transition_rules.PAPER_SUPERSESSION_ROLES`）、`reinstatable_standby` |
+
+T20 と T21 は制裁のみの置換モデルに対する**唯一** 2 つの例外であり、それぞれ
+1 つのロール族にカーネルでガードされています: 振る舞いを担うロールすべてに
+ついて `active → retired` と `active → shadow` は禁止のままで、カーネルが
+拒否します（`CK-REG-001`）。したがって振る舞いを担うコンポーネントが席を
+去る道は、依然として隔離経由だけです。
+
+**T16 の符号化について。** テーブルは `(from_status, to_status)` をキーと
+する `dict` で、エントリはちょうど 21 個、rule id 1 つにつき 1 つです —
+`|S|×|S|` の補集合テストが列挙するのはこれです。T16 は 4 つの `from`
+ステータスにまたがりますが、そのうち 3 つのペア（`probationary_active` /
+`active` / `probation` → `quarantine`）にはすでに固有の境界ルール — T8、
+T11、T15 — があり、テーブル項目としてはその rule id を保ちます。したがって
+T16 の*行*は、固有の境界エッジを持たない唯一のペア
+`warning → quarantine` です。4 形すべての緊急集合は
+`transition_rules.EMERGENCY_EDGE` にあり、epoch 途中のコミットが合法なのは
+この 4 形のいずれかを取る緊急遷移としてだけです。
+
+**テーブルにないものはすべて禁止**であり、欠けている 4 つは偶然ではなく
+荷重を担っています: `candidate → active` エッジは存在せず（即時活性化なし、
+グローバル不変条件 15）、`retired` からの復活もなく、吸収状態である
+`banned` から出るエッジもなく、ステータスエッジを伴わないプロンプトテキスト
+の その場置換もありません（グローバル不変条件 3）。遷移なしに変わった
+プロンプトは、誰が答えているかの未監査の変更になってしまうからです。
+カーネルは補集合全体を拒否します: テストスイートは `|S|×|S|` 行列を列挙し、
+受理されるのはちょうどこの 21 行だけであることを表明します。
 
 ## フロンティア修復スキーマ (Task 10)
 

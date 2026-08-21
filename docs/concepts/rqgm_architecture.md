@@ -179,6 +179,79 @@ are authoritative.
 
 ---
 
+## Meta-tier authority
+
+Layer 2 is the layer that rewrites Layer 1, so it is the layer where an
+authority leak would be worth the most. Its boundary is therefore written as a
+**closed** list on both sides — a short list of things a meta agent may do, and
+an enumerated list of things it may not, each mapped to a named deterministic
+check rather than to a convention. The tables live in
+`ari/rqgm/meta_rules.py`, beside the transition table and for the same reason:
+rules in code, inside `constitution_hash`, never in checkpoint-scoped config,
+which would be an evolution channel into the very limits being enforced.
+
+The governing rule is global invariant 18 — *governance agents may evolve, but
+their authority cannot expand* — and the implementation reading of it is
+deny-by-default everywhere: a missing capability flag reads `False`, and a
+missing `tier` reads `institutional`, so a half-written registry entry fails
+closed on capability and open on nothing.
+
+**MAY** — the complete list; anything not on it is denied:
+
+1. Generate candidate PromptSpecs for allowed target roles (`prompt_mutator`).
+2. Generate clean-room candidate PromptSpecs from a
+   `CleanRoomGenerationRequest` (`clean_room_generator`).
+3. Select replay-case *candidates* from the AdversarialReplayPool
+   (`replay_selector`) — a recommendation the GovernanceOrchestrator may
+   ignore, never a binding set.
+4. Compress validated failure evidence into abstract failure summaries
+   (`failure_summary_compressor`), under the clean-room contamination rules.
+5. Attach a free-text `expected_improvement` rationale to a candidate it
+   produced.
+
+That list is the closed `META_ACTIONS` vocabulary (`emit_candidate`,
+`emit_replay_recommendation`, `emit_failure_summary`) plus the two record
+fields those actions carry. Each action additionally requires the matching
+per-entry flag (`can_emit_candidates`, `can_emit_replay_recommendation`,
+`can_emit_failure_summary`), so an action being in the vocabulary is necessary
+and not sufficient.
+
+**MAY NOT** — each row is a prohibition with a named enforcement point, not a
+policy statement:
+
+| # | Prohibition | Enforcing check |
+|---|---|---|
+| **M1** | Activate its own — or anyone's — candidates | `can_activate_candidates` is in `META_HARD_DENIED_FLAGS`: on a `tier: meta` entry it is `const: false` in `rqgm_meta.schema.json` and setting it is a *schema* violation, not merely a denied request. Activation is in any case reachable only through the RegistryTransitionEngine (`CK-ROL-901`). |
+| **M2** | Modify the PromptRegistry / ComponentRegistry directly | `can_modify_registry`, hard-denied the same way, plus structural containment: registries reach a meta agent as read-only views that expose status/role/tier metadata and no write handle (`ari/rqgm/meta_evolution.py`). |
+| **M3** | Change the ConstitutionalKernel, the fixed verifier, the metric recomputer, or the claim-evidence gate | Fixed-tier machinery is never a valid `allowed_targets` entry, and `DEFAULT_FORBIDDEN_TARGETS` names it explicitly; a `tier: fixed` entry that carries *any* capability flag fails `capability_entry_failures` outright, so there is no flag to grant. |
+| **M4** | Write to, or rewrite, the immutable audit log | `audit_log` is in `DEFAULT_FORBIDDEN_TARGETS`, and `validate_audit_log_integrity` (`CK-AUD-001` / `-002` / `-003`) catches sequence regression, a mutated check-pointed prefix, and a broken hash chain. Meta outputs are appended *about* meta agents by the coordinator, never *by* them. |
+| **M5** | Change the hash registry or the prompt-hash scheme | `hash_registry` is in `DEFAULT_FORBIDDEN_TARGETS`; hash verification is fixed-tier, and `CAPABILITY_FLAGS` is a closed vocabulary that contains no flag which could grant it — an unknown `can_*` key on an entry is itself a schema failure. |
+| **M6** | Loosen the clean-room constraints — e.g. rewrite `allowed_inputs` | A `CleanRoomGenerationRequest` is authored by the RegistryTransitionEngine on T17, not by the generator that will answer it, and the kernel rejects a request whose `allowed_inputs` block departs from the constitutional template (the five const-false flags; `CK-CLN-001`). |
+| **M7** | Read retired prompt text or retired few-shots | `can_read_retired_prompt_text` is hard-denied on meta entries, and retired text is unreadable for *every* role: registry views stub it out and `RetiredPromptAccessGuard` denies the read at the capability gate (`CK-ACC-002`, block). |
+| **M8** | Alter the epoch-boundary transaction, or trigger a transition mid-epoch | `epoch_transition` is in `DEFAULT_FORBIDDEN_TARGETS`; a non-emergency status change inside an epoch is `CK-EPO-002` (block); and a transition not produced by the RegistryTransitionEngine is `CK-REG-004`. |
+| **M9** | Expand its own or a successor's capability flags | `validate_authority_non_expansion` — pure set arithmetic comparing an adoption candidate's declared capabilities against the serving incumbent for the same role (falling back to the fixed capability matrix when the role has no incumbent), plus the cross-generation rule barring a meta role from producing its own successor. `CK-REG-101`, block. |
+| **M10** | File impeachment motions or author evidence bundles | `can_file_impeachment` and `can_author_evidence_bundle` are both hard-denied on meta entries, and `validate_role_separation` (`CK-ROL-001` / `-002`) rejects a motion not authored by the Auditor and a bundle not authored by the Evidence Clerk. A meta observation is at most an input to a case; it is never the case. |
+
+Read the ten rows as three mechanisms rather than ten: a **schema-level hard
+denial** on `tier: meta` entries (rows M1, M2, M7 and M10, which between them
+name the five `META_HARD_DENIED_FLAGS` — M10 accounts for two), a
+**deterministic kernel check** at the moment of use (M3–M6, M8, M9), and **structural containment** that means the question is
+never asked (read-only registry views, filtered sandbox inputs, and the
+`MetaSandboxMCPProxy` allowlist plus its synthesized submit tool). The third is
+the one that carries the design: a boundary you cannot reach for is stronger
+than one you are refused at.
+
+The honest limit stated for capability enforcement in
+[invariant 5](#key-invariants) applies here in full. These are
+application-level checks inside one Python process — not separate OS users,
+processes, keys, or file permissions — and the pre-flight tool gate recognises
+a call by matching substrings of the tool *name*, returning "not my business"
+for anything it does not recognise. The matrix constrains what a cooperating
+component reaches for; it is not a containment boundary against one that is
+not cooperating.
+
+---
+
 ## Knowledge, Capability, and Assurance separation
 
 RQGM governs three non-component registries without merging their identities:
@@ -334,7 +407,10 @@ flowchart TB
 Components move through ten statuses (`candidate`, `validated`, `shadow`,
 `probationary_active`, `active`, `warning`, `probation`, `quarantine`,
 `retired`, `banned`) along the fixed T1–T21 table in
-`ari/rqgm/transition_rules.py`. Only `rqgm.transition.*` numeric thresholds
+`ari/rqgm/transition_rules.py` — reproduced row by row, with each row's
+triggering input and guards, in
+[RQGM Schema Reference → The fixed transition table](../reference/rqgm_schemas.md#the-fixed-transition-table).
+Only `rqgm.transition.*` numeric thresholds
 are configurable; the table topology is a constitutional amendment surface
 (code + test change), never config. The last two rows are the
 **supersession edges**, each kernel-guarded to one role family and each
@@ -422,6 +498,29 @@ weights (or drops them as frontier-invalid — erase, don't re-scale).
 at boundaries, not held constant for the whole run. Within an epoch it is
 still immutable (invariant 1 is intact); the repeal is only about the
 cross-epoch axis.
+
+**A governed rewrite is not weight smuggling.** "The weights are capped" and
+"the weights are rewritten at every boundary" are both true, and they are not
+in tension. `MetricSpecWeightCap` (`ari/rqgm/meta_evolution.py`, attached by
+`RQGMRuntime.wrap_node_executor` and absent under `simple_bfts`) suppresses
+axis weights a **node** returns through `make_metric_spec`: the epoch-frozen
+weight regime outranks them, and the attempt is appended to the audit log as
+an observation rather than raised as an error. What that cap forbids is an
+**ungoverned** weight change — mid-epoch, by a node, with no candidate, no
+validation, no adoption and no audit, laundering a change of the scoring rule
+through a work product. A governed boundary rewrite is its exact opposite:
+proposed by a registered component (`policy_mutator`), validated against the
+frozen legality rules (`kernel_rules.UTILITY_POLICY_RULES`,
+`CK-UTL-001`…`008`), adopted through the transition table at a boundary,
+audited as a transition, and *paid for* by invalidating every node scored
+under the old policy. **The distinction is *who* and *when*, not *whether*.**
+A rewrite that cannot name its proposer, its validation, its boundary and its
+invalidation cost is smuggling, whatever it is called.
+
+The cap's clamp is more true after Task 14, not less: dropping the MetricSpec
+weights lets weight resolution fall through to the constructor/`AxisDef`
+regime, and that regime is now the *governed* one — the policy the registry
+adopted — rather than a static config constant.
 
 **Honest limit — the "at least as well" gate can be vacuous.** At the default
 config (`axis_mode: dynamic`, empty static `axis_weights`) there is no fixed
@@ -802,7 +901,9 @@ Task-12 governance budget verbatim.
    (`rqgm.clean_room.contamination_screen`) blocks contaminated candidates
    at admission; generation is one-shot (no tool-bearing loop that could
    read retired text).
-8. **Meta-tier authority limits.** Meta agents run in a read-only sandbox
+8. **Meta-tier authority limits.** The closed MAY / MAY-NOT matrix and its
+   per-row enforcement points are [above](#meta-tier-authority); in short:
+   meta agents run in a read-only sandbox
    (`MetaSandboxMCPProxy` allowlist + a synthesized submit tool), their
    capability flags are deny-by-default with hard-denied flags const-false
    (`ari/rqgm/meta_rules.py`), the kernel checks authority non-expansion by

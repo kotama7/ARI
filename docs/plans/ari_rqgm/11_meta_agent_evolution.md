@@ -147,6 +147,22 @@ MAY NOT (each row maps to a deterministic kernel check; see §5.6):
 | M9 | Expand its own or a successor's capability flags | authority-non-expansion check (§5.6) |
 | M10 | File impeachment motions or author EvidenceBundles | role-separation check (Task 04/05); meta outputs are observations at most |
 
+> **Given a permanent home, 2026-08-22.** The MAY list and the M1–M10 MAY-NOT
+> matrix are no longer carried only here. Both are reproduced — each MAY-NOT row
+> against the enforcement point that actually ships (`meta_rules.py`'s
+> `META_HARD_DENIED_FLAGS` / `DEFAULT_FORBIDDEN_TARGETS`, and the named kernel
+> codes `CK-ROL-901`, `CK-AUD-00*`, `CK-CLN-001`, `CK-ACC-002`, `CK-EPO-002`,
+> `CK-REG-004`, `CK-REG-101`, `CK-ROL-001/002`) — in
+> [`docs/concepts/rqgm_architecture.md`, "Meta-tier authority"](../../concepts/rqgm_architecture.md#meta-tier-authority),
+> in all three languages
+> ([ja](../../ja/concepts/rqgm_architecture.md#メタ層の権限) ·
+> [zh](../../zh/concepts/rqgm_architecture.md#元层权限)); the tier model of §5.1
+> was already carried by that page's "The three layers", and invariant 8 now
+> points at the matrix instead of paraphrasing four of its rows. The permanent
+> page also states the honest limit these rows do not carry on their own: the
+> checks are application-level inside one process, not OS-level containment.
+> Nothing above is amended.
+
 ### 5.3 Every meta output is a candidate
 
 `MetaAgentOutputRecord` (§6.2) is the *only* artifact a meta-agent produces. Routing:

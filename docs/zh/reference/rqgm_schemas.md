@@ -129,7 +129,7 @@ Id 格式（全部零填充、按检查点计数）：
 | `CK-ACC-001`、`CK-ACC-002` | `validate_capability` —— `CAPABILITY_MATRIX` 未授予或 Task 11 元动作标志拒绝；访问退役提示词正文（对任何角色都不可读） | block |
 | `CK-EPO-001` | `validate_epoch_invariance` —— `prompt_hash` 位于该纪元冻结 active set 之外的记录 | warn |
 | `CK-EPO-002` | `validate_epoch_invariance` —— 纪元中途的非紧急状态变更事件 | block |
-| `CK-REG-001`…`CK-REG-007` | `validate_transition` —— 边不在 T1–T21 表中、仅限边界的边在纪元中途打戳、声明的 `rule_id` 与表矛盾、`produced_by` 不是 RegistryTransitionEngine、缺少必需的佐证引用、紧急转换形状非法、`from_status` 与注册表矛盾 | block |
+| `CK-REG-001`…`CK-REG-007` | `validate_transition` —— 边不在 [T1–T21 表](#固定转换表)中、仅限边界的边在纪元中途打戳、声明的 `rule_id` 与表矛盾、`produced_by` 不是 RegistryTransitionEngine、缺少必需的佐证引用、紧急转换形状非法、`from_status` 与注册表矛盾 | block |
 | `CK-REG-101` | `validate_authority_non_expansion` —— 候选声明的权限超过其现任（不变式 18） | block |
 | `CK-ROL-001`、`CK-ROL-002`、`CK-ROL-003` | `validate_role_separation` —— 弹劾动议作者不是 Auditor、证据包作者不是 EvidenceClerk、同角色指控 | warn |
 | `CK-ROL-901` | `validate_role_separation` / `validate_capability` —— RegistryTransitionEngine 以外的任何主体写注册表或激活候选（不变式 10） | block |
@@ -191,7 +191,7 @@ id/哈希格式。**所属模块：**`ari/rqgm/events.py`（词汇表的 Python
 封闭词汇表：
 
 - **状态生命周期**（提示词与组件共享；合法转换即
-  `ari/rqgm/transition_rules.py` 中的 T1–T21 表）：
+  `ari/rqgm/transition_rules.py` 中的 [T1–T21 表](#固定转换表)）：
   `candidate → validated → shadow → probationary_active → active`，
   然后 `active → warning | probation | quarantine`，以及
   `quarantine → retired → banned`。`active` 与
@@ -791,7 +791,7 @@ RegistryTransitionEngine 的 RetirementEvent
 
 **用途：**一次 RegistryTransitionEngine 边界决议的唯一输出记录，
 作为 `epoch_transition` 记录审计到 `rqgm_audit.jsonl`。每次状态
-变更都钉住 `ari/rqgm/transition_rules.py` 中固定 T1–T21 表的一个
+变更都钉住下方 [T1–T21 表](#固定转换表)中固定的一个
 `rule_id` 行（T1–T19 基础表加上角色范围的 T20 / T21 取代行）；只有
 `rqgm.transition.*` 数值阈值可配置。
 **所属模块：**`ari/rqgm/transition_engine.py` —— 唯一的注册表状态
@@ -808,6 +808,87 @@ CK-REG-004）。
 | `clean_room_requests` | 交给 Task 08 的再生成请求 |
 | `next_active_components` / `fallbacks` | 下一纪元的冻结活跃集合 + 无空缺回退 |
 | `kernel_validation`（+ 可选 `kernel_violation`） | 内核对该事务的裁定 |
+
+### 固定转换表
+
+`ari/rqgm/transition_rules.py` 保存着受治理组件与提示词的完整、不进化的
+转换表；RegistryTransitionEngine（解析边的一方）与 ConstitutionalKernel
+的 TransitionValidator（受理或拒绝该边的一方）**都**导入这同一个模块 ——
+单一真相源，因此引擎认定的合法边与内核认定的合法边不可能彼此漂移。它是
+纯数据：无 LLM 调用、无 I/O、无随机、无墙钟。只有 `rqgm.transition.*`
+数值阈值可配置；*拓扑*骑在 `constitution_hash` 内部，因此新增、删除或
+改动某条边的守卫属于宪法修正 —— 一次代码变更外加在
+`ari-core/tests/test_rqgm_kernel.py` 中手工重钉哈希 —— 而绝非配置值。
+没有配置逃生口是一个决定而非疏漏：一张运行中的机构自己就能放宽的表，
+等于允许它在两次审计之间给自己投票加权。
+
+十种状态是 Task 02 的封闭词汇表
+（[见上](#共享信封-rqgm-defs-schema-json)），`transition_rules.ComponentStatus`
+逐成员镜像它。`warning` 与 `probation` 是**仍在服务**的状态 —— 组件留在
+该纪元冻结的活跃集合里，改变的只是它的治理姿态 —— 而 `quarantine` 会把
+它移出服务集合。刻意没有 `rejected` 状态：**从未服务过**就被淘汰的候选或
+影子，其终局处置是 `retired`（T2 / T5），原因由事件载荷携带，且**不**发出
+`RetirementEvent`、**不**发出 `CleanRoomGenerationRequest` —— 这两者专属于
+T17，即真正服务过之物的退役。`banned` 是吸收态。读到无法识别的状态时，
+按不具备进入活跃集合的资格处理并记录，绝不抛出。
+
+以下三条普遍守卫适用于表中**每一行**，叠加在各边自身的守卫之上：
+
+| | 普遍守卫 |
+|---|---|
+| **G1** | 只有 RegistryTransitionEngine 可以写状态（全局不变量 10 —— Judge 写注册表是被点名的内核违规）。 |
+| **G2** | 变更在已提交的纪元边界事务内部提交 —— 唯一的 ⚡ 紧急边是例外。 |
+| **G3** | `ConstitutionalKernel.validate_transition` 通过（`CK-REG-001`…`CK-REG-007`）。 |
+
+⚖ 标记规范强制的主干；无标记的行是让状态机变为全函数的辅助恢复／拒绝边；
+⚡ 是唯一的纪元中途边。**守卫**列给出的是*引擎*求值的确定性守卫谓词名 ——
+内核本身只检查是否在表中、`rule_id` 是否一致、`from_status` 是否与注册表
+相符，以及边界／紧急的形状。
+
+| # | From → To | 触发输入，以及该行所编码的决定 | 该边专属守卫 |
+|---|---|---|---|
+| T1 ⚖ | `candidate` → `validated` | `candidate_validation_passed` —— Task 07 的 `PromptCandidateValidation`：静态校验、宪法校验与 schema 空跑全部通过。校验是闸门而非背书：通过它只是让候选获得被*测量*的资格。 | `candidate_cap_not_exceeded`（`rqgm.prompt_evolution.max_candidates_per_role_per_epoch`）、`constitutional_constraints_present` —— 未声明约束的 PromptSpec 根本无法被校验 |
+| T2 | `candidate` → `retired` | `validation_failed_or_candidate_expired` —— 任何阻断性校验失败，或候选等待超过 `candidate_max_age_epochs`。 | `never_served_rejection`：终局，且刻意*不是*退役 —— 无 `RetirementEvent`、无洁净室请求。失败摘要保留给 Task 08 的抽象证据包 |
+| T3 ⚖ | `validated` → `shadow` | `replay_and_anchor_evaluation_passed` —— 在 ≥ `replay_min_cases` 个案例上重放分数 ≥ `replay_pass_threshold`，且锚点评估相对在任者无退步。 | `shadow_slot_available`（`rqgm.shadow.max_shadow_calls_per_epoch`）；仅限边界 |
+| T4 | `shadow` → `validated` | `insufficient_shadow_samples` —— 经过 `shadow_max_epochs` 后比较数仍不足 `shadow_min_samples`。测量不足不等于失败，所以重新排期而不是拒绝。 | `shadow_retry_within_limit`（`shadow_retry_limit`）；超出该限额后的处置是 T5 |
+| T5 | `shadow` → `retired` | `shadow_quality_below_threshold` —— 在*样本足以下此结论*的前提下，一致度／质量低于 `shadow_pass_threshold`。 | `never_served_rejection`，与 T2 完全相同 |
+| T6 ⚖ | `shadow` → `probationary_active` | `shadow_agreement_passed` —— GovernanceReport 的影子小节显示在 ≥ `shadow_min_samples` 次实时影子比较上一致度／质量 ≥ `shadow_pass_threshold`。这就是采纳边，而它落在*试用期*：没有任何东西被直接采纳为 `active`。 | `role_opening_available`（在任者处于 probation/quarantine/retired，或该角色空缺）、`one_adoption_per_role_per_boundary`（`max_adoptions_per_role_per_boundary`）；仅限边界 |
+| T7 ⚖ | `probationary_active` → `active` | `clean_probation_record` —— GovernanceReport 未把任何被支持的 `ValidatedAttackRecord` 归因于它，且在试用窗口内性能不低于在任基线。**这是组件取得正式席位的唯一途径。** 每一个在服务的组件都先服过试用期，因此没有任何东西仅凭评估分数就被信任：让它晋升的证据，是它已经在应答时、在强化监督下被观察到的行为，并且一个边界就能撤回。 | `probation_min_epochs_served`（`probation_min_epochs` 个完整纪元）；仅限边界 |
+| T8 | `probationary_active` → `quarantine` | `upheld_impeachment_or_reliability_collapse` —— 试用者会因为足以罢免在任者的同一份证据而失去临时席位。 | 边界，或作为 T16 四形之一的 ⚡ |
+| T9 ⚖ | `active` → `warning` | `reliability_warning_or_low_severity_attacks` —— GovernanceReport 的可靠性警告，或 `severity: low` 的已验证攻击。 | `component_keeps_serving`；仅限边界 |
+| T10 ⚖ | `active` → `probation` | `repeated_warnings_or_medium_severity_attacks` —— 连续 ≥ `warning_escalation_count` 个警告纪元，或中等严重度的已验证攻击。 | 在强化影子比较下 `component_keeps_serving`；仅限边界 |
+| T11 ⚖ | `active` → `quarantine` | `upheld_impeachment_or_critical_attack_pattern` —— 被支持的 `ImpeachmentOutcome`，或 GovernanceReport 归因于它的 high/critical 严重度已验证攻击模式。 | `fallback_assigned` —— 角色绝不留空；边界，或作为 T16 四形之一的 ⚡ |
+| T12 | `warning` → `active` | `clean_epoch` —— 一个完整纪元内 GovernanceReport 中没有新的警告或攻击。警告是姿态而非债务：它自行解除，不需要为解除它另行提出任何动议。 | 仅限边界 |
+| T13 | `warning` → `probation` | `warning_recurrence_within_memory` —— 在 `warning_memory_epochs` 内复发。 | 仅限边界 |
+| T14 | `probation` → `active` | `rehabilitation_clean_epochs` —— 在强化监督下服满的干净纪元。改过是一条真实路径而非形式：制裁不是缓慢的死刑。 | `probation_min_epochs_served`；仅限边界 |
+| T15 | `probation` → `quarantine` | `continued_degradation_or_upheld_impeachment` | 边界，或作为 T16 四形之一的 ⚡ |
+| T16 ⚡ | `probationary_active` \| `active` \| `warning` \| `probation` → `quarantine` | `constitutional_emergency` —— 一条点名该组件的确定性 ConstitutionalKernel critical 违规记录。**表中唯一的纪元中途边。** 性能信号永远不够格：仅仅是慢或令人失望的组件要等边界，因为纪元冻结正是让一次运行可审计的东西，只有宪法违规才值得为它破例。这条边会强制关闭当前纪元，并在同一事务中提交隔离与一个重新指纹化的纪元开启，所以"纪元中途"从不意味着"在边界事务之外"。 | `emergency_flag_set`（`transition.emergency == true`）、`kernel_violation_attached`、`single_sanction`；只有这一行的 `boundary_only` 为 `False` |
+| T17 ⚖ | `quarantine` → `retired` | `adjudication_confirmed_retirement` —— 在边界上，覆盖 ≥ `retirement_replay_min_cases` 个案例（在 `rqgm.replay.max_cases_for_retirement` 预算内）的 ReplayBoard 确认支持了该弹劾。隔离是停职，退役是判决；而判决需要的是指控*之后*重跑的证据，而不是引发指控的那份证据。 | `replay_board_confirmation`、`emits_retirement_event` —— 只有这条边发出 `RetirementEvent` + `CleanRoomGenerationRequest`，并把退役的 `prompt_hash` 集合交给前沿修复；仅限边界 |
+| T18 | `quarantine` → `probationary_active` | `exoneration` —— GovernanceSelfAudit 或 AdjudicationPanel 推翻了弹劾。重新进入的是**试用期，绝不直接回到 `active`**：昭雪恢复的是资格，不是资历。 | `re_enters_under_probation`；仅限边界 |
+| T19 ⚖ | `retired` → `banned` | `contamination_or_critical_finding` —— 提示词注入内容、归因于它的审计日志篡改，或可追溯到其血统的洁净室后代反复失败。退役结束一个组件的服务；封禁还额外禁止再次读取它的*文本*，这正是它是一项独立且更重的认定的原因。 | `absorbing`；除抽象失败摘要之外，禁止把它的文本与 few-shot 作为洁净室参考再利用；仅限边界 |
+| T20 | `active` → `retired` | `superseded_by_adopted_successor` —— `utility_policy` 的取代边。效用策略是评估*准则*而不是行为主体，所以它以取代而非制裁的方式被替换：一个已校验、通过影子的后继会挤掉**健康的**在任者，并让它带着**旧的** `utility_policy_hash` 退役 —— 这正是让 `frontier_repair` 作废在其之下评分的每个节点的机制。没有这一行，分数改写的主干就是死的 —— 因为 T6 需要一个健康的被动策略永远不会让出的角色空位。 | `supersession_successor_adopted` —— 只在同角色的 T6 采纳内部发出，所以绝不会在没有后继来正当化的情况下发生挤替；`utility_policy_role_only`；`emits_retirement_event` |
+| T21 | `active` → `shadow` | `superseded_by_adopted_successor` —— 论文角色的取代边（`paper_writer` / `paper_reviewer`）。论文角色的协同进化在提示词层面，所以当后继提示词被采纳时，在任者总得有个去处：它被降级为**可复位的** `shadow` 待命，从而每个论文角色恰好保留一个活跃条目，而不是让两个在 latest-wins 汇总背后共存。与 T20 不同，这不是退役，也不删除任何东西 —— 之后的边界可以通过 T6 让这个待命者重新爬回。 | `supersession_successor_adopted`、`paper_prompt_role_only`（`transition_rules.PAPER_SUPERSESSION_ROLES`）、`reinstatable_standby` |
+
+T20 与 T21 是"仅靠制裁替换"模型的**仅有的**两个例外，且各自被内核限定在
+一个角色族内：对所有行为类角色，`active → retired` 与 `active → shadow`
+依旧被禁止且被内核拒绝（`CK-REG-001`），因此行为类组件离席的路径仍然只有
+经由隔离这一条。
+
+**T16 是如何编码的。** 该表是以 `(from_status, to_status)` 为键的 `dict`，
+恰好 21 个条目，每个 rule id 一个 —— 这正是 `|S|×|S|` 补集测试所枚举的。
+T16 横跨四个 `from` 状态，其中三对（`probationary_active` / `active` /
+`probation` → `quarantine`）已各自拥有边界规则 —— T8、T11、T15 —— 并在表中
+保留那些 rule id。因此 T16 的*那一行*，是唯一没有自己边界边的那一对
+`warning → quarantine`。四种形状的完整紧急集合位于
+`transition_rules.EMERGENCY_EDGE`；纪元中途的提交只有作为取这四种形状之一
+的紧急转换时才合法。
+
+**凡不在表中的都被禁止**，其中四项缺失是承重的而非偶然：不存在
+`candidate → active` 边（无即时激活，全局不变量 15）；不存在从 `retired`
+的复活；不存在离开吸收态 `banned` 的边；也不存在不伴随状态边的提示词文本
+就地替换（全局不变量 3）—— 因为一个未经转换就改变的提示词，等于一次未经
+审计地更换了应答者。内核拒绝整个补集：测试套件枚举 `|S|×|S|` 矩阵，并断言
+被受理的恰好是这 21 行。
 
 ## 前沿修复 schema（Task 10）
 
