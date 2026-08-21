@@ -91,7 +91,7 @@ def test_production_kca_packages_do_not_import_rqgm_evaluation():
     assert violations == []
 
 
-def test_no_production_module_imports_the_evaluation_harness():
+def test_no_production_eval_import():
     """Criterion 67 over the whole of ``ari/``, the harness's own tree excepted.
 
     This is the assertion the criterion names. It covers ``ari/rqgm/`` --

@@ -105,7 +105,16 @@ def _request(requirement, provisions, **updates):
     return CapabilityBindingRequestV1.create(**values)
 
 
-def test_binding_lock_is_byte_identical_for_permuted_input_order():
+def test_binding_lock_determinism():
+    """Task 20 criterion 17: one requirement, snapshot and environment mint one
+    Binding Lock, byte for byte.
+
+    Stated as invariance under the one input a caller can vary without changing
+    the question -- the order the candidate provisions arrive in.  The request
+    digest is asserted equal first, so the Lock comparison below is about the
+    binder and not about two different requests.
+    """
+
     contract = _contract()
     requirement = _requirement(contract)
     a = _provision(contract, provider="provider-a", tool="provider-a::compile")

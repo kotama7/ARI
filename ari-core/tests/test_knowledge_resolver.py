@@ -128,7 +128,18 @@ def test_router_proposal_cannot_activate_unverified_skill():
         )
 
 
-def test_instruction_identity_includes_skill_and_all_lock_digests():
+def test_instruction_identity_skill_hashes():
+    """Task 20 criterion 11: node instruction identity carries the ordered
+    Skill hashes.
+
+    ``InstructionCompositionV1`` is what a node's prompt identity is recorded
+    as, and ``ordered_knowledge_skill_hashes`` is the field that says which
+    Knowledge bodies were composed into it, in the order the epoch lock
+    admitted them.  Composed here through the real
+    ``compose_knowledge_instructions`` so the hashes come off the lock rather
+    than being handed in.
+    """
+
     ontology, catalog, proposal, context = _fixture()
     lock = admit_knowledge_skills(
         proposal=proposal, catalog=catalog, ontology=ontology, context=context, mode="enforce"
@@ -153,7 +164,15 @@ def test_instruction_identity_includes_skill_and_all_lock_digests():
     assert node_use.knowledge_composition_digest == identity.knowledge_composition_digest
 
 
-def test_body_digest_mismatch_blocks_composition():
+def test_skill_body_digest_mismatch():
+    """Task 20 criterion 8: a body whose digest does not match the admitted
+    Skill blocks use.
+
+    Composition is where a Knowledge body is used, so this is where the
+    admitted ``body_sha256`` has to be re-checked against the bytes actually
+    supplied; a body edited after admission must not reach a node's prompt.
+    """
+
     ontology, catalog, proposal, context = _fixture()
     lock = admit_knowledge_skills(
         proposal=proposal, catalog=catalog, ontology=ontology, context=context, mode="enforce"

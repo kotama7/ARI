@@ -195,7 +195,15 @@ def test_harness_exact_set_cover_is_byte_deterministic():
     assert first.harness_manifest_digests == (cheap.manifest_digest,)
 
 
-def test_benchmark_cannot_cover_arbitrary_artifact_requirement():
+def test_benchmark_kind_separation():
+    """Task 20 criterion 46: a benchmark kind is not an artifact verifier.
+
+    ``_coverage`` refuses a ``benchmark`` manifest that does not accept an
+    external target for any atom outside {model, agent, benchmark-submission}:
+    a fixed benchmark task evaluates its own subjects, so it can never be
+    resolved into the suite that judges an arbitrary node's artifact.
+    """
+
     benchmark = _manifest(
         "science/benchmark", kind="benchmark", accepts_external_target=False
     )
