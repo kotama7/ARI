@@ -23,7 +23,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: benchmark
 maintainer: ARI maintainers
-manifest_digest: sha256:b325dc7782d3b68c6a0d4405134c49910956dd8aeed152930d9e7f7fce9c897a
+manifest_digest: sha256:9033e8cdaceb383231c1ebe1f335d4105742dbab16aedf71b994cdbedca9aa6a
 model:
   license: not-applicable
   revision: not-applicable
@@ -71,7 +71,7 @@ resources:
 retry_limit: 1
 schema_version: ari.harness-manifest/v1
 scorer_determinism: deterministic
-source_full_commit_sha: 21fcdbeb2fe85aa9019651358107d4a7a9afd9f0
+source_full_commit_sha: 24b6456bb24065831867fd71e7a29c62f749b1d3
 source_repository: https://github.com/kotama7/ARI.git
 status: verified
 subject_types:
