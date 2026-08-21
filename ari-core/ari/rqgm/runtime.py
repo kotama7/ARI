@@ -2979,14 +2979,71 @@ class RQGMRuntime:
             effective_directives=self._effective_directives(admission, instruction),
         )]
 
+    #: The Constitution fixes ONE component for each authoritative selection:
+    #: ``harness_resolver_v1`` chooses the Harnesses (CK-HAR-003) and
+    #: ``capability_binder_v1`` chooses the Provider tools (CK-CAP-004).
+    _FIXED_HARNESS_SELECTOR = "harness_resolver_v1"
+    _FIXED_CAPABILITY_BINDER = "capability_binder_v1"
+
+    @staticmethod
+    def _lock_selector_component_id(lock: dict, fixed: str) -> str:
+        """Name the actor a Lock document says performed ITS OWN selection.
+
+        CK-HAR-003 and CK-CAP-004 ask one question in two places: did the
+        fixed component choose, or did some other actor choose?  The admitted
+        Lock is the record of that choice -- ``baseline_harness_lock.json``
+        IS the authoritative Harness selection and
+        ``capability_binding_lock.json`` IS the Provider/tool selection --
+        and each document names the component that produced it.  Both call
+        sites already load the document; nothing here is passed in by a
+        caller, so the answer can only come from what the run did.
+
+        The ``Literal`` on ``BaselineHarnessLockV1.producer_component_id`` /
+        ``CapabilityBindingLockV1.producer_component_id`` constrains the MINT
+        only.  ``load_admission_artifacts`` re-reads both documents as plain
+        JSON and never revalidates them against those models, so what arrives
+        here is whatever the persisted document actually says -- which is the
+        point, because a resumed run is judged on the record it inherited.
+
+        A document that claims the fixed producer while carrying a
+        ``prompt_hash`` is not fixed authorship either: both models pin
+        ``prompt_hash`` to ``None`` precisely because these producers are
+        unprompted programs, and the repository already defines fixed
+        authorship as that PAIR wherever it is checked today
+        (``ari.assurance.attestation.validate_attestation``,
+        ``kernel_harness_integrity._append_attestation_findings``).  Such a
+        document is reported under the actor it really used rather than the
+        one it claims.
+
+        An absent or empty document cannot attribute the selection to the
+        fixed component and is reported as unattributed (``""``).  That state
+        is unreachable in a validated run -- ``_validate_document_bindings``
+        refuses an admission whose Lock digest is set while its document is
+        missing, and both callers return early when the digest is unset -- so
+        no ordinary node can reach the rule through this branch.
+        """
+
+        producer = str(lock.get("producer_component_id", "") or "")
+        if producer == fixed and lock.get("prompt_hash") is not None:
+            return f"{producer}+prompted"
+        return producer
+
     def _kca_capability_reports(self, kernel, admission, node_id: str):
         if not admission.capability_binding_lock_digest:
             return []
+        binding = self._kca_document("capability_binding_lock.json")
         common = {
-            "binding_lock": self._kca_document("capability_binding_lock.json"),
+            "binding_lock": binding,
             "provider_lock": self._kca_document("provider_lock.json"),
             "expected_lock_digest": admission.capability_binding_lock_digest,
             "expected_environment_digest": admission.verification_environment_digest,
+            # CK-CAP-004 asks whether an unauthorized actor selected the
+            # Provider/tool.  The Binding Lock is that selection, so the
+            # question is answered by the producer it names -- not by a flag
+            # a caller sets.
+            "actor_selected": self._lock_selector_component_id(
+                binding, self._FIXED_CAPABILITY_BINDER
+            ) != self._FIXED_CAPABILITY_BINDER,
         }
         records = (
             self._capability_authorization_view.invocation_records(node_id)
@@ -3135,9 +3192,16 @@ class RQGMRuntime:
     def _kca_harness_reports(self, kernel, admission, node, node_root: Path):
         if not admission.baseline_harness_lock_digest:
             return []
+        baseline = self._kca_document("baseline_harness_lock.json")
         common = {
             "verification_contract": self._kca_document("verification_contract.json"),
-            "baseline_lock": self._kca_document("baseline_harness_lock.json"),
+            "baseline_lock": baseline,
+            # CK-HAR-003 asks which actor performed authoritative Harness
+            # selection.  The baseline Lock IS that selection and names its
+            # own producer, so the run answers for itself.
+            "selector_component_id": self._lock_selector_component_id(
+                baseline, self._FIXED_HARNESS_SELECTOR
+            ),
             "catalog_snapshot": self._kca_document("harness_catalog_snapshot.json"),
             "current_target_digest": str(
                 getattr(node, "verified_target_digest", "") or ""

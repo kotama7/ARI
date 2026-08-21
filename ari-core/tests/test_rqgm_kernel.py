@@ -2538,3 +2538,286 @@ def test_result_overridden_exempts_the_states_the_bridge_creates(tmp_path):
         "infrastructure error found on the scientific frontier was put there "
         "by something else"
     )
+
+
+#: The two authoritative selections, spelled out rather than minted.  The mint
+#: models pin ``producer_component_id`` to a ``Literal`` -- which is precisely
+#: the constraint a persisted-and-re-read document does NOT carry, and the
+#: reason these rules can be violated at all.
+_KCA_ZERO_DIGEST = "0" * 64
+
+_KCA_PROVIDER_LOCK = {
+    "schema_version": "ari.skills-lock/v1",
+    "run_id": "kca-selector-fixture",
+    "registry_digest": _KCA_ZERO_DIGEST,
+    "skills": [],
+    "tools": [],
+    "disabled_tools": [],
+    "phase_active_tools": {},
+}
+
+
+def _kca_sealed(document: dict) -> dict:
+    """Reseal ``lock_digest`` over the document, the way the mint computes it.
+
+    Unsealed, tampering with a producer would also invalidate the Lock digest
+    and CK-HAR-006 / CK-CAP-008 would fire alongside, leaving the test unable
+    to say WHICH rule noticed.  A resealed document is also the honest threat:
+    an actor that writes its own Lock writes a self-consistent one.
+    """
+
+    from ari.protocols.integrity import canonical_digest
+
+    payload = {k: v for k, v in document.items() if k != "lock_digest"}
+    return dict(payload, lock_digest=canonical_digest(payload))
+
+
+def _kca_baseline_harness_lock(*, producer="harness_resolver_v1", prompt_hash=None):
+    return _kca_sealed({
+        "schema_version": "ari.baseline-harness-lock/v1",
+        "run_id": "kca-selector-fixture",
+        "research_contract_digest": _KCA_ZERO_DIGEST,
+        "verification_contract_digest": _KCA_ZERO_DIGEST,
+        "harness_catalog_snapshot_digest": _KCA_ZERO_DIGEST,
+        "verification_environment_digest": _KCA_ZERO_DIGEST,
+        "oracle_bundle_digest": _KCA_ZERO_DIGEST,
+        "suite_digest": _KCA_ZERO_DIGEST,
+        "requirements": [],
+        "unsatisfied_atom_digests": [],
+        "harnesses": [],
+        "coverage_proof_digest": _KCA_ZERO_DIGEST,
+        "producer_component_id": producer,
+        "prompt_hash": prompt_hash,
+    })
+
+
+def _kca_capability_binding_lock(*, producer="capability_binder_v1", prompt_hash=None):
+    from ari.protocols.integrity import canonical_digest
+    from ari.skill_lock import SkillsLockV1
+
+    return _kca_sealed({
+        "schema_version": "ari.capability-binding-lock/v1",
+        "run_id": "kca-selector-fixture",
+        "epoch_id": "epoch_000",
+        "request_digest": _KCA_ZERO_DIGEST,
+        "ontology_snapshot_digest": _KCA_ZERO_DIGEST,
+        "provider_catalog_snapshot_digest": _KCA_ZERO_DIGEST,
+        "provider_lock_digest": canonical_digest(
+            SkillsLockV1.model_validate(_KCA_PROVIDER_LOCK)
+        ),
+        "environment_digest": _KCA_ZERO_DIGEST,
+        "requirements": [],
+        "bindings": [],
+        "unsatisfied": [],
+        "mode": "strict",
+        "producer_component_id": producer,
+        "prompt_hash": prompt_hash,
+    })
+
+
+def _kca_harness_admission(lock: dict):
+    """Admission that puts the baseline Harness Lock, and only it, in force."""
+
+    return SimpleNamespace(
+        knowledge_skill_lock_digest=None,
+        capability_binding_lock_digest=None,
+        baseline_harness_lock_digest=lock["lock_digest"],
+        active_harness_lock_digest=lock["lock_digest"],
+        verification_environment_digest=_KCA_ZERO_DIGEST,
+        modes=SimpleNamespace(
+            knowledge="enforce", capability_binding="enforce", assurance="enforce"
+        ),
+    )
+
+
+def _kca_capability_admission(lock: dict):
+    """Admission that puts the Capability Binding Lock, and only it, in force."""
+
+    return SimpleNamespace(
+        knowledge_skill_lock_digest=None,
+        capability_binding_lock_digest=lock["lock_digest"],
+        baseline_harness_lock_digest=None,
+        active_harness_lock_digest=None,
+        verification_environment_digest=_KCA_ZERO_DIGEST,
+        modes=SimpleNamespace(
+            knowledge="enforce", capability_binding="enforce", assurance="enforce"
+        ),
+    )
+
+
+def _kca_runtime(documents: dict, checkpoint_dir):
+    """A runtime holding exactly the admitted documents and nothing else."""
+
+    from ari.rqgm.runtime import RQGMRuntime
+
+    runtime = RQGMRuntime.__new__(RQGMRuntime)
+    runtime.kernel = ConstitutionalKernel()
+    runtime.checkpoint_dir = checkpoint_dir
+    runtime._admission_artifacts = SimpleNamespace(documents=documents)
+    runtime._capability_authorization_view = None
+    return runtime
+
+
+def _kca_violations(runtime, admission, node_id="node-1"):
+    """Every violation the PRODUCTION per-node path raises for this run."""
+
+    node = SimpleNamespace(
+        id=node_id,
+        verified_target_digest="",
+        attestation_refs=(),
+        assurance_status="pass",
+        property_verdicts={"numerical-equivalence": "pass"},
+        frontier_class="scientific_frontier",
+    )
+    return [
+        violation
+        for report in runtime._kca_reports_for_node(
+            runtime.kernel, admission, node, node_id
+        )
+        for violation in report.violations
+    ]
+
+
+def test_ck_har_003_names_the_actor_that_actually_selected_the_harness(tmp_path):
+    """CK-HAR-003 reads the baseline Lock's own producer, not a caller's flag.
+
+    The rule refuses authoritative Harness selection by a non-fixed actor, and
+    it was inert: ``_kca_harness_reports`` -- the only production caller of
+    ``validate_harness_integrity`` -- passed no ``selector_component_id``, so
+    the parameter kept its ``harness_resolver_v1`` default on every node of
+    every run, and nothing in the repository, fixtures included, ever set it.
+    A rule that can only be told it is satisfied is not a rule.
+
+    ``baseline_harness_lock.json`` IS the authoritative Harness selection, it
+    is already loaded at that call site, and it names the component that
+    produced it.  ``load_admission_artifacts`` re-reads it as plain JSON and
+    never revalidates it against ``BaselineHarnessLockV1``, so the ``Literal``
+    on that model does not constrain what a resumed run reads back.
+
+    Every document here is RESEALED over its own tampered content, so the
+    digest rules stay silent and the ONLY difference between the clean run and
+    the tampered ones is who the document says selected.  That is why the new
+    code is the only code that appears, and it is also the honest threat: an
+    actor that writes its own Lock writes a consistent one.
+    """
+
+    clean = _kca_baseline_harness_lock()
+    documents = {
+        "baseline_harness_lock.json": clean,
+        "verification_contract.json": {},
+        "harness_catalog_snapshot.json": {},
+    }
+    runtime = _kca_runtime(documents, tmp_path)
+    assert _kca_violations(runtime, _kca_harness_admission(clean)) == []
+
+    # A Harness selection performed by the search loop's own generator.
+    chosen = _kca_baseline_harness_lock(producer="bfts_generator_v1")
+    runtime = _kca_runtime(dict(documents, **{
+        "baseline_harness_lock.json": chosen
+    }), tmp_path)
+    found = _kca_violations(runtime, _kca_harness_admission(chosen))
+    assert [v.code for v in found] == ["CK-HAR-003"]
+    assert found[0].subject_ref == "bfts_generator_v1"
+
+    # And a Lock that CLAIMS the fixed resolver while carrying a prompt hash:
+    # both Lock models pin ``prompt_hash`` to ``None`` because these producers
+    # are unprompted programs, so a prompted one is not the fixed resolver
+    # however it labels itself.
+    prompted = _kca_baseline_harness_lock(prompt_hash="a" * 64)
+    runtime = _kca_runtime(dict(documents, **{
+        "baseline_harness_lock.json": prompted
+    }), tmp_path)
+    found = _kca_violations(runtime, _kca_harness_admission(prompted))
+    assert [v.code for v in found] == ["CK-HAR-003"]
+    assert found[0].subject_ref == "harness_resolver_v1+prompted"
+
+
+def test_ck_cap_004_names_the_actor_that_actually_bound_the_provider(tmp_path):
+    """CK-CAP-004 reads the Binding Lock's own producer, not a caller's flag.
+
+    Same defect, same shape, one layer down: ``_kca_capability_reports`` is the
+    only production caller of ``validate_capability_binding_integrity`` and it
+    passed no ``actor_selected``, so the parameter kept its ``False`` default
+    and the rule could never fire.  ``capability_binding_lock.json`` IS the
+    Provider/tool selection, is already loaded there, and names its producer.
+    """
+
+    clean = _kca_capability_binding_lock()
+    documents = {
+        "capability_binding_lock.json": clean,
+        "provider_lock.json": _KCA_PROVIDER_LOCK,
+    }
+    runtime = _kca_runtime(documents, tmp_path)
+    assert _kca_violations(runtime, _kca_capability_admission(clean)) == []
+
+    # A Provider/tool chosen by the model rather than by the fixed binder.
+    chosen = _kca_capability_binding_lock(producer="agent_tool_chooser_v1")
+    runtime = _kca_runtime(dict(documents, **{
+        "capability_binding_lock.json": chosen
+    }), tmp_path)
+    assert [
+        v.code
+        for v in _kca_violations(runtime, _kca_capability_admission(chosen))
+    ] == ["CK-CAP-004"]
+
+    prompted = _kca_capability_binding_lock(prompt_hash="a" * 64)
+    runtime = _kca_runtime(dict(documents, **{
+        "capability_binding_lock.json": prompted
+    }), tmp_path)
+    assert [
+        v.code
+        for v in _kca_violations(runtime, _kca_capability_admission(prompted))
+    ] == ["CK-CAP-004"]
+
+
+def test_a_non_fixed_harness_selector_reaches_the_tamper_verdict(tmp_path):
+    """The signal bites where every K/C/A finding bites, or it is decoration.
+
+    ``_kca_reports_for_node`` only builds reports; the consequence is applied
+    one level up in ``run_per_node_kernel_check``, and only when the matching
+    admission mode is ``enforce``.  Driving that level is what turns "the rule
+    fires" into "the node stops counting": a baseline Lock produced by an actor
+    other than the fixed resolver leaves the frontier, and the same node under
+    a clean Lock stays in it.
+    """
+
+    def _node():
+        return SimpleNamespace(
+            id="node-1",
+            verified_target_digest="",
+            attestation_refs=(),
+            assurance_status="pass",
+            property_verdicts={"numerical-equivalence": "pass"},
+            frontier_class="scientific_frontier",
+            metrics={"_valid_for_frontier": True},
+        )
+
+    def _runtime(lock):
+        runtime = _kca_runtime({
+            "baseline_harness_lock.json": lock,
+            "verification_contract.json": {},
+            "harness_catalog_snapshot.json": {},
+        }, tmp_path)
+        runtime.cfg = SimpleNamespace(
+            rqgm=SimpleNamespace(kernel=SimpleNamespace(enforcement="standard"))
+        )
+        runtime._epoch_state = SimpleNamespace(
+            prompts=None, epoch=SimpleNamespace(epoch_id="epoch_000")
+        )
+        runtime._kca_feature_enabled = True
+        runtime._run_admission = _kca_harness_admission(lock)
+        runtime._append_audit_event = lambda *_args, **_kwargs: None
+        return runtime
+
+    clean_node = _node()
+    clean = _kca_baseline_harness_lock()
+    assert _runtime(clean).run_per_node_kernel_check(clean_node) == 1
+    assert clean_node.assurance_status == "pass"
+    assert clean_node.metrics["_valid_for_frontier"] is True
+
+    tampered_node = _node()
+    chosen = _kca_baseline_harness_lock(producer="bfts_generator_v1")
+    assert _runtime(chosen).run_per_node_kernel_check(tampered_node) == 1
+    assert tampered_node.assurance_status == "tampered"
+    assert tampered_node.frontier_class == "uncertified_frontier"
+    assert tampered_node.metrics["_valid_for_frontier"] is False
