@@ -65,6 +65,17 @@ def _pinned_commits() -> list[tuple[str, str]]:
     if "@" in revision:
         found.append(("catalog.yaml:catalog_source_revision",
                       revision.rsplit("@", 1)[1]))
+    # THE MANIFESTS, which this scanned past. A manifest carries the same field,
+    # and it is the one that actually broke: both native Harnesses shipped a
+    # ``source_full_commit_sha`` naming a commit made in a detached ceremony
+    # worktree, which was HEAD while the registration gate looked at it and was
+    # never reachable from the branch afterwards. The gate could only catch it on
+    # the next re-registration; nothing standing caught it at all.
+    for path in sorted(HARNESS_ROOT.glob("builtin/*.yaml")):
+        body = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        sha = str(body.get("source_full_commit_sha", ""))
+        if sha:
+            found.append((f"{path.name}:source_full_commit_sha", sha))
     for path in sorted(HARNESS_ROOT.glob("evidence/*/registration_evidence.json")):
         body = json.loads(path.read_text(encoding="utf-8"))
         sha = str(body.get("source_full_commit_sha", ""))
