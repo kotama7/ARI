@@ -664,8 +664,10 @@ def test_a_dirty_manifest_is_not_a_pin_taken_over_uncommitted_bytes() -> None:
     and an earlier account of this saying it was "guaranteed to" was wrong. What
     hits it is a manifest already dirty when ``repin`` is invoked, reached by
     editing a field this surface does not manage. ``check``'s note is the half
-    that fires constantly, since a manifest is dirty during exactly the re-pin
-    it is describing.
+    that fired constantly, since a manifest is dirty during exactly the re-pin
+    it is describing -- but it is NOT redundant when an instrument file is
+    dirty: the manifest pinned over those bytes reads current and appears in no
+    stale line, so the note is its only signal.
 
     Measured here rather than argued: the two sets differ by exactly the shipped
     manifests, and by nothing else.
