@@ -5,6 +5,7 @@ acceptance criterion a required test id.  This module binds the criteria whose
 BEHAVIOUR already exists and already refuses, and whose only gap was that
 nothing asserted the refusal:
 
+* 5 ``test_provider_satisfies_multiple_skills``
 * 44 ``test_evidence_clerk_attestation_validation``
 * 56 ``test_revocation_history_append_only``
 * 60 ``test_skill_harness_selection_separation``
@@ -36,9 +37,12 @@ from ari.assurance.models import (
 )
 from ari.assurance.suite import mint_verification_contract, obligations_to_requirements
 from ari.capability_binding.models import (
+    CapabilityBindingRequestV1,
     CapabilityContractV1,
     CapabilityOntologySnapshotV1,
+    CapabilityProvisionV1,
 )
+from ari.capability_binding.resolver import CapabilityBindingError, bind_capabilities
 from ari.knowledge.catalog import (
     GovernedKnowledgeSkillRegistry,
     build_catalog_snapshot,
@@ -60,7 +64,10 @@ from ari.knowledge.registration_models import KnowledgeSkillPromotionApprovalV1
 from ari.knowledge.resolver import admit_knowledge_skills
 from ari.protocols.immutable_store import write_once_json
 from ari.protocols.integrity import bytes_digest, canonical_digest
-from ari.protocols.scientific_requirements import EvaluationObligationV1
+from ari.protocols.scientific_requirements import (
+    EnvironmentSnapshotV1,
+    EvaluationObligationV1,
+)
 from ari.providers.models import ProviderCatalogEntryV1, ProviderSourceV1
 from ari.rqgm.governance._evidence import assemble_evidence_bundle
 
@@ -910,4 +917,343 @@ def test_knowledge_binder_purity():
             knowledge_dir / "composition.py",
             knowledge_dir / "lock.py",
         )
+    )
+
+
+# ── criterion 5: one Provider satisfies requirements from several Skills ────
+
+
+def _capability_contract(ref: str, title: str) -> CapabilityContractV1:
+    return CapabilityContractV1.create(
+        capability_ref=ref,
+        contract_version="v1",
+        title=title,
+        description=f"{title} a candidate",
+        side_effect_class="workspace-write",
+        determinism_class="conditional",
+        context_requirement="node",
+        compatibility_rules=("schema",),
+    )
+
+
+COMPILE_CONTRACT = _capability_contract("ari.execution.compile/v1", "Compile")
+PROFILE_CONTRACT = _capability_contract("ari.execution.profile/v1", "Profile")
+TWO_CAPABILITY_ONTOLOGY = CapabilityOntologySnapshotV1.create(
+    source_revision="test",
+    property_vocabulary_version="v1",
+    contracts=(COMPILE_CONTRACT, PROFILE_CONTRACT),
+)
+
+
+def _skill_manifest(
+    *,
+    skill_id: str,
+    body: str,
+    capabilities: tuple[KnowledgeCapabilityRequirementV1, ...],
+) -> KnowledgeSkillManifestV1:
+    """One Knowledge Skill whose body — and so whose provenance ref — is its own."""
+
+    return KnowledgeSkillManifestV1(
+        id=skill_id,
+        version="1.0.0",
+        title=skill_id,
+        description="acceptance fixture",
+        status="verified",
+        source=KnowledgeSkillSourceV1(
+            repository="https://example.invalid/knowledge",
+            commit="2" * 40,
+            path="knowledge-skills/" + skill_id,
+            body_sha256=bytes_digest(body.encode()),
+            manifest_sha256=SHA,
+        ),
+        license=KnowledgeSkillLicenseV1(body="MIT", references="MIT"),
+        applies_to=KnowledgeSkillApplicabilityV1(
+            roles=("generator",), phases=("bfts",), task_tags=("gemm",)
+        ),
+        requires=KnowledgeCapabilitySetV1(capabilities=capabilities),
+        authority_ceiling=KnowledgeAuthorityCeilingV1(
+            side_effects=("read-only", "workspace-write")
+        ),
+        composition=KnowledgeCompositionV1(slot="domain-method", priority=100),
+    )
+
+
+def _admitted_skill_lock(manifests: tuple[KnowledgeSkillManifestV1, ...]):
+    """Admit several Skills through the real fixed Knowledge Binder."""
+
+    entries = tuple(
+        KnowledgeSkillEntryV1.create(
+            manifest=item,
+            body_store_key=item.source.body_sha256,
+            registration_report_digest=SHA,
+            importer_version="test/v1",
+            status="verified",
+        )
+        for item in manifests
+    )
+    catalog = build_catalog_snapshot(
+        catalog_source_revision="test", importer_version="test/v1", entries=entries
+    )
+    proposal = KnowledgeSkillSelectionProposalV1.create(
+        run_id="run-1",
+        epoch_id="epoch_000",
+        research_contract_digest=SHA,
+        proposed=tuple(item.exact_ref() for item in manifests),
+        reason="several applicable Skills",
+        router_component_id="proposal_router_v1",
+        router_prompt_hash=None,
+    )
+    context = KnowledgeAdmissionContextV1.create(
+        role="generator",
+        phase="bfts",
+        task_tags=("gemm",),
+        permitted_side_effects=("read-only", "workspace-write"),
+        property_vocabulary=("numerical-equivalence",),
+    )
+    return admit_knowledge_skills(
+        proposal=proposal,
+        catalog=catalog,
+        ontology=TWO_CAPABILITY_ONTOLOGY,
+        context=context,
+        mode="enforce",
+    )
+
+
+def _capability_provision(
+    contract: CapabilityContractV1, *, provider: str, tool: str
+) -> CapabilityProvisionV1:
+    return CapabilityProvisionV1.create(
+        provider_id=provider,
+        provider_identity_digest=canonical_digest({"provider": provider}),
+        provider_status="verified",
+        tool_ref=tool,
+        declared_capability_ref="legacy." + contract.title.lower(),
+        capability_ref=contract.capability_ref,
+        capability_contract_digest=contract.contract_digest,
+        provider_lock_digest=SHA,
+        manifest_digest=SHA,
+        input_schema_digest=canonical_digest({"type": "object"}),
+        output_schema_digest=canonical_digest({"type": "object"}),
+        policy_digest=SHA,
+        schema_compatibility_evidence_digest=SHA,
+        side_effect_class="workspace-write",
+        determinism_class="conditional",
+        context_requirement="node",
+        roles=("generator",),
+        phases=("bfts",),
+        reproducibility_grade="exact",
+        declared_resource_cost=(1, 1, 1),
+        registration_report_digest=SHA,
+    )
+
+
+def _binding_request(skill_lock, provisions, *, mode: str):
+    """Build the request exactly as ``build_kca_admission`` does.
+
+    ``_run_capability_requirements`` is the only step between the Knowledge
+    Skill Lock and the binding request, so it is the place a second Skill's
+    requirement would be dropped before the binder ever saw it; driving it here
+    keeps this criterion bound to the production wiring rather than to a
+    hand-assembled requirement tuple.
+    """
+
+    from types import SimpleNamespace
+
+    from ari.rqgm.admission_builder import _run_capability_requirements
+
+    requirements = _run_capability_requirements(
+        SimpleNamespace(capability_binding=None),
+        TWO_CAPABILITY_ONTOLOGY,
+        skill_lock,
+    )
+    return requirements, CapabilityBindingRequestV1.create(
+        run_id="run-1",
+        epoch_id="epoch_000",
+        research_contract_digest=SHA,
+        knowledge_skill_lock_digest=skill_lock.lock_digest,
+        ontology_snapshot_digest=TWO_CAPABILITY_ONTOLOGY.snapshot_digest,
+        provider_catalog_snapshot_digest=SHA,
+        provider_lock_digest=SHA,
+        requirements=requirements,
+        provisions=tuple(provisions),
+        available_tool_refs=tuple(sorted({item.tool_ref for item in provisions})),
+        role="generator",
+        phase="bfts",
+        call_context="node",
+        authorized_capability_refs=tuple(
+            sorted(item.capability_ref for item in TWO_CAPABILITY_ONTOLOGY.contracts)
+        ),
+        environment=EnvironmentSnapshotV1.create(resource_types=("process",)),
+        mode=mode,
+    )
+
+
+def _knowledge_ref(manifest: KnowledgeSkillManifestV1) -> str:
+    return f"knowledge:{manifest.source.body_sha256}"
+
+
+def test_provider_satisfies_multiple_skills():
+    """Criterion 5 — one Provider serves several Knowledge Skills at once.
+
+    The mirror of criterion 4.  Knowledge states *what* is needed and Providers
+    state *what can execute it*; if the two layers were really separate then the
+    fan-in direction has to work as well as the fan-out one, and plan 16/17's
+    separation claim rests on it.
+
+    Driven through the real chain — ``admit_knowledge_skills`` →
+    ``_run_capability_requirements`` → ``bind_capabilities`` — in both shapes a
+    second Skill can take, and with the negative direction included: a Provider
+    that satisfies only ONE of the two requirements must not carry the other.
+    Without that half, a green test would not distinguish "one Provider
+    satisfied both" from "the binder discarded what it could not satisfy".
+    """
+
+    gemm = _skill_manifest(
+        skill_id="hpc.gemm.optimization",
+        body="# GEMM\nCompile the candidate, then measure it.\n",
+        capabilities=(
+            KnowledgeCapabilityRequirementV1(
+                ref=COMPILE_CONTRACT.capability_ref, required=True
+            ),
+        ),
+    )
+    stencil = _skill_manifest(
+        skill_id="hpc.stencil.tuning",
+        body="# Stencil\nProfile the candidate before tuning it.\n",
+        capabilities=(
+            KnowledgeCapabilityRequirementV1(
+                ref=PROFILE_CONTRACT.capability_ref, required=True
+            ),
+        ),
+    )
+    # Distinct bodies, so the two provenance refs are distinguishable and an
+    # assertion about "both" cannot pass on one ref counted twice.
+    assert gemm.source.body_sha256 != stencil.source.body_sha256
+
+    # 1. Two Skills, two different capabilities, ONE Provider offering both.
+    skill_lock = _admitted_skill_lock((gemm, stencil))
+    assert {item.id for item in skill_lock.admitted} == {gemm.id, stencil.id}
+    both = (
+        _capability_provision(
+            COMPILE_CONTRACT, provider="provider-a", tool="provider-a::compile"
+        ),
+        _capability_provision(
+            PROFILE_CONTRACT, provider="provider-a", tool="provider-a::profile"
+        ),
+    )
+    requirements, request = _binding_request(skill_lock, both, mode="enforce")
+    assert {item.capability_ref: item.source_requirement_refs for item in requirements} == {
+        COMPILE_CONTRACT.capability_ref: (_knowledge_ref(gemm),),
+        PROFILE_CONTRACT.capability_ref: (_knowledge_ref(stencil),),
+    }
+    lock, _ = bind_capabilities(request)
+    assert lock.unsatisfied == ()
+    # The single Provider carries both capabilities, and each binding still
+    # names the Skill the requirement came from.
+    assert {item.capability_ref: item.provider_id for item in lock.bindings} == {
+        COMPILE_CONTRACT.capability_ref: "provider-a",
+        PROFILE_CONTRACT.capability_ref: "provider-a",
+    }
+    assert {
+        item.capability_ref: set(item.source_requirement_refs)
+        for item in lock.bindings
+    } == {
+        COMPILE_CONTRACT.capability_ref: {_knowledge_ref(gemm)},
+        PROFILE_CONTRACT.capability_ref: {_knowledge_ref(stencil)},
+    }
+
+    # 2. The other shape: two Skills asking for the SAME capability merge into
+    #    one requirement, and the one binding must be attributed to both.
+    stencil_compile = _skill_manifest(
+        skill_id="hpc.stencil.tuning",
+        body="# Stencil\nProfile the candidate before tuning it.\n",
+        capabilities=(
+            KnowledgeCapabilityRequirementV1(
+                ref=COMPILE_CONTRACT.capability_ref, required=True
+            ),
+        ),
+    )
+    shared_lock = _admitted_skill_lock((gemm, stencil_compile))
+    shared_requirements, shared_request = _binding_request(
+        shared_lock,
+        (
+            _capability_provision(
+                COMPILE_CONTRACT, provider="provider-a", tool="provider-a::compile"
+            ),
+        ),
+        mode="enforce",
+    )
+    assert {item.capability_ref for item in shared_requirements} == {
+        COMPILE_CONTRACT.capability_ref
+    }
+    shared_binding_lock, _ = bind_capabilities(shared_request)
+    assert {item.provider_id for item in shared_binding_lock.bindings} == {"provider-a"}
+    assert {
+        ref
+        for item in shared_binding_lock.bindings
+        for ref in item.source_requirement_refs
+    } == {_knowledge_ref(gemm), _knowledge_ref(stencil_compile)}
+
+    # 3. Negative — the Provider offers no profile capability at all.  Enforce
+    #    refuses and names the capability it could not satisfy; audit records it
+    #    as unsatisfied instead of quietly binding one Skill and reporting done.
+    only_compile = (
+        _capability_provision(
+            COMPILE_CONTRACT, provider="provider-a", tool="provider-a::compile"
+        ),
+    )
+    _, half_request = _binding_request(skill_lock, only_compile, mode="enforce")
+    with pytest.raises(CapabilityBindingError) as absent:
+        bind_capabilities(half_request)
+    assert PROFILE_CONTRACT.capability_ref in str(absent.value)
+    assert COMPILE_CONTRACT.capability_ref not in str(absent.value)
+    _, half_audit = _binding_request(skill_lock, only_compile, mode="audit")
+    audited, _ = bind_capabilities(half_audit)
+    assert {item.capability_ref: item.provider_id for item in audited.bindings} == {
+        COMPILE_CONTRACT.capability_ref: "provider-a"
+    }
+    assert {item.capability_ref: item.rejection_codes for item in audited.unsatisfied} == {
+        PROFILE_CONTRACT.capability_ref: ("no_candidate",)
+    }
+    # The second Skill's provenance must not be attached to a binding it did
+    # not obtain.
+    assert _knowledge_ref(stencil) not in {
+        ref for item in audited.bindings for ref in item.source_requirement_refs
+    }
+
+    # 4. Negative — the Provider DOES offer a matching profile provision, but
+    #    the second Skill pins another Provider.  The candidate is evaluated and
+    #    refused, which is what separates "the binder checked and said no" from
+    #    "the binder never looked at the second requirement".
+    pinned_stencil = _skill_manifest(
+        skill_id="hpc.stencil.tuning",
+        body="# Stencil\nProfile the candidate before tuning it.\n",
+        capabilities=(
+            KnowledgeCapabilityRequirementV1(
+                ref=PROFILE_CONTRACT.capability_ref,
+                required=True,
+                explicit_provider_pin="provider-b",
+            ),
+        ),
+    )
+    pinned_lock = _admitted_skill_lock((gemm, pinned_stencil))
+    _, pinned_request = _binding_request(pinned_lock, both, mode="enforce")
+    with pytest.raises(CapabilityBindingError) as refused:
+        bind_capabilities(pinned_request)
+    assert PROFILE_CONTRACT.capability_ref in str(refused.value)
+    _, pinned_audit = _binding_request(pinned_lock, both, mode="audit")
+    pinned_result, pinned_report = bind_capabilities(pinned_audit)
+    assert {item.capability_ref: item.provider_id for item in pinned_result.bindings} == {
+        COMPILE_CONTRACT.capability_ref: "provider-a"
+    }
+    assert {
+        item.capability_ref: item.rejection_codes for item in pinned_result.unsatisfied
+    } == {PROFILE_CONTRACT.capability_ref: ("provider_pin_mismatch",)}
+    profile_provision = next(
+        item for item in both if item.capability_ref == PROFILE_CONTRACT.capability_ref
+    )
+    assert any(
+        item.provision_digest == profile_provision.provision_digest
+        and "provider_pin_mismatch" in item.reason_codes
+        for item in pinned_report.rejected_candidates
     )
