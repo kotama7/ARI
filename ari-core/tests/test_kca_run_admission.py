@@ -13,6 +13,12 @@ not resolve against the latest Knowledge catalog, never automatically rebinds to
 a newer Provider, and does not resolve against the latest Harness catalog.  The
 mechanism is the same one in all three: the admitted digest is authoritative,
 and a newer catalog can neither replace it in place nor be re-admitted over it.
+
+The last two tests enter where a resumed run actually enters --
+``RQGMRuntime.admit_from_checkpoint`` -- because a record that cannot be
+exchanged still says nothing about whether the resume reads it or resolves the
+catalogs again.  There the Knowledge, Capability and Harness views the resumed
+run will use are read back off the bridges it installs.
 """
 
 from __future__ import annotations
@@ -56,6 +62,7 @@ from ari.rqgm.admission import (
     persist_run_admission,
 )
 from ari.rqgm.admission_builder import build_kca_admission
+from ari.rqgm.runtime import RQGMRuntime
 from ari.skill_lock import build_skills_lock
 from ari.skill_manifest import load_skill_manifest
 
@@ -223,9 +230,20 @@ class _FrozenMCP:
 
     def __init__(self, lock):
         self.skills_lock = lock
+        self.installed_view = None
 
     def list_tools(self, phase: str = "bfts"):  # pragma: no cover - lock is present
         raise AssertionError("admission must not trigger Provider discovery")
+
+    def install_tool_authorization_view(self, view):
+        """Receive the authorization view a resume activates.
+
+        The runtime refuses a client that cannot take one, so this is required
+        to reach the resume path at all; keeping the view makes the tools the
+        resumed run may call observable.
+        """
+
+        self.installed_view = view
 
 
 def _config(skill: SkillConfig) -> ARIConfig:
@@ -290,19 +308,25 @@ def _admit(checkpoint: Path, *, config_root: Path | None = None):
         )
 
 
-def _newer_catalog_root(destination: Path, relative: str) -> Path:
-    """Copy the shipped catalogs and publish one of them at a new revision."""
+def _bump_catalog_revision(root: Path, relative: str) -> Path:
+    """Publish one catalog in ``root`` at a new revision."""
 
-    with _config_root(None):
-        shutil.copytree(ari.config.finder.package_config_root(), destination)
-    path = destination / relative
+    path = root / relative
     text = path.read_text(encoding="utf-8")
     bumped, count = re.subn(
         r"(?m)^(catalog_source_revision: .*)$", r"\1-newer", text, count=1
     )
     assert count == 1, f"{relative} declares no catalog_source_revision"
     path.write_text(bumped, encoding="utf-8")
-    return destination
+    return root
+
+
+def _newer_catalog_root(destination: Path, relative: str) -> Path:
+    """Copy the shipped catalogs and publish one of them at a new revision."""
+
+    with _config_root(None):
+        shutil.copytree(ari.config.finder.package_config_root(), destination)
+    return _bump_catalog_revision(destination, relative)
 
 
 def _publish_new_provider_release(root: Path) -> Path:
@@ -363,6 +387,28 @@ def newer_harnesses(tmp_path_factory):
         "harnesses/catalog.yaml",
     )
     return _admit(tmp_path_factory.mktemp("newer-harnesses-run"), config_root=root)
+
+
+@pytest.fixture(scope="module")
+def newer_everything(tmp_path_factory):
+    """One catalog root where all three catalogs moved past the admitted run.
+
+    The three fixtures above each move one layer, which is what isolates a
+    difference to that layer.  A resume is entered once and must keep all three,
+    so the resume tests need the state the run would find on a later day: every
+    catalog republished, and the run's own Provider re-registered from new
+    sources.
+    """
+
+    root = _newer_catalog_root(
+        tmp_path_factory.mktemp("newer-everything") / "config",
+        "knowledge_skills/catalog.yaml",
+    )
+    _publish_new_provider_release(_bump_catalog_revision(root, "providers/catalog.yaml"))
+    _bump_catalog_revision(root, "harnesses/catalog.yaml")
+    return root, _admit(
+        tmp_path_factory.mktemp("newer-everything-run"), config_root=root
+    )
 
 
 def _resumed(checkpoint: Path):
@@ -646,6 +692,109 @@ def test_resume_reads_the_admitted_harness_catalog_not_the_latest(
         match="admission artifact digest mismatch: harness_catalog_snapshot.json",
     ):
         load_admission_artifacts(run)
+
+
+def _runtime(checkpoint: Path):
+    """The runtime a resumed process builds before it opens ``epoch_000``."""
+
+    skill = _provider_skill()
+    mcp = _FrozenMCP(_provider_lock(skill))
+    runtime = RQGMRuntime(_config(skill), checkpoint, mcp=mcp)
+    assert runtime._kca_feature_enabled, "the fixture config disabled every KCA layer"
+    return runtime, mcp
+
+
+@pytest.fixture
+def no_re_resolution(monkeypatch):
+    """Fail loudly if the resume resolves the catalogs a second time."""
+
+    def refuse(**_kwargs):
+        raise AssertionError("resume re-entered the admission builder")
+
+    monkeypatch.setattr(
+        "ari.rqgm.admission_builder.build_kca_admission", refuse
+    )
+
+
+def test_resume_activates_the_admitted_catalogs_and_never_the_latest(
+    admitted_run, newer_everything, tmp_path, no_re_resolution
+):
+    """Task 20 criteria 12, 28 and 50 at the seam a resume enters.
+
+    The three tests above prove the persisted record cannot be exchanged for a
+    newer one.  They do not say which record the resume reads: a resume that
+    re-resolved the catalogs and then used the result would satisfy every one of
+    them.  This one calls ``admit_from_checkpoint`` -- what a resumed process
+    calls before ``epoch_000`` -- with all three catalogs newer on disk and the
+    admission builder wired to fail if it is entered at all, then reads back the
+    Knowledge, Capability and Harness identities the resumed run would use.
+    """
+
+    checkpoint, artifacts = admitted_run
+    admitted = artifacts.admission
+    latest_root, latest_artifacts = newer_everything
+    latest = latest_artifacts.admission
+    # Every layer moved, so keeping the admitted identity below is a choice the
+    # resume made and not a catalog that happened not to change.
+    assert (
+        latest.knowledge_catalog_snapshot_digest
+        != admitted.knowledge_catalog_snapshot_digest
+    )
+    assert latest.knowledge_skill_lock_digest != admitted.knowledge_skill_lock_digest
+    assert (
+        latest.provider_catalog_snapshot_digest
+        != admitted.provider_catalog_snapshot_digest
+    )
+    assert (
+        latest.capability_binding_lock_digest != admitted.capability_binding_lock_digest
+    )
+    assert (
+        latest.harness_catalog_snapshot_digest
+        != admitted.harness_catalog_snapshot_digest
+    )
+    assert latest.baseline_harness_lock_digest != admitted.baseline_harness_lock_digest
+
+    run = _copy_run(checkpoint, tmp_path)
+    runtime, mcp = _runtime(run)
+    with _config_root(latest_root):
+        resumed = runtime.admit_from_checkpoint(
+            checkpoint_dir=run, run_id=RUN_ID, task_tags=TASK_TAGS
+        )
+    assert resumed == admitted
+
+    # What the resumed run will actually select Skills, tools and Harnesses
+    # from -- not the record, the live views built out of it.
+    knowledge = runtime._knowledge_bridge
+    assert knowledge.catalog.snapshot_digest == admitted.knowledge_catalog_snapshot_digest
+    assert knowledge.epoch_lock.lock_digest == admitted.knowledge_skill_lock_digest
+    assert mcp.installed_view is not None, "no Capability Binding view was activated"
+    assert mcp.installed_view.lock_digest == admitted.capability_binding_lock_digest
+    assurance = runtime._assurance_bridge
+    assert assurance.catalog.snapshot_digest == admitted.harness_catalog_snapshot_digest
+    assert assurance.baseline.lock_digest == admitted.baseline_harness_lock_digest
+
+
+def test_resume_refuses_an_admission_minted_for_a_different_run(
+    admitted_run, tmp_path, no_re_resolution
+):
+    """A baseline is a run's own; another run's is not a starting point.
+
+    The refusal matters because the alternative is not a clean rebuild: the
+    checkpoint already holds a published admission, so a resume that ignored the
+    run id would carry a foreign Knowledge, Provider and Harness identity into
+    this run's epoch.
+    """
+
+    checkpoint, _artifacts = admitted_run
+    run = _copy_run(checkpoint, tmp_path)
+    runtime, _mcp = _runtime(run)
+    with pytest.raises(
+        ValueError, match="persisted KCA admission belongs to another run"
+    ):
+        runtime.admit_from_checkpoint(
+            checkpoint_dir=run, run_id="a-different-run", task_tags=TASK_TAGS
+        )
+    assert runtime._run_admission is None
 
 
 def test_a_document_with_no_cross_field_binding_cannot_be_swapped_either(
