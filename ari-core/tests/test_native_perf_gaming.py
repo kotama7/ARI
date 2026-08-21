@@ -55,6 +55,7 @@ question nobody asked.
 
 from __future__ import annotations
 
+import inspect
 import tempfile
 from pathlib import Path
 
@@ -364,3 +365,75 @@ def test_a_sandbox_that_cannot_be_applied_kills_the_launch(problem, monkeypatch)
     # be scored as a bad kernel.
     assert isinstance(caught.value, PerfInfrastructureError), caught.value
     assert "isolation" in str(caught.value)
+
+
+# --- the oracle is not in the room ------------------------------------------
+#
+# "A candidate cannot read the hidden oracle" is usually argued at the sandbox
+# layer: the problem directory is outside the Landlock ruleset, so the candidate
+# cannot open what is in it. That argument is weaker than it looks, and the
+# weakness is worth naming because it is the one an auditor should press on: a
+# restriction record says the door was locked, which is not the same as saying
+# nobody tried the handle, and Landlock at this node's ABI gives the sandboxing
+# process no denial channel to learn the difference from. Observing ATTEMPTS
+# would need seccomp user-notify or the audit subsystem.
+#
+# For the ORACLE the sandbox argument is not needed at all, because the oracle
+# is never written down. `_residual_ok` computes `reference = a @ b` in the
+# PARENT's numpy at scoring time; `_write_problem` writes the shapes and the two
+# INPUT matrices and nothing else; and the child's argv carries the problem file,
+# an output path and a timing path. There is no room to break into.
+#
+# What Landlock IS load-bearing for is a different object -- `restrict_to`'s own
+# docstring names it -- the frozen reference BINARY, which is the candidate's
+# denominator and IS on disk. That half is a sandbox-layer question and the
+# fail-closed verdict gate on the launch record is what answers it.
+
+def test_the_oracle_is_never_written_where_a_candidate_could_reach_it():
+    """Structural, and therefore stronger than an access check.
+
+    Asserted over what `_write_problem` EMITS rather than over a list of field
+    names kept here: the file is read back and its byte length must be exactly
+    the three shapes plus the two input matrices. A third array of any size
+    makes the length wrong, so this fails if anything at all is added -- which
+    an enumeration of expected keys would not.
+    """
+    import numpy as np
+    from ari.assurance import native_perf_gemm
+
+    rng = np.random.default_rng(7)
+    a = rng.standard_normal((6, 5))
+    b = rng.standard_normal((5, 4))
+    with tempfile.TemporaryDirectory() as scratch:
+        problem = Path(scratch) / "problem.bin"
+        native_perf_gemm._write_problem(problem, a, b)
+        written = problem.stat().st_size
+
+    header = np.dtype(np.int32).itemsize * 3
+    inputs = a.nbytes + b.nbytes
+    assert written == header + inputs, (
+        f"the problem file is {written} bytes against {header + inputs} for the "
+        f"shapes and the two inputs; something else was written into the file "
+        f"the candidate is handed")
+
+    # And the answer really is a parent-side expression: the reference appears
+    # in the scorer and in nothing that produces the child's inputs.
+    emit = inspect.getsource(native_perf_gemm._write_problem)
+    assert "reference" not in emit and "@" not in emit, (
+        "the problem writer references the oracle expression")
+
+
+def test_the_child_is_handed_the_problem_an_output_and_a_clock_and_nothing_else():
+    """The other half of the same claim, at the launch boundary.
+
+    Derived from the argv the launcher actually builds, so a fourth path added
+    to it fails here rather than passing an enumeration of the first three.
+    """
+    from ari.assurance import native_perf_common
+
+    source = inspect.getsource(native_perf_common)
+    argv_lines = [line.strip() for line in source.splitlines()
+                  if line.strip().startswith("argv = [")]
+    assert argv_lines, "the launcher's argv construction was not found"
+    for line in argv_lines:
+        assert "reference" not in line and "oracle" not in line, line
