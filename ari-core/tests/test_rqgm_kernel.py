@@ -2821,3 +2821,98 @@ def test_a_non_fixed_harness_selector_reaches_the_tamper_verdict(tmp_path):
     assert tampered_node.assurance_status == "tampered"
     assert tampered_node.frontier_class == "uncertified_frontier"
     assert tampered_node.metrics["_valid_for_frontier"] is False
+
+
+# ── plan 20 §8.2 criterion 20, in the one place a tool NAME is really matched ─
+
+
+def test_gate_name_inference_can_only_subtract_authority():
+    """Criterion 20: authority never uses tool-name substring inference.
+
+    The Capability Binding lane satisfies this structurally -- every step from
+    a requested name to a binding is an exact-equality lookup, which is pinned
+    by ``test_enforce_no_substring_policy``.  ``default_tool_policy`` is the
+    one production surface that genuinely does infer from a name: it is the
+    policy ``_install_capability_gate`` hands the constitutional choke point,
+    and it classifies a call by searching its name for marker substrings.
+
+    That is not a criterion-20 violation, for one structural reason worth
+    pinning: the inference selects the QUESTION, never the ANSWER.
+
+    * The actor is a module constant, so no name -- however privileged it
+      looks -- can resolve to a caller holding more than the institutional
+      generator.
+    * The gate can only deny or delegate.  It never synthesises a dispatch,
+      so no substring match can admit a call the ungated client would refuse.
+    * A name that matches no marker is ungoverned, which returns the call to
+      the exact Capability Binding authority underneath rather than granting
+      anything.
+
+    Make the actor name-dependent, or let a marker manufacture a dispatch, and
+    this goes red.
+    """
+
+    from ari.rqgm.tool_policy import AGENT_ACTOR, default_tool_policy
+
+    # Names chosen to straddle every marker family, including ones whose text
+    # is deliberately authoritative-looking.
+    corpus = (
+        "register_prompt", "registry_write_row", "set_prompt_status",
+        "activate_candidate", "read_retired_prompt", "fetch_retired_text",
+        "run_bash", "exec_job", "submit_batch", "compile_kernel",
+        "write_file", "append_record", "store_blob", "commit_result",
+        "admin_override", "kernel_root_escalate", "become_registry_writer",
+        "survey", "list_papers", "",
+    )
+
+    # 1. The actor is never derived from the name.
+    for name in corpus:
+        mapping = default_tool_policy(name, {})
+        if mapping is None:
+            continue
+        actor, action, resource = mapping
+        assert actor == AGENT_ACTOR, (name, actor)
+
+    # 2. Over the whole corpus the gate either denies, or delegates the call
+    #    to the inner client unchanged. It never manufactures a dispatch and
+    #    never rewrites one.
+    inner = _MockMCP()
+    gated = CapabilityGatedMCPClient(
+        inner, ConstitutionalKernel(), tool_policy=default_tool_policy
+    )
+    denied = []
+    for name in corpus:
+        before = len(inner.calls)
+        result = gated.call_tool(name, {"probe": name})
+        if set(result) == {"error"}:
+            assert len(inner.calls) == before, name  # denial never dispatches
+            denied.append(name)
+        else:
+            assert result == {"result": "ok"}, name
+            assert len(inner.calls) == before + 1, name
+            assert inner.calls[-1][0] == name, name        # name unchanged
+            assert inner.calls[-1][1] == {"probe": name}, name  # args unchanged
+
+    # 3. The subtraction is real: a name whose substring reaches for the
+    #    governed registry is denied on a constitutional code, not merely
+    #    logged.
+    assert "register_prompt" in denied
+    registry_write = gated.call_tool("registry_write_row", {})
+    assert set(registry_write) == {"error"}
+    assert "CK-ROL-901" in registry_write["error"]
+    retired = gated.call_tool("read_retired_prompt", {})
+    assert set(retired) == {"error"}
+    assert "CK-ACC-002" in retired["error"]
+
+    # 4. And it stays silent on ordinary research work, so installing the gate
+    #    does not change what a well-behaved run may do.
+    assert "run_bash" not in denied
+    assert "survey" not in denied
+    assert "compile_kernel" not in denied
+
+    # 5. The honest limit, pinned so it cannot be mistaken for authority: a
+    #    name that evades every marker is ungoverned. Evasion buys nothing --
+    #    it returns the call to the exact Binding authority underneath -- but
+    #    it does mean this gate must never be read as the thing that grants.
+    assert default_tool_policy("persist_registry_row", {}) is None
+    assert gated.call_tool("persist_registry_row", {}) == {"result": "ok"}

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from ari.call_context import ToolCallContextV1
@@ -447,3 +449,305 @@ def test_a_synchronous_binding_contributes_only_its_own_ref():
         _request(_requirement(contract), (_provision(contract),))
     )
     assert bound_tool_refs(lock) == {"provider-a::compile"}
+
+
+# ── plan 20 §8.2 criteria 16 and 20 ──────────────────────────────────────────
+#
+# Both criteria name a behaviour that must be impossible, and the kernel rule
+# that would report criterion 20 (CK-CAP-013, `used_name_inference`) has no
+# producer anywhere in this repository. Reading the authority path explains
+# why: nothing can produce it, because every step that turns a requested name
+# into authority is an exact-equality lookup. These tests pin that -- they go
+# red the moment a substring, prefix or case-folding fallback is introduced,
+# which is the only way the rule could ever acquire a producer.
+
+
+def _identity_variants(identity: str, known: set[str]) -> tuple[str, ...]:
+    """Names a substring-inferring resolver would accept for *identity*.
+
+    Proper substrings, proper superstrings and a case fold: the shapes
+    tool-name inference matches and exact binding must refuse. Anything that
+    is itself a registered identity in *known* is dropped -- a bare tool name
+    is a substring of its own immutable ref, and resolving it is exact
+    matching, not inference.
+    """
+
+    head = identity.split("@", 1)[0]
+    candidates = (
+        identity[:-1],
+        identity[1:],
+        head,
+        head.rsplit("/", 1)[-1],
+        head.rsplit("::", 1)[-1],
+        identity + "_extra",
+        "shadow-" + identity,
+        identity.upper(),
+    )
+    variants = tuple(
+        dict.fromkeys(item for item in candidates if item and item not in known)
+    )
+    # A for-loop guard over an empty corpus passes vacuously; refuse that.
+    assert variants, identity
+    return variants
+
+
+class _NameInferenceConnection:
+    """One provider exposing one tool with a substring-rich name."""
+
+    def __init__(self, skill):
+        self.skill = skill
+        self.calls: list[tuple[str, dict]] = []
+
+    def list_tools(self) -> list[dict]:
+        return [
+            {
+                "name": "compile_source",
+                "description": "fixture",
+                "inputSchema": {"type": "object"},
+                "skill_name": self.skill.name,
+            }
+        ]
+
+    def call_tool(self, name: str, args: dict, timeout: int) -> dict:
+        self.calls.append((name, dict(args)))
+        return {"result": "ok"}
+
+    def close(self) -> None:
+        pass
+
+
+def _name_inference_skill():
+    from ari.config import SkillConfig
+
+    return SkillConfig(
+        name="fixture-skill",
+        package="ari-skill-fixture",
+        version="1.0.0",
+        path="/nonexistent/fixture",
+        tool_policies={
+            "compile_source": {"phases": ["bfts"], "side_effects": "read-only"}
+        },
+    )
+
+
+def test_enforce_no_substring_policy(monkeypatch):
+    """Criterion 20: authority never uses tool-name substring inference.
+
+    Not "the producer emits False" -- there is no producer, and this test says
+    why. Authority is reached through three resolution steps, and all three are
+    exact-equality lookups on an identity:
+
+    * `resolve_registration` matches a request against `tool_ref_registry` /
+      `tool_registry` by dict membership, so its whole outcome vocabulary is
+      {immutable-tool-ref, unique-bare-alias, unresolved} -- exact, exact,
+      refuse. There is no fuzzy branch for a fourth value to come from.
+    * `BoundToolAuthorizationView.decide` looks the resolved ref up in the
+      Binding Lock's `_by_tool` table, again by dict membership.
+    * the composite gate compares the leaf named in the call's arguments
+      against `subject_tool_ref` by dict membership too -- the place a
+      federated broker would be tempted to match leaves by name.
+
+    Each is driven here with proper substrings, proper superstrings and a case
+    fold of a real identity. Introduce inference at any of the three and the
+    corresponding block goes red.
+    """
+
+    from ari.mcp.client import MCPClient
+
+    # ── 1. registration resolution, through the production dispatch path ──
+    skill = _name_inference_skill()
+    connection = _NameInferenceConnection(skill)
+    probe = MCPClient([skill])
+    monkeypatch.setattr(probe, "_init_connection", lambda _skill: connection)
+    descriptor = probe.list_tools()[0]
+    tool_ref, tool_name = descriptor["tool_ref"], descriptor["name"]
+
+    contract = _contract()
+    requirement = _requirement(contract)
+    lock, _ = bind_capabilities(
+        _request(_requirement(contract), (_provision(contract, tool=tool_ref),))
+    )
+    view = BoundToolAuthorizationView(lock, mode="enforce")
+
+    client = MCPClient([skill], tool_authorization_view=view)
+    monkeypatch.setattr(client, "_init_connection", lambda _skill: connection)
+    context = ToolCallContextV1.for_node(
+        run_id="run-1", node_id="node-1", phase="bfts"
+    )
+
+    # The two exact identities resolve, and say by which exact identity.
+    admitted = client.call_tool_envelope(tool_ref, {"q": 1}, context=context)
+    assert admitted.status == "ok"
+    assert admitted.provenance.selection_reason == "immutable-tool-ref"
+    aliased = client.call_tool_envelope(tool_name, {"q": 1}, context=context)
+    assert aliased.status == "ok"
+    assert aliased.provenance.selection_reason == "unique-bare-alias"
+    dispatched = len(connection.calls)
+
+    identities = {tool_ref, tool_name}
+    for requested in (
+        *_identity_variants(tool_ref, identities),
+        *_identity_variants(tool_name, identities),
+    ):
+        envelope = client.call_tool_envelope(requested, {"q": 1}, context=context)
+        assert envelope.status == "error", requested
+        assert envelope.error is not None and envelope.error.kind == "admission"
+        # The reason is the point: resolution refused rather than inferring.
+        assert envelope.provenance.selection_reason == "unresolved", requested
+    # Nothing that was not an exact identity ever reached the provider.
+    assert len(connection.calls) == dispatched
+    assert {name for name, _ in connection.calls} == {tool_name}
+
+    # Only the exact identities were recorded as authorised invocations, and
+    # both were authorised by the binding rather than by any name match.
+    records = view.invocation_records("node-1")
+    assert {ref for ref, _reason, _digest in records} == {tool_ref}
+    assert {reason for _ref, reason, _digest in records} == {"bound"}
+
+    # ── 2. the Binding Lock authority table itself ────────────────────────
+    direct = _provision(contract, tool="provider-a::compile_source")
+    direct_lock, _ = bind_capabilities(_request(requirement, (direct,)))
+    direct_view = BoundToolAuthorizationView(direct_lock, mode="enforce")
+    node_context = ToolCallContextV1.for_node(
+        run_id="run-1", node_id="node-1", phase="bfts"
+    )
+    assert direct_view.decide(
+        direct.tool_ref, phase="bfts", context=node_context
+    ).allowed
+    for requested in _identity_variants(direct.tool_ref, {direct.tool_ref}):
+        decision = direct_view.decide(
+            requested, phase="bfts", context=node_context
+        )
+        assert not decision.allowed, requested
+        assert decision.reason_code == "unbound_tool", requested
+
+    # ── 3. the composite subject gate a federated broker goes through ─────
+    composite = _provision(
+        contract,
+        tool="broker::call_tool",
+        subject_tool_ref="leaf::compile_source",
+        dispatch_tool_ref="broker::call_tool",
+        subject_argument="name",
+        nested_source_lock_digests=(SHA,),
+    )
+    composite_lock, _ = bind_capabilities(_request(requirement, (composite,)))
+    composite_view = BoundToolAuthorizationView(composite_lock, mode="enforce")
+    assert composite_view.decide(
+        composite.tool_ref,
+        phase="bfts",
+        context=node_context,
+        arguments={"name": composite.subject_tool_ref},
+    ).allowed
+    for requested in _identity_variants(
+        composite.subject_tool_ref, {composite.subject_tool_ref}
+    ):
+        decision = composite_view.decide(
+            composite.tool_ref,
+            phase="bfts",
+            context=node_context,
+            arguments={"name": requested},
+        )
+        assert not decision.allowed, requested
+        assert decision.reason_code == "composite_subject_unbound", requested
+
+
+def test_generator_binding_lock_denied(tmp_path):
+    """Criterion 16: a Generator cannot rewrite the Binding Lock.
+
+    There is no `generator_rewrote_the_lock` signal, and there does not need to
+    be one: the Lock is a mint-once digest-bound document whose authorship is
+    fixed by its own schema, and every route by which a Generator could reach
+    it refuses. This test walks all five, because a guard that covered only the
+    in-memory model would miss the one that matters -- a Generator that mints a
+    fresh, internally consistent Lock, which no digest check can detect and
+    only the epoch pin does.
+    """
+
+    from pydantic import ValidationError
+
+    from ari.capability_binding.lock import (
+        CapabilityBindingLockError,
+        load_binding_lock,
+        write_or_verify_binding_lock,
+    )
+    from ari.capability_binding.models import CapabilityBindingLockV1
+    from ari.rqgm.kernel import ConstitutionalKernel
+    from ari.rqgm.runtime import RQGMRuntime
+
+    contract = _contract()
+    lock, _ = bind_capabilities(
+        _request(_requirement(contract), (_provision(contract),))
+    )
+
+    # 1. The admitted Lock object is frozen: it cannot be edited in place.
+    with pytest.raises(ValidationError, match="frozen"):
+        lock.mode = "audit"
+
+    # 2. Its digest covers every other field, so a rewritten payload carrying
+    #    the admitted digest is refused at construction.
+    forged = lock.model_dump(mode="json")
+    forged["mode"] = "audit"
+    with pytest.raises(ValidationError, match="lock_digest does not match"):
+        CapabilityBindingLockV1.model_validate(forged)
+
+    # 3. Authorship is fixed by the schema, so a Generator cannot even claim
+    #    to have produced a Lock: the producer is a literal and the prompt
+    #    hash -- the mark of a prompted producer -- must be absent.
+    for field, value in (
+        ("producer_component_id", "generator_v1"),
+        ("prompt_hash", SHA),
+    ):
+        claimed = lock.model_dump(mode="json")
+        claimed[field] = value
+        with pytest.raises(ValidationError):
+            CapabilityBindingLockV1.model_validate(claimed)
+
+    # 4. On disk the Lock is write-once. Rewriting the identical bytes is
+    #    allowed (a resumed run re-derives the same Lock); replacing them with
+    #    a different Lock is refused, and so is loading hand-edited bytes.
+    path = tmp_path / "capability_binding_lock.json"
+    write_or_verify_binding_lock(path, lock)
+    assert write_or_verify_binding_lock(path, lock).lock_digest == lock.lock_digest
+    rebound, _ = bind_capabilities(
+        _request(_requirement(contract), (_provision(contract),), mode="audit")
+    )
+    assert rebound.lock_digest != lock.lock_digest
+    with pytest.raises(CapabilityBindingLockError, match="immutable binding lock"):
+        write_or_verify_binding_lock(path, rebound)
+    edited = json.loads(path.read_text(encoding="utf-8"))
+    edited["mode"] = "audit"
+    path.write_text(json.dumps(edited), encoding="utf-8")
+    with pytest.raises(CapabilityBindingLockError, match="invalid binding lock"):
+        load_binding_lock(path)
+
+    # 5. The kernel reports both shapes of rewrite, and stays silent on the
+    #    admitted Lock. Tampering breaks the digest (CK-CAP-008); a Generator
+    #    that re-mints a consistent Lock keeps the digest valid and is caught
+    #    only by the epoch pin (CK-CAP-014), while naming itself as the
+    #    selecting actor raises CK-CAP-004 through the production signal.
+    kernel = ConstitutionalKernel()
+    admitted = lock.model_dump(mode="json")
+
+    def _codes(**kwargs):
+        report = kernel.validate_capability_binding_integrity(**kwargs)
+        return [item.code for item in report.violations]
+
+    assert _codes(binding_lock=admitted, expected_lock_digest=lock.lock_digest) == []
+    assert "CK-CAP-008" in _codes(binding_lock=forged)
+    reminted = rebound.model_dump(mode="json")
+    assert _codes(binding_lock=reminted) == []  # digest-valid, undetectable alone
+    assert "CK-CAP-014" in _codes(
+        binding_lock=reminted, expected_lock_digest=lock.lock_digest
+    )
+    assert "CK-CAP-004" in _codes(binding_lock=admitted, actor_selected=True)
+
+    # The CK-CAP-004 signal is derived from the Lock, not set by a caller:
+    # the admitted Lock names the fixed binder, a forged one names its author.
+    fixed = RQGMRuntime._FIXED_CAPABILITY_BINDER
+    assert RQGMRuntime._lock_selector_component_id(admitted, fixed) == fixed
+    assert RQGMRuntime._lock_selector_component_id(
+        {**admitted, "producer_component_id": "generator_v1"}, fixed
+    ) != fixed
+    assert RQGMRuntime._lock_selector_component_id(
+        {**admitted, "prompt_hash": SHA}, fixed
+    ) != fixed
