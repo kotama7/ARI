@@ -1,137 +1,137 @@
-schema_version: ari.harness-manifest/v1
-id: hpc/spmm-correctness
-version: 1.0.0
-kind: artifact_verifier
-status: verified
+accepts_external_target: true
+container:
+  license: Composite OSS; inventory sha256:29703c4d6d6cd11c87b8305893b4d0b19a15525409a51f9e7de9f01bba023388
+  reference: singularity:orfs-26q3-openroad-7304ba78.sif
+  resolved_digest: sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57
+credential_policy: none
+credential_scope_ids: []
+dataset:
+  license: MIT
+  revision: native-hpc-generated-cases/v1@4847884a274eb0a3f78e25ce572b1aa84fd634bf
+  sha256: sha256:f814d3faf3a9e51005dc597c4e1d565c5a956efd37b0e9b2cf602ffa8efc13fd
 description: ARI-native CSR SpMM shared-library correctness verifier
+driver:
+  license: MIT
+  revision: ari.assurance.native-hpc/v1
+  sha256: sha256:4640d2d2159d04dc8fb809a6e5dcd90d2c4b76092488bdfebd46d68d1a76d568
+expected_result_schema: ari.native-hpc-verification-report/v1
+expected_result_schema_digest: sha256:f232e5b1df130cc70b1d905eedadde0b3f60cb5dd05e5868cf90baff3912346c
+filesystem_policy: isolated-readonly-target
+hidden_test_policy: verifier-only
+id: hpc/spmm-correctness
+implementation_license: MIT
+infrastructure_failure_policy: separate
+kind: artifact_verifier
 maintainer: ARI maintainers
+manifest_digest: sha256:2b9934b2c8b763ba8258b04ff6e8649e4ec354ffbadd4061af547442538b63b3
+model:
+  license: not-applicable
+  revision: not-applicable
+  sha256: sha256:ffc6d4d35a35d54e58d3aba25893c53a7b030781681ce45d857116cd44dbeae7
+negative_control_report_digest: sha256:42232cb803271db275e4d749fc3e9b39e120c98d9e7e23c4b9d4f884b1175463
+network_allowlist: []
+network_policy: deny
+nondeterminism_declaration: none
+oracle:
+  license: MIT
+  revision: ari-native-spmm-oracle/v1@4847884a274eb0a3f78e25ce572b1aa84fd634bf
+  sha256: sha256:024a5f3f4b0e233508c908ee3946275b6d7e8a7bd70742980a1e30811afc9cbd
+oracle_independence: independent
+properties:
+- methods:
+  - differential-testing
+  property_id: numerical-equivalence
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float32
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tiers:
+  - screen
+  - validate
+  - certify
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+- methods:
+  - interface-check
+  property_id: interface-conformance
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float32
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tiers:
+  - screen
+  - validate
+  - certify
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+- methods:
+  - repeated-execution
+  property_id: reproducibility
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float32
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tiers:
+  - validate
+  - certify
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+registered_placement: {}
+resources:
+  accelerators: 0
+  cpu_cores: 2
+  disk_bytes: 268435456
+  features:
+  - landlock
+  - network-namespace
+  memory_bytes: 8589934592
+retry_limit: 1
+schema_version: ari.harness-manifest/v1
+scorer_determinism: deterministic
+source_full_commit_sha: 4847884a274eb0a3f78e25ce572b1aa84fd634bf
+source_repository: https://github.com/kotama7/ARI.git
+status: verified
+subject_types:
+- program
+supported_architectures:
+- x86_64
+supported_domains:
+- spmm
+supported_dtypes:
+- float32
+- float64
+supported_hardware:
+- cpu
+supported_languages:
+- c
 tags:
 - ari-native
 - cpu
 - hpc
 - spmm
-subject_types:
-- program
-target_kinds:
-- shared-library
-accepts_external_target: true
-supported_languages:
-- c
-supported_hardware:
-- cpu
-registered_placement: {}
-supported_architectures:
-- x86_64
-supported_dtypes:
-- float32
-- float64
-supported_domains:
-- spmm
-properties:
-- property_id: numerical-equivalence
-  methods:
-  - differential-testing
-  tiers:
-  - screen
-  - validate
-  - certify
-  scope:
-    values:
-      architecture:
-      - x86_64
-      dtype:
-      - float32
-      - float64
-      hardware:
-      - cpu
-      language:
-      - c
-  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
-- property_id: interface-conformance
-  methods:
-  - interface-check
-  tiers:
-  - screen
-  - validate
-  - certify
-  scope:
-    values:
-      architecture:
-      - x86_64
-      dtype:
-      - float32
-      - float64
-      hardware:
-      - cpu
-      language:
-      - c
-  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
-- property_id: reproducibility
-  methods:
-  - repeated-execution
-  tiers:
-  - validate
-  - certify
-  scope:
-    values:
-      architecture:
-      - x86_64
-      dtype:
-      - float32
-      - float64
-      hardware:
-      - cpu
-      language:
-      - c
-  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
 target_interface_contract: spmm-csr-c-abi/v1
 target_interface_digest: sha256:cce9f969663c13a5913df18df5a6c82e9e6fd8739e307f9a97f8e3d1b2632ad6
-source_repository: https://github.com/kotama7/ARI.git
-source_full_commit_sha: 4847884a274eb0a3f78e25ce572b1aa84fd634bf
-implementation_license: MIT
-dataset:
-  revision: native-hpc-generated-cases/v1@4847884a274eb0a3f78e25ce572b1aa84fd634bf
-  sha256: sha256:f814d3faf3a9e51005dc597c4e1d565c5a956efd37b0e9b2cf602ffa8efc13fd
-  license: MIT
-oracle:
-  revision: ari-native-spmm-oracle/v1@4847884a274eb0a3f78e25ce572b1aa84fd634bf
-  sha256: sha256:024a5f3f4b0e233508c908ee3946275b6d7e8a7bd70742980a1e30811afc9cbd
-  license: MIT
-driver:
-  revision: ari.assurance.native-hpc/v1
-  sha256: sha256:ffa7b163f41254ec289529b02300a3953ddba7330bf02b71c59d5983edd08948
-  license: MIT
-model:
-  revision: not-applicable
-  sha256: sha256:ffc6d4d35a35d54e58d3aba25893c53a7b030781681ce45d857116cd44dbeae7
-  license: not-applicable
-container:
-  reference: singularity:orfs-26q3-openroad-7304ba78.sif
-  resolved_digest: sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57
-  license: Composite OSS; inventory sha256:29703c4d6d6cd11c87b8305893b4d0b19a15525409a51f9e7de9f01bba023388
-network_policy: deny
-network_allowlist: []
-credential_policy: none
-credential_scope_ids: []
-filesystem_policy: isolated-readonly-target
-resources:
-  cpu_cores: 2
-  memory_bytes: 8589934592
-  accelerators: 0
-  disk_bytes: 268435456
-  features:
-  - landlock
-  - network-namespace
+target_kinds:
+- shared-library
 timeout_seconds: 900
-scorer_determinism: deterministic
-nondeterminism_declaration: none
-hidden_test_policy: verifier-only
-oracle_independence: independent
 tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
-expected_result_schema: ari.native-hpc-verification-report/v1
-expected_result_schema_digest: sha256:f232e5b1df130cc70b1d905eedadde0b3f60cb5dd05e5868cf90baff3912346c
-infrastructure_failure_policy: separate
-retry_limit: 1
-negative_control_report_digest: sha256:42232cb803271db275e4d749fc3e9b39e120c98d9e7e23c4b9d4f884b1175463
 upstream_parity_report_digest: sha256:b7d3ebeaf0df4c11772b029d01faee2d6508123a5f62ae5050edc14f2ab607de
-manifest_digest: sha256:b817dc5b1aaa90d016db6ffda558294f502cd8dd0c814b0d308a3f3f3e75de52
+version: 1.0.0
