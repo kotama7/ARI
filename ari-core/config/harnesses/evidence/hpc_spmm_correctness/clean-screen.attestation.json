@@ -1,8 +1,8 @@
 {
-  "active_harness_lock_digest": "sha256:2f9e4928fe35b92d28f3dd7d6bd7c77e19f554dd08cb70c36a8801749d513950",
-  "attempt_id": "har-f1891e1e31a53f10b3161e2f08936b60-0",
-  "attestation_digest": "sha256:d9c85108a93655aae47566176af961032b6e78a8dc2802e2ec4b0c968a27ba2d",
-  "baseline_harness_lock_digest": "sha256:2f9e4928fe35b92d28f3dd7d6bd7c77e19f554dd08cb70c36a8801749d513950",
+  "active_harness_lock_digest": "sha256:2d781e3ca0f5864ea6a1b84c9444c9e01ed7f278c065a6b825f85eb2274d9148",
+  "attempt_id": "har-6a06a223f68df8ca415d48d909eb5adb-0",
+  "attestation_digest": "sha256:876a49035a8cdb0158c85b2b76083389319d90e14e02c4b4da3b23fcab8b774d",
+  "baseline_harness_lock_digest": "sha256:2d781e3ca0f5864ea6a1b84c9444c9e01ed7f278c065a6b825f85eb2274d9148",
   "capability_binding_lock_digest": "sha256:194df4714255447584ae860c72eda00149f947de24df6dcc1812e4fe9acc6980",
   "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
   "dataset_digest": "sha256:bb58fd7ad9dcbdf70de9b66e60e50a4208d2e6e5db201c510e042811b4c20447",
@@ -10,8 +10,8 @@
   "epoch_id": "registration-epoch",
   "evidence_artifact_refs": [
     {
-      "digest": "sha256:3735e9f1a1487cdcb6124509dca653e7940f31d2d3b20c677d16edb11e87226d",
-      "logical_name": ".ari-execution/3735e9f1a1487cdcb6124509dca653e7940f31d2d3b20c677d16edb11e87226d.stdout.log",
+      "digest": "sha256:f80bbb04a367cbe99ef7090cc86c5802417207f03a1fff105ffc651a8332e31b",
+      "logical_name": ".ari-execution/f80bbb04a367cbe99ef7090cc86c5802417207f03a1fff105ffc651a8332e31b.stdout.log",
       "media_type": "text/plain; charset=utf-8",
       "role": "harness-stdout",
       "schema_version": "ari.research-artifact-ref/v1",
@@ -26,9 +26,9 @@
       "source_run_id": "harness-registration-hpc-spmm-correctness"
     }
   ],
-  "execution_identity": "sha256:6c1f966d92582d8edf45f387f71fbdac98a1ad137f93a7b16bc55e3bb0708a6c",
-  "execution_result_digest": "sha256:af0d25aa8175ef193d9125f72555284a0984bb3d6d6740b381bab21bd1eaa955",
-  "harness_manifest_digest": "sha256:436023bfcee0471944c3fbc498aaff0cfecb94b1a67004153552eb7d88a6d6bb",
+  "execution_identity": "sha256:be5128d25316a1b3ab906da4c3ee8de66db77cfc33c9c0a3b5fb75c6497d4780",
+  "execution_result_digest": "sha256:0b069ae55e1814d8ac687b364296a0446c9489e364ef5edbfc981455fbd2c513",
+  "harness_manifest_digest": "sha256:265660c18170029a456160a97b2a49f8399021108a103f2a57c36cf9ab85e57f",
   "infrastructure_status": "ready",
   "knowledge_skill_use_digest": "sha256:8e2a116b1daea019352a9ed94735fc604385b48c7d554ce13a812255068422da",
   "node_id": "registration-clean-screen",
@@ -45,8 +45,8 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:3735e9f1a1487cdcb6124509dca653e7940f31d2d3b20c677d16edb11e87226d",
-          "logical_name": ".ari-execution/3735e9f1a1487cdcb6124509dca653e7940f31d2d3b20c677d16edb11e87226d.stdout.log",
+          "digest": "sha256:f80bbb04a367cbe99ef7090cc86c5802417207f03a1fff105ffc651a8332e31b",
+          "logical_name": ".ari-execution/f80bbb04a367cbe99ef7090cc86c5802417207f03a1fff105ffc651a8332e31b.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -64,13 +64,13 @@
       "measurements": {
         "case_count": 17,
         "failed_case_count": 0,
-        "max_abs_error": 1.514062901719626e-07,
-        "max_rel_error": 1.8741074301232666e-07
+        "max_abs_error": 1.5384088936087892e-07,
+        "max_rel_error": 1.3539944553136148e-07
       },
       "method": "differential-testing",
       "oracle_comparison": {
         "oracle": "independent CSR traversal with duplicate-index summation",
-        "report_digest": "sha256:acd0042b05046cf3166b693a22a2297d888e270d82d4b420ee1510cefe7d1c6b",
+        "report_digest": "sha256:0f08809f13426e68b546faf5ea4478763a7271334350e4aacd69621562dc9092",
         "sandbox": {
           "does_not_restrict": [
             "fork",
@@ -117,7 +117,7 @@
       "verdict": "pass"
     }
   ],
-  "research_contract_digest": "sha256:aa467010bcdcade5d2054d6646c8ce1c11762839550cf2834719d233dbb9a39a",
+  "research_contract_digest": "sha256:c567a91b90e6b6d2c71e1a8c9d5949509feb01ec290afdeec3a0f13ac11784c5",
   "retry_index": 0,
   "run_id": "harness-registration-hpc-spmm-correctness",
   "schema_version": "ari.harness-attestation/v1",
@@ -125,5 +125,5 @@
   "target_kind": "shared-library",
   "target_logical_name": "candidate.so",
   "verdict": "pass",
-  "verification_contract_digest": "sha256:39b2fc95068ed5a05f88d2cf14513546e9308e6fe2d121a9c1ec6f22b47f6cf5"
+  "verification_contract_digest": "sha256:8bb8eb787cb3dff8260222ea29f039afd2829fbff467f92bf6da38c07d908255"
 }

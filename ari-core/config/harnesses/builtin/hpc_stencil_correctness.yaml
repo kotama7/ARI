@@ -87,14 +87,14 @@ properties:
 target_interface_contract: stencil-7point-c-abi/v1
 target_interface_digest: sha256:e95259fcb2a8ecdf950485a7593be9ba60f7afaf4ba824756cb0073e7a56715d
 source_repository: https://github.com/kotama7/ARI.git
-source_full_commit_sha: e8a99f7e33387f12316387e5f18161fb602d3c92
+source_full_commit_sha: aff7dee48c81f32a1caee4181c09028186c8530f
 implementation_license: MIT
 dataset:
-  revision: native-hpc-generated-cases/v1@e8a99f7e33387f12316387e5f18161fb602d3c92
+  revision: native-hpc-generated-cases/v1@aff7dee48c81f32a1caee4181c09028186c8530f
   sha256: sha256:a2c98016e19e2073f9157e43fb0d450c1f1b708ef3a4315e44a066d0a987832b
   license: MIT
 oracle:
-  revision: ari-native-stencil-oracle/v1@e8a99f7e33387f12316387e5f18161fb602d3c92
+  revision: ari-native-stencil-oracle/v1@aff7dee48c81f32a1caee4181c09028186c8530f
   sha256: sha256:6c5dc8166359537f20cafaf6ffd888ee2c756f201f9e93c0fabcc70896d2b65e
   license: MIT
 driver:
@@ -134,4 +134,4 @@ infrastructure_failure_policy: separate
 retry_limit: 1
 negative_control_report_digest: sha256:f407149b08e8cbae9424ac73948e41f8e952608c70b7d17d3ca0fcefb8140580
 upstream_parity_report_digest: sha256:6228f5b25f7dd3290313692e8d40d753a67dd7eada49327e00e00619e7e6224e
-manifest_digest: sha256:fab8a2ac7f4b5483ac24f06f88581ff9539acae88a7121aa683de27af9538e42
+manifest_digest: sha256:f8d3aa3633c52d53c72965e17e30741169fce71f368e9ec51c73f989b9b8d434
