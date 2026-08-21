@@ -1,11 +1,11 @@
 {
-  "baseline_lock_digest": "sha256:f4ec4c9584edb3efb41268455c04aad1628fb97715f21451fb3f75272d833032",
+  "baseline_lock_digest": "sha256:cacac27b58bf7b880a4df8cfc2a34db444f37f717218a5bc1856e053762170e7",
   "clean_control_verdict": "pass",
   "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
   "container_reference": "singularity:orfs-26q3-openroad-7304ba78.sif",
   "dataset_digest": "sha256:17d6b66d3387670643f197c4e403816866fcfea208e886985bbe93f5b2fd0590",
   "dataset_revision": "native-perf-gemm-cases/v1@scored-2026q3",
-  "driver_digest": "sha256:de2e1b958c3a34119cca3796e5c7dd549852fa1b8fa1ee9307ba3e661431bf31",
+  "driver_digest": "sha256:2dc37582aac3d035b68a2f6f79bff0edde9d81bb7dc1f614d0c5fb32abf66abb",
   "driver_revision": "ari.assurance.problem-correctness/v1",
   "environment_digest": "sha256:1e98cd1990cff75e6529f4167dd6291f4a2045e6c95c6d1ba464175f715e5910",
   "harness_id": "hpc/gemm-dense-fp64-problem-correctness",
@@ -33,14 +33,14 @@
     "result_schema_conformant": true,
     "target_write_isolation": "proved"
   },
-  "manifest_digest": "sha256:85f70dc1ac3c1464a24db98ca3c9b331fddc65871509c47945fb153f9315cdbc",
+  "manifest_digest": "sha256:92c09ee51f3b79bdfa33458e6c104b3620887e6b4ea1dc0d6b095e2ad86f7a9f",
   "negative_control_verdict": "fail",
   "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
   "problem_revision": "gemm-dense-fp64/v1@2026q3",
   "runs": [
     {
-      "attempt_id": "har-e4abb57b5ce83fef9ac66a7cb473a8d9-0",
-      "attestation_digest": "sha256:4de0aaee9af35837a65e0cdbc407e3aad2002800bd7e54a2246457452d477f59",
+      "attempt_id": "har-5482bfd7e36d4ecf029ee59aec7ccd1f-0",
+      "attestation_digest": "sha256:b5072cb323f7d8f17d189468e04754f3bd2f33d6ad5cc8781072513805238b3e",
       "candidate_provenance": "reference_gemm.c",
       "discrimination": {
         "build_error": null,
@@ -50,8 +50,8 @@
         "interface_error": null,
         "label": "clean-screen",
         "residual_ratio_limit": 1.0,
-        "verifier_report_digest": "sha256:d49a8769e8c4fffc4f7b9b5a9a5acb4ffe80385f5e49afee3c63d3c0a41fcaac",
-        "worst_residual_ratio": 0.0014481546446540369
+        "verifier_report_digest": "sha256:6c6e2e5e0918134e3c213f6024eb17065d925036649467bf3a964bf8be865305",
+        "worst_residual_ratio": 0.0015343542598770178
       },
       "label": "clean-screen",
       "nondeterminism_observations": [],
@@ -70,8 +70,8 @@
       "why": "the problem's frozen reference is right about its own question"
     },
     {
-      "attempt_id": "har-d873ef6039b8b2a2903be9749ceb15d2-0",
-      "attestation_digest": "sha256:553fdf49ab1e8b3a6708414ae70edfceeffaf755b7d1f1a2b373534e89ee080d",
+      "attempt_id": "har-f6f9a0b4ed33f2927876856b25011380-0",
+      "attestation_digest": "sha256:ad60185cf4b7ed6ca2d69f62787e6c1ab59f0b22809bcabb595bc170d3ca7880",
       "candidate_provenance": "reference_gemm.c",
       "discrimination": {
         "build_error": null,
@@ -81,8 +81,8 @@
         "interface_error": null,
         "label": "clean-certify",
         "residual_ratio_limit": 1.0,
-        "verifier_report_digest": "sha256:a3502f6b662c1f43aafcba32804106ac6153b3153aaf0e4b819de5aec9549431",
-        "worst_residual_ratio": 0.0019956209303633498
+        "verifier_report_digest": "sha256:85446e059799fb22d95397c121e1e7182542cfabf59db5ad41b0ce1ab749c76c",
+        "worst_residual_ratio": 0.0015107998258515809
       },
       "label": "clean-certify",
       "nondeterminism_observations": [],
@@ -101,8 +101,8 @@
       "why": "and stays right at the tier a publication claim is made at"
     },
     {
-      "attempt_id": "har-014b7e99f463bf4efe0e59de39992dfa-1",
-      "attestation_digest": "sha256:1e7bc52a5ea2f05ceb1365234aa4587952b8627b2111407ec946d399eb76ae14",
+      "attempt_id": "har-7bc5aca740d1d5c89f5324f728407e90-1",
+      "attestation_digest": "sha256:13862ceb37256869ae467237d8ac18440ada1e475f7785cada686669e62a26bf",
       "candidate_provenance": "reference_gemm.c",
       "discrimination": {
         "build_error": null,
@@ -112,8 +112,8 @@
         "interface_error": null,
         "label": "clean-certify-repeat",
         "residual_ratio_limit": 1.0,
-        "verifier_report_digest": "sha256:bacdda7a924ad9c3216519c470b966d9f73969914585edbe2d4a4aaaf3069426",
-        "worst_residual_ratio": 0.0015031901593130458
+        "verifier_report_digest": "sha256:130f168ba42ad988317f1c4b2e70bfa87b6670def458b5af2149b09f04ddb9fb",
+        "worst_residual_ratio": 0.001534367158644051
       },
       "label": "clean-certify-repeat",
       "nondeterminism_observations": [],
@@ -132,8 +132,8 @@
       "why": "and again, at a different derived seed: the verdict is stable across instances, which is a weaker and more honest claim than digest equality"
     },
     {
-      "attempt_id": "har-bc3f9be3affefbd2d2daea148d948883-0",
-      "attestation_digest": "sha256:34b907b5ce35732ead28dc4b5d755ab8f0d77ba33ff5fbcc055ffd6a04ff050a",
+      "attempt_id": "har-af070e5c2992629141bee3bd4e81b751-0",
+      "attestation_digest": "sha256:c68e9e7ab3e2207e8185578c4af703d010907b0f3feba04d75fdc299816bc174",
       "candidate_provenance": "wrong_gemm.c",
       "discrimination": {
         "build_error": null,
@@ -143,8 +143,8 @@
         "interface_error": null,
         "label": "negative-screen",
         "residual_ratio_limit": 1.0,
-        "verifier_report_digest": "sha256:e81c137c62fe0f55d912a1407ca60a6cb097c1d31afd026d1ba192fb20390018",
-        "worst_residual_ratio": 718022744127.709
+        "verifier_report_digest": "sha256:beac4e0026caf91f2ebb190099f79510563dee022d604ce6b923aef86bdfef3d",
+        "worst_residual_ratio": 788868598509.2037
       },
       "label": "negative-screen",
       "nondeterminism_observations": [],
@@ -163,8 +163,8 @@
       "why": "a fast-but-wrong kernel is caught BY THE ORACLE: it builds, it conforms, it writes every element, and it misses the bound"
     },
     {
-      "attempt_id": "har-9fdf387b0bd5eaafa1ebcee54a8b4426-0",
-      "attestation_digest": "sha256:06b8c5f56756bb6ddaf1ac1a81f088a37d5f5eec9b4a48899106f5c995969a32",
+      "attempt_id": "har-9a2cbddf3edb9606ad9e5ea9d681ce8a-0",
+      "attestation_digest": "sha256:c57afb9d0f3d47d98cd006a767e7b335f8883aa9154edd707680fa5cbd0ca1ab",
       "candidate_provenance": "seed_gemm.c + the driver's file-scope-global transform",
       "discrimination": {
         "build_error": null,
@@ -174,7 +174,7 @@
         "interface_error": "candidate kernel exports symbols other than 'gemm': ['ari_problem_correctness_probe_symbol']",
         "label": "negative-interface-screen",
         "residual_ratio_limit": 1.0,
-        "verifier_report_digest": "sha256:423478bd61cd24f95039826ece8b886e7c7e97c7ae4d772d16de988b799a322f",
+        "verifier_report_digest": "sha256:e9a0219341898704b12ae1a54122a0ee9cf9cdb71592c588359541770db879d9",
         "worst_residual_ratio": null
       },
       "label": "negative-interface-screen",
@@ -195,8 +195,8 @@
     }
   ],
   "schema_version": "ari.harness-control-sequence/v1",
-  "sequence_digest": "sha256:4a383edb261f3b675efb54da4b503594d6f2d202a05f1d4cfb419107010167d4",
+  "sequence_digest": "sha256:4d6a74dc030cd3f8333685695a275e1760a09072e314a67c90c108b58d72a063",
   "target_logical_name": "candidate_gemm.c",
   "verdict_source": "read back off HarnessAttestationV1 artifacts minted from container executions; no control outcome in this record was asserted",
-  "verification_contract_digest": "sha256:677c667bb31ae4e4b59e110f6de00383a294d55f9dee820b1dfbb6f93c9eda2e"
+  "verification_contract_digest": "sha256:f18525b042f826874c1990f6b4059f0f00cf981b5a677107fe4c2fde28d33730"
 }

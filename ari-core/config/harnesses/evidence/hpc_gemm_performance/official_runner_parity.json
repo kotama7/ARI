@@ -2,9 +2,9 @@
   "case_set": "native-perf-gemm-cases/v1@parity",
   "controls": {
     "clean": {
-      "median_seconds": 0.08095022430643439,
-      "median_speedup": 1.000509815724447,
-      "relative_spread": 0.003454486892969412,
+      "median_seconds": 0.08096868265420198,
+      "median_speedup": 1.00103424266686,
+      "relative_spread": 0.01008202029005156,
       "resolution_note": "",
       "resolved": true,
       "verdict": "pass"
@@ -22,12 +22,13 @@
       }
     ]
   },
-  "driver_digest": "sha256:12adc5259e6fbf27430c81d04761822671b0a31b194686e9216baf8ab11d9f8e",
+  "driver_digest": "sha256:1f72d2fbabdb8c35bac0d126fe5d41014ab316ecfe7432ac64c526ac5f746e96",
   "passed": true,
   "placement": {
     "binding_is_set_by_the_harness": true,
     "cpus_allowed": "0-191",
     "cpus_allowed_count": 192,
+    "exclusive_allocation": true,
     "machine": "x86_64",
     "memory_policy_is_set_by_the_harness": false,
     "mems_allowed": "0",
@@ -41,7 +42,8 @@
     "omp_proc_bind": "spread",
     "page_size_bytes": 4096,
     "physical_cores": 96,
-    "sha256": "sha256:84f8f38473a916ea1a6abf9f393b97aed5c8f1233ef5bb9f1a0c70e2da341adb",
+    "scheduled_allocation": true,
+    "sha256": "sha256:140fef8f8e2c88599b4d50b9b742a83b72fa439fc2fc01e28472285e3dffdc99",
     "thread_budget": "2",
     "threads_per_core": 2.0
   },
@@ -50,20 +52,20 @@
   "reason": null,
   "results": {
     "clean_control": {
-      "median_speedup": 1.000509815724447,
-      "relative_spread": 0.003454486892969412,
-      "report_digest": "sha256:07c30a12f1f830043eeff47b74568a82ac1161ef175d73722cc505a2db4658d5",
+      "median_speedup": 1.00103424266686,
+      "relative_spread": 0.01008202029005156,
+      "report_digest": "sha256:b60469624f9174f3b041397fe7a274cd9339e9b06c61998ff6a8b4c1eea9f56c",
       "resolved": true,
       "verdict": "pass"
     },
     "negative_control_slow": {
       "detail": "0.1309x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
-      "report_digest": "sha256:03fc4e3446b16bc74037f671043c51d1d689238a37594a40728f9e8ca4eb9c6d",
+      "report_digest": "sha256:4db02c1dd709f3d2d346750ae3122ed1fdaf9a5d7ad04d64e7ae63af092eba58",
       "verdict": "fail"
     },
     "negative_control_wrong": {
       "detail": "candidate output failed the residual bound (2.79e+11x)",
-      "report_digest": "sha256:a6be99a02f6ff9539cb5e1872d37451116faabdda493e4e9bb66a4b1d12df6a4",
+      "report_digest": "sha256:64cd1cb46e46cf0d4399004cba55d7beb47dfce1bf2e3d63c555662d9b3ca85b",
       "verdict": "fail"
     }
   },

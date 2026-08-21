@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:5064b5e18cf72d5338aeb0664e6bdd7df8f9fccea31504db2028deccf3e6d98a",
-  "approved_date": "2026-08-17",
-  "authorization_basis": "The maintainer authorized re-registration and signature for this family in this session. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts. Reported: five executions of the pinned image at the registered placement (x86_64, thread_budget 2) on an EXCLUSIVE node -- which is why this re-registration exists, the previous signed bundle having been measured where the same instrument ran 1.8x slower and recorded a clean-control spread of 0.0933 against a bound of 0.1, where two independent exclusive-node runs read 0.015-0.031. Also reported: the slow-but-correct negative refused on the RATIO, the fast-but-wrong one on the ORACLE, distinct grounds, and the fifteen gates this run reports. The instrument changed too: the parity probe derives the thread budget from this manifest's pinned placement instead of the environment, and the resolving floor was re-measured to 10 ms.",
-  "evidence_bundle_digest": "sha256:bbb43c978ffd53966eebeacbb19704322df9492fdc17bbd379c7877304cbfd42",
+  "approval_digest": "sha256:47d6dd6a91e439a00701066a9a82173fd54e457e56a0d881b7a3a41048d2d501",
+  "approved_date": "2026-08-21",
+  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of the timed control sequence measured on an exclusively allocated node at the placement this manifest pins, not on independent inspection of the artifacts, which are pinned here for that purpose. Re-earned after the network observation was taken off the clock the forgery guard reads, so these timings carry no probe constant.",
+  "evidence_bundle_digest": "sha256:0e9a1705233933623658d0c365fae08decd9df3afd72dd4f8bfbf82b9da30cbe",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-performance",
-  "harness_manifest_digest": "sha256:9231d5cc4acbd95871067c3275a6b23e1bb21e71f3b6767eab64eead81ef5c1d",
+  "harness_manifest_digest": "sha256:0afb6c8735567e84c6fc3560fc2ba0d8003d9d0b618799dbc6a9b1f90c7116df",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:e9942d89fb7be2ac5627d8c021559cefb2e4c458ef6eab1cf7b416ae47a06f83",
+  "registration_report_digest": "sha256:750f0381b5e4e23773c9a1187df6c8ac230afb66c103032227fef3bf656d9e45",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

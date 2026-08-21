@@ -1,17 +1,17 @@
 {
-  "active_harness_lock_digest": "sha256:fa5201134bb2680b478e08fc3727eaa75fd402556bb730249ae7d2868922e2e5",
-  "attempt_id": "har-6ea47fd560d78e5332bbc969ffa7d414-0",
-  "attestation_digest": "sha256:e1d7f3b2992a09100e2f03e74656a02487404afbe2205627262847770f9c1450",
-  "baseline_harness_lock_digest": "sha256:fa5201134bb2680b478e08fc3727eaa75fd402556bb730249ae7d2868922e2e5",
+  "active_harness_lock_digest": "sha256:cb96914666e151f390832fb2073d3fd6d04302e1fe1e889eaa027d8695a205ba",
+  "attempt_id": "har-4bde4fbb6d47f75be122e9b2ee70e771-0",
+  "attestation_digest": "sha256:6ac0c81a97470109c98668f2c7e141d1179e5f12eff0094e45b9f453986e7e8b",
+  "baseline_harness_lock_digest": "sha256:cb96914666e151f390832fb2073d3fd6d04302e1fe1e889eaa027d8695a205ba",
   "capability_binding_lock_digest": "sha256:194df4714255447584ae860c72eda00149f947de24df6dcc1812e4fe9acc6980",
   "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
   "dataset_digest": "sha256:17d6b66d3387670643f197c4e403816866fcfea208e886985bbe93f5b2fd0590",
-  "driver_digest": "sha256:12adc5259e6fbf27430c81d04761822671b0a31b194686e9216baf8ab11d9f8e",
+  "driver_digest": "sha256:1f72d2fbabdb8c35bac0d126fe5d41014ab316ecfe7432ac64c526ac5f746e96",
   "epoch_id": "registration-epoch",
   "evidence_artifact_refs": [
     {
-      "digest": "sha256:6dd20027b3129b79140656ce1a43f1bf111ba345054fdff53dd92e0865abe374",
-      "logical_name": ".ari-execution/6dd20027b3129b79140656ce1a43f1bf111ba345054fdff53dd92e0865abe374.stdout.log",
+      "digest": "sha256:ee6ac551a3c42ee98c7513fb99eabea0e22b9c8d658bb3472058e4038e703714",
+      "logical_name": ".ari-execution/ee6ac551a3c42ee98c7513fb99eabea0e22b9c8d658bb3472058e4038e703714.stdout.log",
       "media_type": "text/plain; charset=utf-8",
       "role": "harness-stdout",
       "schema_version": "ari.research-artifact-ref/v1",
@@ -26,9 +26,9 @@
       "source_run_id": "harness-registration-hpc-gemm-performance"
     }
   ],
-  "execution_identity": "sha256:42a114017bd3bf22411f176c3c85d24ca2547ae1b42d0863ab21f467ebcf460b",
-  "execution_result_digest": "sha256:ed1c7a65e4bd3d334516e179c00ebfb4d320bbaf9449f636b7d417188083a6d9",
-  "harness_manifest_digest": "sha256:9231d5cc4acbd95871067c3275a6b23e1bb21e71f3b6767eab64eead81ef5c1d",
+  "execution_identity": "sha256:62a3f3cd5a4fcfa7d35caf5276bd19785044d83bf1470bcdb0fb59c69105f0fe",
+  "execution_result_digest": "sha256:ac492954a49f261689c8628c1230f876206598e731021e710c8abeb0e79f9d68",
+  "harness_manifest_digest": "sha256:0afb6c8735567e84c6fc3560fc2ba0d8003d9d0b618799dbc6a9b1f90c7116df",
   "infrastructure_status": "ready",
   "knowledge_skill_use_digest": "sha256:8e2a116b1daea019352a9ed94735fc604385b48c7d554ce13a812255068422da",
   "node_id": "registration-negative-wrong-screen",
@@ -45,8 +45,8 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:6dd20027b3129b79140656ce1a43f1bf111ba345054fdff53dd92e0865abe374",
-          "logical_name": ".ari-execution/6dd20027b3129b79140656ce1a43f1bf111ba345054fdff53dd92e0865abe374.stdout.log",
+          "digest": "sha256:ee6ac551a3c42ee98c7513fb99eabea0e22b9c8d658bb3472058e4038e703714",
+          "logical_name": ".ari-execution/ee6ac551a3c42ee98c7513fb99eabea0e22b9c8d658bb3472058e4038e703714.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -74,9 +74,9 @@
           "2000x500x500": false
         },
         "credited_seconds_by_case": {
-          "1000x1000x1000": 0.00010917987674474716,
-          "1500x600x1500": 0.00020313076674938202,
-          "2000x500x500": 8.976040408015251e-05
+          "1000x1000x1000": 9.496882557868958e-05,
+          "1500x600x1500": 0.00019935891032218933,
+          "2000x500x500": 8.659996092319489e-05
         },
         "failed_case_count": 3,
         "median_speedup_by_case": {
@@ -105,6 +105,7 @@
           "binding_is_set_by_the_harness": true,
           "cpus_allowed": "0-191",
           "cpus_allowed_count": 192,
+          "exclusive_allocation": null,
           "machine": "x86_64",
           "memory_policy_is_set_by_the_harness": false,
           "mems_allowed": "0",
@@ -118,11 +119,32 @@
           "omp_proc_bind": "spread",
           "page_size_bytes": 4096,
           "physical_cores": 96,
-          "sha256": "sha256:84f8f38473a916ea1a6abf9f393b97aed5c8f1233ef5bb9f1a0c70e2da341adb",
+          "scheduled_allocation": false,
+          "sha256": "sha256:e9219fa4db2eb32162a449a3e864a002ea27fe056470df81afbdd60db97788d9",
           "thread_budget": "2",
           "threads_per_core": 2.0
         },
-        "report_digest": "sha256:b7cecebd238bfb6c613bed7151e2f6150bb630621a5d0ac655a0a43ed0955f11"
+        "report_digest": "sha256:b07f01fbdb813a4a04026ce513e329d201cd4294a0c0c13057e14242cf6d26e4",
+        "sandbox": {
+          "does_not_restrict": [
+            "fork",
+            "cpu",
+            "network-by-itself",
+            "memory"
+          ],
+          "filesystem_isolation": true,
+          "interfaces_beyond_loopback": 0,
+          "landlock_abi": 6,
+          "mechanism": "landlock",
+          "network_does_not_restrict": [
+            "unix-sockets",
+            "loopback",
+            "shared-memory"
+          ],
+          "network_isolation": true,
+          "network_mechanism": "network-namespace",
+          "network_probe": "ENETUNREACH"
+        }
       },
       "property_id": "performance-regression",
       "tested_scope": {
@@ -151,7 +173,7 @@
       "verdict": "fail"
     }
   ],
-  "research_contract_digest": "sha256:0c498a74825d2a85009c7761aabf1cf439b756f2a5b51b973029dfabb0c39b46",
+  "research_contract_digest": "sha256:d5e3182549ecc644d07f3e2638eb9fe760e37160d76dcf5ac35e96c10dd72715",
   "retry_index": 0,
   "run_id": "harness-registration-hpc-gemm-performance",
   "schema_version": "ari.harness-attestation/v1",
@@ -159,5 +181,5 @@
   "target_kind": "benchmark-submission",
   "target_logical_name": "candidate_gemm.c",
   "verdict": "fail",
-  "verification_contract_digest": "sha256:961c5780785bc444de421b58b8446e1d4a9fc4043f514e152279527955a24271"
+  "verification_contract_digest": "sha256:b65b4166cc79a66ccd5f7a6e4ffb32b79015b8471b61eccb92af9f0df7be9240"
 }

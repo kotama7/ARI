@@ -1,5 +1,5 @@
 schema_version: 1
-catalog_source_revision: ari-harness-catalog/1@4847884a274eb0a3f78e25ce572b1aa84fd634bf
+catalog_source_revision: ari-harness-catalog/1@8791cb6fa8a8f305b12e07c803a765fcc2c94c3d
 driver_protocol_version: ari.harness-driver/v1
 property_vocabulary_version: ari.assurance-properties/v1
 entries:
@@ -14,19 +14,19 @@ entries:
 - id: hpc/gemm-dense-fp64-problem-correctness
   manifest: builtin/hpc_gemm_problem_correctness.yaml
   registration_report: reports/hpc_gemm_dense_fp64_problem_correctness.registration.json
-  registration_report_digest: sha256:140585db9eb6cb6cd056af6021b6dc378fcde9ffe4c3bc954ddc664db2bdbf18
+  registration_report_digest: sha256:af9035c7cf11edbd3e3c189807cd029153b32fbd737aa5a9e36a4fc56e39af8b
   registration_evidence: evidence/hpc_gemm_dense_fp64_problem_correctness/registration_evidence.json
-  registration_evidence_digest: sha256:bdec49b102653510e23798c5bda14ec89de9128dc03939e7f45b0bc62016c7c2
+  registration_evidence_digest: sha256:45fad7ae252b1a0c54078e011ec1ad93dc1d4fac98c50f402a22e4c738b9fbe3
   promotion_approval: approvals/hpc_gemm_dense_fp64_problem_correctness.approval.json
-  promotion_approval_digest: sha256:63b32fb9ea363430c9427be05566a52c7841c3d4d903f42eb8ad3f2fec7b5f87
+  promotion_approval_digest: sha256:6d381fa857790c45ec5a016eac5d151cde8c46a6d0048b3e37d1a3958155c3b4
 - id: hpc/gemm-performance
   manifest: builtin/hpc_gemm_performance.yaml
   registration_report: reports/hpc_gemm_performance.registration.json
-  registration_report_digest: sha256:e9942d89fb7be2ac5627d8c021559cefb2e4c458ef6eab1cf7b416ae47a06f83
+  registration_report_digest: sha256:750f0381b5e4e23773c9a1187df6c8ac230afb66c103032227fef3bf656d9e45
   registration_evidence: evidence/hpc_gemm_performance/registration_evidence.json
-  registration_evidence_digest: sha256:bbb43c978ffd53966eebeacbb19704322df9492fdc17bbd379c7877304cbfd42
+  registration_evidence_digest: sha256:0e9a1705233933623658d0c365fae08decd9df3afd72dd4f8bfbf82b9da30cbe
   promotion_approval: approvals/hpc_gemm_performance.approval.json
-  promotion_approval_digest: sha256:5064b5e18cf72d5338aeb0664e6bdd7df8f9fccea31504db2028deccf3e6d98a
+  promotion_approval_digest: sha256:47d6dd6a91e439a00701066a9a82173fd54e457e56a0d881b7a3a41048d2d501
 - id: hpc/spmm-correctness
   manifest: builtin/hpc_spmm_correctness.yaml
   registration_report: reports/hpc_spmm_correctness.registration.json
