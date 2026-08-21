@@ -98,7 +98,8 @@ production); the §5.4 dual-objective boards are computed by `_candidate_replay_
 Only the most important invariants are summarized here; detailed invariants live in the task
 plans (the paper-phase BP-1…BP-12 register in [00_paper_pipeline_investigation.md](00_paper_pipeline_investigation.md)
 §5.7). A `rqgm_archive` run is still an `ari_rqgm`-substrate run and additionally honors the
-parent set's B-invariants ([../ari_rqgm/INDEX.md](../ari_rqgm/INDEX.md)).
+exploration-phase invariants
+([RQGM Architecture → Key invariants](../../concepts/rqgm_architecture.md#key-invariants)).
 
 - `paper.mode: linear` (default) is byte-identical to today's paper pipeline; when off, no
   `ari.rqgm` module is imported on the paper path and no new files are written.

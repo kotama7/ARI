@@ -52,7 +52,8 @@ the ground-truth corpus of
 [04_anchor_utility_and_epoch_winners.md](04_anchor_utility_and_epoch_winners.md)). The
 central design claim is that the *adversarial machinery* is largely reused. ARI's
 exploration-phase adversarial loop
-([../ari_rqgm/06_adversarial_evolution.md](../ari_rqgm/06_adversarial_evolution.md)) is
+([RQGM Runtime Walkthrough → the adversarial round](../../concepts/rqgm_runtime_walkthrough.md#_5-per-node-—-the-adversarial-round-event-driven);
+[Adversarial-loop schemas](../../reference/rqgm_schemas.md#adversarial-loop-schemas-task-06)) is
 *already* built, *already* paper-phase aware, and *already* topology-agnostic:
 
 - the attack → defense → adjudication loop (`AdversaryEngine` / `Defender` /
@@ -105,8 +106,10 @@ that boundary machinery.
   So: no new pool, reused write side — but a NEW read board, reject AI papers while
   keeping human-anchor accuracy.)*
 - The in-phase channel: a validated self-preference attack demotes the over-accepted
-  draft through the *existing* `apply_utility_penalty` (§5.4 of
-  [../ari_rqgm/06](../ari_rqgm/06_adversarial_evolution.md)).
+  draft through the *existing* `apply_utility_penalty` — the bounded, epoch-frozen penalty
+  only a judge-validated attack may apply
+  ([RQGM Architecture → Key invariants](../../concepts/rqgm_architecture.md#key-invariants) invariant 4;
+  [Configuration → `rqgm.adversarial`](../../reference/configuration.md#rqgm-adversarial-—-attack→defense→adjudication-loop)).
   **Landed scope (wave 3c, recorded 2026-07-16):** the trigger the anchor supplies is a
   *reviewer accountability* signal — `_score_reviewer_on_anchor` fires the round against a
   synthetic `_over_accepted_node` built from the over-accepted anchor CASE (the reviewer
@@ -124,8 +127,8 @@ that boundary machinery.
 - The **paper row of the role→`component_id` bridge** (§5.4): naming `paper_reviewer` as the
   role a `paper_self_preference` case implicates, so doc
   [07](07_claim_gate_handoff_and_evaluation.md) §5.8's PI3 names a channel that can fire.
-  The resolution mechanism *and* the record field it populates are parent-owned
-  ([../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md) §5.3; §10 R7).
+  The resolution mechanism *and* the record field it populates are not this doc's
+  ([The accountability binding on `validated_attack`](../../reference/rqgm_schemas.md#the-accountability-binding-on-validated-attack); §10 R7).
 
 ## 3. Non-goals
 
@@ -150,13 +153,13 @@ that boundary machinery.
 - **The archive search substrate, best-belief selection, and `paper_draft_archive.jsonl`** —
   owned by [02_paper_draft_archive_search.md](02_paper_draft_archive_search.md).
 - **The prompt-evolution pipeline, `ReplayBoard`/`AnchorBoard`, and candidate selection
-  mechanics** — owned by parent
-  [../ari_rqgm/07](../ari_rqgm/07_prompt_spec_and_prompt_evolution.md) and
-  [../ari_rqgm/05](../ari_rqgm/05_governance_orchestrator.md). This doc only feeds them
-  cases and states the dual-objective *semantics*.
-- **Impeachment / governance prosecution of the `paper_reviewer` component** — parent
-  [../ari_rqgm/05](../ari_rqgm/05_governance_orchestrator.md). The adversary has no
-  impeachment authority (invariant carried from parent-06 §1). The validated-attack →
+  mechanics** — specified in
+  [RQGM Runtime Walkthrough → Prompt evolution](../../concepts/rqgm_runtime_walkthrough.md#_7-prompt-evolution-—-candidates-crawl-the-rte-adopts)
+  and [The audit's determinism budget](../../reference/rqgm_schemas.md#the-audit-s-determinism-budget).
+  This doc only feeds them cases and states the dual-objective *semantics*.
+- **Impeachment / governance prosecution of the `paper_reviewer` component** — the
+  epoch-boundary audit ([The motion-pipeline records](../../reference/rqgm_schemas.md#the-motion-pipeline-records)).
+  The adversary has no impeachment authority (invariant carried from parent-06 §1). The validated-attack →
   `validated_attack_involvement` → `classify_target` chain was unreachable for **all eight**
   adversary types — a pre-existing parent-level defect, not a paper one — and parent task
   [../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md) has now landed the field
@@ -171,10 +174,13 @@ that boundary machinery.
   `paper_self_preference` case implicates, so that when parent
   [../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md) lands the field and the
   resolution, the chain closes with no further change here.
-- **Cost numbers and the budget ladder** — owned by
-  [06_cost_control_and_budget.md](06_cost_control_and_budget.md) and parent
-  [../ari_rqgm/12](../ari_rqgm/12_cost_control_and_context_budget.md). This doc declares
-  only the knob names it reuses.
+- **Cost numbers and the budget ladder** — the paper numbers are
+  [06_cost_control_and_budget.md](06_cost_control_and_budget.md)'s; the inherited L0–L3 level
+  ladder and its deterministic triggers are in
+  [RQGM Runtime Walkthrough → Per node](../../concepts/rqgm_runtime_walkthrough.md#_4-per-node-—-proposal-execution-governance-level),
+  and the per-epoch caps in
+  [Configuration → `rqgm.budgets`](../../reference/configuration.md#rqgm-budgets-—-per-epoch-governance-spend-caps).
+  This doc declares only the knob names it reuses.
 - **Any change to `linear` (`paper.mode: linear`) behavior.** No self-preference
   component is constructed, no prompt registered, no corpus loaded, no file written unless
   effective `PAPER_RQGM_ARCHIVE` is active (global invariant 1).
@@ -198,7 +204,7 @@ All paths repo-relative. Verified against branch `RQGM` (ari-core v0.9.1).
 | In-phase penalty channel | `ari-core/ari/rqgm/adversarial/engine.py` — `apply_utility_penalty` (line 979), `UtilityPenaltyPolicy` (line 907) | A validated self-preference attack rewrites the over-accepted draft node's `_scientific_score` (sterile-gate precedent), so best-belief selection (§[02](02_paper_draft_archive_search.md)) will not hand the over-accepted draft to the claim gate. Epoch-frozen, deterministic, never resurrects a sterile node. Reused verbatim. |
 | Paper entry hook | `ari-core/ari/cli/projects.py` — `_rqgm_paper = getattr(_bfts_paper, "rqgm", None)` (line 163), `run_paper_candidate_escalation` (line 171) | The paper-phase runtime is already discovered here (duck-typed, absent under `linear`). The `PaperArchiveRuntime` (§[01](01_paper_execution_mode.md)) constructs the paper `AdversarialRound` and drives per-draft rounds; this doc adds no new entry point. |
 | Persistence + registration | `ari-core/ari/paths.py` — `META_FILES`: `rqgm_adversarial_cases.jsonl` (line 455), `adversarial_replay_pool.json` (line 456) | **Already registered.** Self-preference records ride the existing JSONL truth + snapshot; this doc adds **no** new checkpoint filename (part of the "how little is new" claim). |
-| Cost metering label | `ari-core/ari/rqgm/adversarial/engine.py` — `_PromptedActor._complete` (line 553), `phase="governance", skill="rqgm_adversarial"` | Self-preference LLM calls inherit the same cost-tracker labels, so [06](06_cost_control_and_budget.md) / parent [../ari_rqgm/12](../ari_rqgm/12_cost_control_and_context_budget.md) meter them with the same knobs. |
+| Cost metering label | `ari-core/ari/rqgm/adversarial/engine.py` — `_PromptedActor._complete` (line 553), `phase="governance", skill="rqgm_adversarial"` | Self-preference LLM calls inherit the same cost-tracker labels, so [06](06_cost_control_and_budget.md) and the shared `adversary_call` budgeted action kind ([Configuration → `rqgm.budgets`](../../reference/configuration.md#rqgm-budgets-—-per-epoch-governance-spend-caps)) meter them with the same knobs. |
 | Prompt registration + snapshots | `ari-core/ari/prompts/` — `FilesystemPromptLoader.load_versioned`, `record_prompt_use`; `ari-core/tests/test_prompt_snapshots.py`, `test_prompt_registry.py` | The new adversary `.md` follows the parent-06 §7 pattern: committed template, registered in the expected-key/hash tests and all four snapshot layers. |
 | Founding registry tables | `ari-core/ari/rqgm/prompt_spec.py` — `FOUNDING_PROMPT_TABLE` (line 153, adversary block 184–199), `FOUNDING_COMPONENT_TABLE` (line 232, adversary block 233–247), `founding_registration_events` (line 407) | All seven adversaries are founding prompts **and** founding components; nothing auto-registers an eighth (`test_rqgm_founding_bootstrap.py:76–78` pins registry ids == the tables exactly). This doc adds the two rows that put its adversary on the same terms (§5.6), paper-mode-gated per [03](03_writer_reviewer_governed_roles.md) §5.5. |
 | Sanction reachability | `ari-core/ari/rqgm/transition_engine.py` — `resolve_transition` (line 414), `entry = comps.get(component_id)` (line 669), `unknown component` rejection (line 692) | The registry lookup that decides whether a warning/probation/quarantine (or the T16 emergency) can land on a component id at all. It is why the §5.6 rows are about **governance**, not evolvability. |
@@ -229,8 +235,8 @@ difference decides what this doc may claim:
   **nothing**: `grep -rn affected_components ari-core/ari/rqgm --include=*.py` returns only
   `records.py`, and historically no caller passed it. Every governance consumer keys on
   `target_component_id` instead (`governance/_reliability.py:61`,
-  `governance/_evidence.py:57`), which `to_dict` did not emit at all until parent task
-  [../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md) landed it. **So
+  `governance/_evidence.py:57`), which `to_dict` did not emit at all until the accountability
+  binding landed ([The accountability binding on `validated_attack`](../../reference/rqgm_schemas.md#the-accountability-binding-on-validated-attack)). **So
   `affected_components` is NOT, on its own, "an input to parent-05 governance"** — it is the
   observed ROLE, and roles are not what a prosecutor sentences. It reaches governance only via
   parent-15's construction-time role → `component_id` resolution, and only for a case type that
@@ -457,8 +463,11 @@ The pool's two views are reused with no change of contract:
   candidate reviewer prompt: the draft refs, the attack, the defense, the judgment, and the
   `expected_behavior` (`{paper_reviewer: reject AI-authored over-acceptance}`).
 - `abstract_view` (pool.py:349) — the contamination-safe `FailureSummary`
-  (`build_failure_summary`, records.py:811) that clean-room reviewer regeneration
-  (parent [../ari_rqgm/08](../ari_rqgm/08_clean_room_regeneration.md)) may read. It needs
+  (`build_failure_summary`, records.py:811) that clean-room reviewer regeneration may read —
+  the summary reads no attack or defense text at all, which is what makes the abstract view
+  contamination-safe by construction
+  ([RQGM Architecture → Key invariants](../../concepts/rqgm_architecture.md#key-invariants) invariant 7;
+  [Clean-room schemas](../../reference/rqgm_schemas.md#clean-room-schemas-task-08)). It needs
   one new `_FAILURE_PATTERNS` entry (records.py:779):
 
 ```python
@@ -480,16 +489,17 @@ reads a *component*-shaped `target_component_id`. That is a **two-layer** mismat
 
 | Layer | Mismatch | Owner |
 |---|---|---|
-| **Value space** — the generic role→component resolution | the record names a ROLE (`"paper_reviewer"`); `_reliability.py:61` wants a COMPONENT ID (`"paper_reviewer_v1"`) | parent [../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md) §5.3 |
+| **Value space** — the generic role→component resolution | the record names a ROLE (`"paper_reviewer"`); `_reliability.py:61` wants a COMPONENT ID (`"paper_reviewer_v1"`) | [The accountability binding on `validated_attack`](../../reference/rqgm_schemas.md#the-accountability-binding-on-validated-attack) |
 | **Value space** — *which* role a `paper_self_preference` case implicates | nothing names `paper_reviewer` as the answerable role | **this doc** (§5.4) |
 | **Field** | ~~`ValidatedAttackRecord` has no `target_component_id` at all~~ — **LANDED**: parent-15 added the field, the non-empty-only emit and the optional schema property | parent [../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md) (`implemented`; §10 R7) |
 
 This doc owns one row of the answer: `paper_self_preference` implicates the
 `paper_reviewer` AND `paper_writer` roles. **Deliverable:** the `_AFFECTED_ROLES_BY_TYPE` row
-(`{"paper_self_preference": ("paper_reviewer", "paper_writer")}`) that parent
-[../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md) §5.3 reads, alongside this
-doc's existing `_EXPECTED_BEHAVIOR_BY_TYPE` row. The **resolution itself is parent-15's**: it
-happens in `AdversarialRound._run` via `_roles_for_node` (round.py:223) + `_resolve_bindings`
+(`{"paper_self_preference": ("paper_reviewer", "paper_writer")}`) that the construction-time
+binding reads ([The accountability binding on `validated_attack`](../../reference/rqgm_schemas.md#the-accountability-binding-on-validated-attack)),
+alongside this doc's existing `_EXPECTED_BEHAVIOR_BY_TYPE` row. The **resolution itself is not
+this doc's**: it happens in `AdversarialRound._run` via `_roles_for_node` (round.py:223) +
+`_resolve_bindings`
 (round.py:241), with the fan-out at round.py:375–393 emitting one record per resolvable role
 (the writer bound only when the draft is Layer-0-unfaithful), NOT at the
 `_log_all` audit-log mirror (round.py:289–302) — patching the payload at the mirror would make
@@ -498,7 +508,7 @@ the `rqgm_audit.jsonl` copy differ from the `rqgm_adversarial_cases.jsonl` truth
 (`test_rqgm_adversarial.py:506-507`). Resolving at construction gives both sinks identical bytes.
 The role is resolved against the **epoch-frozen** `_active_components()` map (round.py:131–141) —
 the incumbent that actually made the decision — never a live `active_set()` read
-([../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md) §5.6).
+([The accountability binding on `validated_attack`](../../reference/rqgm_schemas.md#the-accountability-binding-on-validated-attack)).
 
 Three decisions pin the shape:
 
@@ -539,7 +549,7 @@ production calls.)*
 
 At the next epoch boundary, candidate `paper_reviewer` prompts (produced by the
 prompt-evolution machinery of [03](03_writer_reviewer_governed_roles.md) /
-parent [../ari_rqgm/07](../ari_rqgm/07_prompt_spec_and_prompt_evolution.md)) are scored by
+[RQGM Runtime Walkthrough → Prompt evolution](../../concepts/rqgm_runtime_walkthrough.md#_7-prompt-evolution-—-candidates-crawl-the-rte-adopts)) are scored by
 `PaperArchiveRuntime._paper_candidate_evaluator` (`paper_runtime.py`), whose evaluation
 dicts merge into `candidate_evaluations` and ride the role-agnostic `resolve_transition`
 T1→T3→T6 spine. Before scoring, a candidate whose resolved `role_instruction` dropped a
@@ -618,7 +628,7 @@ following the plan 14 §5.5 dated-amendment convention:
 
 **Boundary-reward, not in-loop reward.** The replay/anchor pass rates influence *which
 candidate reviewer prompt becomes active next epoch* (a `RegistryTransitionEngine`
-adoption decision, parent [../ari_rqgm/09](../ari_rqgm/09_registry_transition_engine.md)) —
+adoption decision, [the four facades](../../concepts/rqgm_architecture.md#the-four-facades)) —
 never the current epoch's frontier score. This preserves the within-epoch freeze (global
 invariant 7): the active `paper_reviewer` prompt hash and the utility policy are frozen for
 the epoch; the dual objective bites only at the boundary, through the same
@@ -637,7 +647,7 @@ the epoch; the dual objective bites only at the boundary, through the same
 | `ArtifactBundle` paper fields | **NEW** (optional, fail-safe defaults) | engine.py:133 |
 | **founding prompt row** (paper-mode-gated) | **NEW** (one row) | `FOUNDING_PROMPT_TABLE` prompt_spec.py:153 |
 | **founding component row** (paper-mode-gated) | **NEW** (one row) | `FOUNDING_COMPONENT_TABLE` prompt_spec.py:232 |
-| `_AFFECTED_ROLES_BY_TYPE` entry (the bridge's paper row) | **NEW** (one entry) | round.py:42, §5.4; table + resolution owned by [../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md) §5.3 |
+| `_AFFECTED_ROLES_BY_TYPE` entry (the bridge's paper row) | **NEW** (one entry) | round.py:42, §5.4; table + resolution specified in [The accountability binding on `validated_attack`](../../reference/rqgm_schemas.md#the-accountability-binding-on-validated-attack) |
 | human/AI authorship corpus + `rqgm.paper.self_preference.*` | **NEW** (data + config) | §5.3 |
 | `RawAttackRecord`/`DefenderResponse`/`JudgmentRecord`/`ValidatedAttackRecord`/`UtilityRecord`/`AdversarialReplayCase` schemas | REUSED | records.py |
 | `AdversaryEngine`/`Defender`/`ArtifactJudge`/`apply_utility_penalty`/`should_attack`/`build_artifact_bundle`/`AdversarialRound` | REUSED | engine.py, round.py |
@@ -732,8 +742,8 @@ member of `ADVERSARY_TYPES` (records.py:43). `raw_attack_violations` (records.py
 membership in that tuple; the record JSON layout is unchanged.
 
 This is also why §5.4's bridge does **not** add a field here: `target_component_id` on
-`ValidatedAttackRecord` is parent-owned
-([../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md), §10 R7) precisely
+`ValidatedAttackRecord` is optional and present-or-absent, never present-and-empty
+([The accountability binding on `validated_attack`](../../reference/rqgm_schemas.md#the-accountability-binding-on-validated-attack); §10 R7) precisely
 because an unconditional emit would change the layout of every record the seven types
 already write, contradicting this section and the §8.3 byte-identity guarantee. This doc
 contributes only the *value* the parent's field will carry for `paper_self_preference`
@@ -787,7 +797,7 @@ out of `ari.public.*` — no public-API contract snapshot churn):
 | `adversary_paper_self_preference.md` | `ari/prompts/rqgm/` | Committed v1 template (parent-06 §7 posture); registered in the four snapshot layers. |
 | `FOUNDING_PROMPT_TABLE += ("adversary_paper_self_preference_prompt_v1", …)` | `ari/rqgm/prompt_spec.py:153` | **NEW** row, alphabetical inside the adversary block (`overclaim` < `paper_self_preference` < `prior_art`), `role="adversary"`, `evolvable=True`, `{"__reply__": "json_object", "attack_claim": "string"}` — identical `(role, tier, evolvable)` posture to the seven. Registered only under effective `PAPER_RQGM_ARCHIVE` (§5.6). Rollup winner unchanged (`adversary_reproducibility_prompt_v1`). |
 | `FOUNDING_COMPONENT_TABLE += ("adversary_paper_self_preference_v1", …)` | `ari/rqgm/prompt_spec.py:232` | **NEW** row, sorted by `component_id`; `("adversary", "institutional", "adversary_paper_self_preference_prompt_v1", {})`. Makes the id the engine already stamps (engine.py:738–740) resolvable by `resolve_transition` (transition_engine.py:669) instead of `unknown component` (:692). Paper-mode-gated. |
-| `_AFFECTED_ROLES_BY_TYPE["paper_self_preference"] = ("paper_reviewer", "paper_writer")` | `ari/rqgm/adversarial/round.py:98` | **NEW** row only. Parent [../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md) §5.3 owns the field; resolution runs via `_roles_for_node` (round.py:223) + `_resolve_bindings` (round.py:241) against the epoch-frozen `_active_components()` map (round.py:131–141), with the fan-out at round.py:375–393 emitting one `target_component_id`-bound record per resolvable role (the writer bound only when the draft is Layer-0-unfaithful). LANDED (2026-07-17). The seven exploration adversaries share the mechanism but bind no target (no registered `generator` component — parent-15 §5.4, R2). |
+| `_AFFECTED_ROLES_BY_TYPE["paper_self_preference"] = ("paper_reviewer", "paper_writer")` | `ari/rqgm/adversarial/round.py:98` | **NEW** row only. The field itself is specified in [The accountability binding on `validated_attack`](../../reference/rqgm_schemas.md#the-accountability-binding-on-validated-attack); resolution runs via `_roles_for_node` (round.py:223) + `_resolve_bindings` (round.py:241) against the epoch-frozen `_active_components()` map (round.py:131–141), with the fan-out at round.py:375–393 emitting one `target_component_id`-bound record per resolvable role (the writer bound only when the draft is Layer-0-unfaithful). LANDED (2026-07-17). The seven exploration adversaries share the mechanism but bind no target (no registered `generator` component — parent-15 §5.4, R2). |
 
 Wiring (all additive, all gated on `PAPER_RQGM_ARCHIVE`; no change under `linear`):
 
@@ -891,8 +901,9 @@ the §5.6 gap:
   is resolved by `resolve_transition` into a T9/T10/T11 sanction rather than silently
   dropped, and `resolve_emergency_quarantine` against it is **not** rejected as
   `unknown component` (transition_engine.py:692). One assertion each — the full T9–T19
-  matrix is parent [../ari_rqgm/09](../ari_rqgm/09_registry_transition_engine.md)'s
-  topology-agnostic inherited coverage.
+  matrix is the fixed transition table's topology-agnostic inherited coverage
+  ([the four facades](../../concepts/rqgm_architecture.md#the-four-facades);
+  [Configuration → `rqgm.transition`](../../reference/configuration.md#rqgm-transition-—-registrytransitionengine-thresholds)).
 - **Governed bytes.** `GovernedPromptLoader` raises on tampered
   `rqgm/adversary_paper_self_preference.md` bytes (the frozen-spec refusal,
   prompt_loader.py:151–158) — the check an ungoverned key skips.
@@ -958,7 +969,8 @@ CI placement: plain ari-core tests under `refactor-guards.yml`; no new workflow.
   so a self-preference penalty and an anchor-disagreement penalty could double-count on one
   draft. Mitigation: the in-phase penalty is the epoch-frozen `UtilityPenaltyPolicy` with a
   `penalty_cap` (engine.py:918), and `partially_valid` is half-weight; the two channels are
-  distinguished by `case_type` in the `UtilityRecord.input_refs` for [../ari_rqgm/10](../ari_rqgm/10_frontier_repair_and_selective_erasure.md)'s recompute.
+  distinguished by `case_type` in the `UtilityRecord.input_refs` for the frontier-repair recompute
+  ([RQGM Architecture → Key invariants](../../concepts/rqgm_architecture.md#key-invariants) invariant 6).
 - **R4 — Judge leniency mirrors reviewer leniency.** If the `ArtifactJudge` shares the
   reviewer's self-preference bias, self-preference attacks never validate. Mitigation: the
   Judge is a distinct evolving role with its own prompt (parent-06 §5.1), audited by parent-05
@@ -1002,9 +1014,10 @@ CI placement: plain ari-core tests under `refactor-guards.yml`; no new workflow.
   why CI is green over a dead chain. **This is a pre-existing parent-level defect and NOT
   paper-specific**: the parent's own harness appends `validated.to_dict()` with no target
   (`ari-core/ari/rqgm/evaluation/smoke.py:212–214`), and parent
-  [../ari_rqgm/05](../ari_rqgm/05_governance_orchestrator.md):183 states the intent
-  ("≥N high-severity validated attacks affecting a component") its :297 fixture already
-  mocks. Filed as the new parent task
+  the prosecution step's own rule states the intent
+  ("≥N high-severity validated attacks affecting a component",
+  [The motion-pipeline records](../../reference/rqgm_schemas.md#the-motion-pipeline-records))
+  and the parent's :297 fixture already mocks it. Filed as the new parent task
   [../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md) (against parent-05 +
   parent-06, which owns `records.py`) — **not** fixed here, and not silently assumed:
   §3 and §5.1 now claim no prosecution path from the record. The correct shape for the

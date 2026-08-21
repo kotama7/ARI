@@ -22,7 +22,7 @@ two ends that everything else feeds into:
    panel** (the paper-phase analog of RQGM's Tab.1 acceptance rate), the paper-specific RQGM
    detection metrics (self-preference detection, reviewer–anchor agreement), and a three-rung
    B-baseline ladder (`B0_paper_linear`, `B_archive_no_coevo`, `B_full`). It does this by
-   **extending the existing `scripts/rqgm_eval/` harness** ([../ari_rqgm/13_evaluation_and_ablation.md](../ari_rqgm/13_evaluation_and_ablation.md)),
+   **extending the existing `scripts/rqgm_eval/` harness** ([RQGM Evaluation and Ablation](../../guides/rqgm_evaluation.md)),
    not by building a parallel one.
 
 Because this doc depends on all of 00–06, it ALSO carries the **whole-set completion and
@@ -36,8 +36,10 @@ before any of them may be deleted.
   `science_data.json`), so the existing claim-gate/compile/finalize stages consume it with zero
   change.
 - The normative statement that the claim gate stays a **Layer-0 sibling**, never kernel-wrapped,
-  never evolved — the paper-phase restatement of [../ari_rqgm/04_constitutional_kernel.md](../ari_rqgm/04_constitutional_kernel.md)'s
-  "the ConstitutionalKernel never wraps the fixed verifier / claim gate" decision.
+  never evolved — the paper-phase restatement of the fixed-layer rule that the kernel, the fixed
+  verifier and the claim-evidence hard gate are never evolution targets
+  ([Execution Modes → Constitutional kernel (Layer 0)](../../guides/execution_modes.md#constitutional-kernel-layer-0);
+  [RQGM Architecture → Key invariants](../../concepts/rqgm_architecture.md#key-invariants) invariant 9).
 - Resolution of Q-49's **per-epoch draft versioning** half: drafts are records in
   `paper_draft_archive.jsonl` (owned by [02_paper_draft_archive_search.md](02_paper_draft_archive_search.md));
   `full_paper.tex` overwrite-in-place is preserved for the winner only.
@@ -69,8 +71,10 @@ before any of them may be deleted.
   harness is a script, per the "config-only activation for v1" decision inherited from
   [01_paper_execution_mode.md](01_paper_execution_mode.md)).
 - No RQGM-verbatim Beta-posterior / BB_ε machinery: the acceptance-rate metric is a plain
-  proportion over a fixed external panel, exactly as [../ari_rqgm/13_evaluation_and_ablation.md](../ari_rqgm/13_evaluation_and_ablation.md) §3 decided for the exploration metrics (binary ground
-  truth for detection; scalar science scores stay scalar).
+  proportion over a fixed external panel, exactly as the exploration metrics decided — "ground
+  truth is binary and true by construction"
+  ([Failure injections](../../guides/rqgm_evaluation.md#failure-injections)); scalar science
+  scores stay scalar.
 
 ## 4. Existing ARI touchpoints
 
@@ -159,7 +163,7 @@ selection + copy, deterministic and resume-safe.
 
 **Normative (restatement, not a new rule).** The claim-evidence hard gate is the ONLY blocking
 gate of the integration, deterministic (no LLM), and RQGM-independent. Per
-[../ari_rqgm/04_constitutional_kernel.md](../ari_rqgm/04_constitutional_kernel.md), the
+[Execution Modes → Constitutional kernel (Layer 0)](../../guides/execution_modes.md#constitutional-kernel-layer-0), the
 ConstitutionalKernel never wraps the fixed verifier or the claim gate; the same holds here:
 
 1. The winning draft is submitted to `run_hard_gate(..., phase="final", write=True)` through the
@@ -180,8 +184,11 @@ final paper must clear is the same deterministic floor a linear run clears.
 ### 5.4 Resolving Q-49's per-epoch draft versioning half
 
 Q-49 (from [../ari_rqgm/00_current_ari_investigation.md](../ari_rqgm/00_current_ari_investigation.md) §5.9, recorded in this set's brief §2) left open "per-epoch output versioning for the paper
-pipeline (fixed paths overwritten in place)". [../ari_rqgm/13_evaluation_and_ablation.md](../ari_rqgm/13_evaluation_and_ablation.md) §3 resolved the exploration half ("no per-epoch versioning;
-`full_paper.tex` overwrite-in-place stays; each evaluated condition runs in a fresh checkpoint").
+pipeline (fixed paths overwritten in place)". The exploration half is already resolved: no
+per-epoch versioning, `full_paper.tex` overwrite-in-place stays, and every evaluated condition
+runs in a fresh checkpoint — "Every run gets a fresh checkpoint — no resume, no
+`skip_if_exists` reuse across conditions"
+([Comparison policies](../../guides/rqgm_evaluation.md#comparison-policies)).
 This task resolves the **paper-archive half**:
 
 - **Drafts are archive records, not file overwrites.** Every draft candidate and every
@@ -192,7 +199,7 @@ This task resolves the **paper-archive half**:
   handoff. Downstream the pipeline continues to treat `{ckpt}/full_paper.tex` as the single source
   of truth, so the P2/P5 conventions and the `skip_if_exists` stage guards behave identically.
 - **Evaluation isolation** stays fresh-checkpoint-per-condition (inherited from
-  [../ari_rqgm/13_evaluation_and_ablation.md](../ari_rqgm/13_evaluation_and_ablation.md) §5.2), so
+  [Comparison policies](../../guides/rqgm_evaluation.md#comparison-policies)), so
   cross-condition comparison never depends on which draft won a prior run.
 
 This is the minimal, plan-consistent resolution: the archive gives per-draft versioning *inside*
@@ -219,7 +226,7 @@ paper_acceptance_rate(condition) =
   self-preference would grade its own output — the exact failure Task 05 exists to catch. The
   harness asserts panel-rubric ids ∉ the run's `paper_reviewer` prompt lineage and that no
   `anchor_*` case id appears in the panel inputs (mirrors the `eval_*`/`adv_*`/`anchor_*`
-  namespace-disjointness check in [../ari_rqgm/13_evaluation_and_ablation.md](../ari_rqgm/13_evaluation_and_ablation.md) §5.3).
+  namespace-disjointness check in [Failure injections](../../guides/rqgm_evaluation.md#failure-injections)).
 - **Tier-3 only.** The panel needs real LLMs, so acceptance rate is a Tier-3 (manual campaign)
   metric, reported per condition with N seeds; it is never in CI (identical policy to the
   exploration ablation).
@@ -253,7 +260,7 @@ paper_conditions:
 ```
 
 Marginal reads (paired, same experiment set, same models, node-budget parity, ≥3 seeds — policy
-inherited from [../ari_rqgm/13_evaluation_and_ablation.md](../ari_rqgm/13_evaluation_and_ablation.md) §5.2):
+inherited from [Comparison policies](../../guides/rqgm_evaluation.md#comparison-policies)):
 **archive value = B_archive_no_coevo − B0_paper_linear**;
 **co-evolution value = B_full − B_archive_no_coevo**. Cost is REPORTED, not equalized, so the
 overhead of each rung is visible (the `linear`-cost claim of [06_cost_control_and_budget.md](06_cost_control_and_budget.md) is a *prediction* this ladder tests).
@@ -274,7 +281,7 @@ paper helpers alongside `ari-core/ari/rqgm/evaluation/metrics.py::compute_metric
 P3 reuses the EXISTING attack→`ValidatedAttackRecord`→replay machinery unchanged (Task 05's
 "bright spot": only the adversary type + a human/AI paper corpus are new). P4 reuses the gate's
 own `metrics` — nothing recomputed. P2/P1 are the reviewer-utility and outcome measures. This set
-composes with the exploration metrics 1–13 of [../ari_rqgm/13_evaluation_and_ablation.md](../ari_rqgm/13_evaluation_and_ablation.md) §5.4; the paper metrics live in the `paper` sub-block of the same
+composes with the exploration metrics 1–13 of [RQGM Evaluation and Ablation → Metrics](../../guides/rqgm_evaluation.md#metrics); the paper metrics live in the `paper` sub-block of the same
 `rqgm_eval_metrics.json` (§6).
 
 ### 5.8 Injections reused / added for the paper set
@@ -287,7 +294,7 @@ Two fixture injections and one scripted double, all riding the parent harness me
 |---|---|---|---|---|---|
 | PI1 | **Draft overclaim** | fixture | winner `full_paper.tex` asserting numbers with no `% CLAIM` anchor / no evidence node | `run_hard_gate` `uncovered_numeric`/`missing_evidence` (reuses parent injection 2) | B0_paper_linear (gate) |
 | PI2 | **AI-authored acceptance** | fixture | a labelled AI-authored paper in the reviewer sample that the frozen reviewer would accept | `paper_self_preference` adversary → ValidatedAttackRecord → replay (Task 05) | B_full |
-| PI3 | **Reviewer leniency** | scripted | `always_accept` `paper_reviewer` double (via `rqgm.eval.scripted_components`) | P2 reviewer–anchor agreement collapse (metric, offline — observability only, §5.7) **AND** ≥2 `paper_self_preference` `ValidatedAttackRecord`s whose `affected_components` role resolves to the epoch-frozen incumbent `paper_reviewer`'s `component_id` and is stamped on the record's `target_component_id` at construction ([../ari_rqgm/15](../ari_rqgm/15_validated_attack_target_binding.md) §5.3) ⇒ `classify_target` → `file` (`ATTACK_THRESHOLD = 2`, `ari-core/ari/rqgm/governance/_prosecution.py:34,91-92`) ⇒ impeachment motion filed against the reviewer component | B_full |
+| PI3 | **Reviewer leniency** | scripted | `always_accept` `paper_reviewer` double (via `rqgm.eval.scripted_components`) | P2 reviewer–anchor agreement collapse (metric, offline — observability only, §5.7) **AND** ≥2 `paper_self_preference` `ValidatedAttackRecord`s whose `affected_components` role resolves to the epoch-frozen incumbent `paper_reviewer`'s `component_id` and is stamped on the record's `target_component_id` at construction ([The accountability binding on `validated_attack`](../../reference/rqgm_schemas.md#the-accountability-binding-on-validated-attack)) ⇒ `classify_target` → `file` (`ATTACK_THRESHOLD = 2`, `ari-core/ari/rqgm/governance/_prosecution.py:34,91-92`) ⇒ impeachment motion filed against the reviewer component | B_full |
 
 PI1 confirms the gate STILL catches overclaims after co-evolution (the invariant that co-evolution
 never softens the gate, §5.3). PI2/PI3 confirm the self-preference loop and the anchor utility do
@@ -477,7 +484,7 @@ the readme-sync gate; no litellm/network imports — mirror the parent
 
 CI placement: Unit + Regression are plain ari-core tests (CI-hard via `refactor-guards.yml`);
 Smoke is Tier-2 opt-in; the acceptance-rate campaign (§5.5) is Tier-3, never in CI — identical
-tiering to [../ari_rqgm/13_evaluation_and_ablation.md](../ari_rqgm/13_evaluation_and_ablation.md).
+tiering to [RQGM Evaluation and Ablation → Test tiers](../../guides/rqgm_evaluation.md#test-tiers).
 
 ## 10. Risks
 

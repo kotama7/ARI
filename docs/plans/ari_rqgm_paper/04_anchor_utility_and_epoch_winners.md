@@ -26,12 +26,13 @@ This task designs both anchors for the paper-archive path:
   the in-epoch-frozen `paper_reviewer`, never cross-epoch-comparable, §5.6);
 - the **utility-policy freeze**: the anchor corpus digest, the held-out split, and the agreement
   metric are captured into a `paper_utility_policy` that is frozen into the paper epoch
-  fingerprint, mirroring [../ari_rqgm/02_epoch_state_and_registry.md](../ari_rqgm/02_epoch_state_and_registry.md)'s
-  `capture_utility_policy` / `epoch_fingerprint`;
+  fingerprint, mirroring `capture_utility_policy`
+  ([Governed utility evolution](../../concepts/rqgm_architecture.md#governed-utility-evolution)) /
+  `epoch_fingerprint` ([Id and hash discipline](../../reference/rqgm_schemas.md#id-and-hash-discipline));
 - how anchor scoring **rides selective erasure and best-belief**: reviewer retirement stales the
-  draft utilities that reviewer produced (via the topology-agnostic
-  [../ari_rqgm/10_frontier_repair_and_selective_erasure.md](../ari_rqgm/10_frontier_repair_and_selective_erasure.md)
-  closure), and best-belief draft selection consumes only non-stale, in-epoch-frozen utilities.
+  draft utilities that reviewer produced (via the topology-agnostic logical-erasure closure,
+  [RQGM Architecture → Key invariants](../../concepts/rqgm_architecture.md#key-invariants) invariant 6),
+  and best-belief draft selection consumes only non-stale, in-epoch-frozen utilities.
 
 This task **RESOLVES the anchor half of Q-49** ("ARI's ground-truth anchor definition and
 curation") left open in [../ari_rqgm/00_current_ari_investigation.md](../ari_rqgm/00_current_ari_investigation.md)
@@ -78,8 +79,9 @@ a large hand-labelled corpus on day one.
 - **The `paper_self_preference` adversary and the AI/human paper corpus.** That is
   [05_adversarial_self_preference.md](05_adversarial_self_preference.md); the anchor corpus here
   is a *labelled-quality* corpus (accept/reject), distinct from the AI-authorship corpus there.
-- **The selective-erasure engine.** Reused verbatim from
-  [../ari_rqgm/10_frontier_repair_and_selective_erasure.md](../ari_rqgm/10_frontier_repair_and_selective_erasure.md);
+- **The selective-erasure engine.** Reused verbatim
+  ([RQGM Architecture → Key invariants](../../concepts/rqgm_architecture.md#key-invariants) invariant 6;
+  [Frontier-repair schemas](../../reference/rqgm_schemas.md#frontier-repair-schemas-task-10));
   this task only states which paper records ride its closure.
 - **The paper mode switch / runtime construction.** `paper.mode`, `PaperMode`,
   `resolve_paper_mode`, `PaperArchiveRuntime`, and `paper_archive_state.json` ownership are
@@ -102,13 +104,13 @@ All paths repo-relative. Verified against branch `RQGM` (ari-core v0.9.1).
 | Utility-policy freeze (MIRROR) | `ari-core/ari/rqgm/state.py` — `capture_utility_policy` (354), `epoch_fingerprint` (276), `freeze_epoch` (340), `EpochState.utility_policy` (241) | `EpochState` freezes the scoring policy into a `hash12` fingerprint that excludes wall-clock (P2). `capture_paper_utility_policy` (§5.5) mirrors this exactly, adding the anchor corpus digest / split / agreement-metric id / label-source mix, and the paper epoch fingerprint is built the same way. Since Task 14 `capture_utility_policy` (`state.py:354`) resolves the ADOPTED policy from the registries with a cfg fallback, so the frozen policy is epoch-varying — the method-wide constancy gap closed by [../ari_rqgm/14](../ari_rqgm/14_governed_utility_evolution.md) and INHERITED here (§5.5), never re-implemented paper-side. |
 | Cross-epoch replay caching (REUSE) | `ari-core/ari/rqgm/governance_cache.py` — `replay_lookup_key` (98), `case_origin_epoch` (86), `GovernanceCache` (122); consumed by `_adjudication._cached_board_score` (215) | The cache key carries `prompt_hash`, so a reviewer candidate's anchor score is keyed to **that reviewer's hash**: anchor evidence never leaks across reviewer versions, which is why retiring a reviewer does not require re-scoring the anchor set for its successor. `use_cached_results` (defaults.yaml line 53) keeps repeat anchor scoring free. |
 | Held-out anchor pool seam (REUSE) | `ari-core/ari/rqgm/adversarial/pool.py` — `AdversarialReplayPool` (183), `admit` (212), `cases` (366), `save_snapshot` (404); the `anchor_cases` attribute is simply absent today | The paper anchor corpus is exposed through a small pool-like object carrying `.anchor_cases` (and an empty `.cases`), so it plugs into `anchor_cases(pool)` / `board_score` and `CandidateValidationPipeline(anchor_cases=...)` with no change to either. |
-| Selective erasure closure (REUSE) | `ari-core/ari/rqgm/frontier_repair.py` — prompt-hash dependency closure, `_pending_anchor` (789), `_latest_utility` (804) + [../ari_rqgm/10](../ari_rqgm/10_frontier_repair_and_selective_erasure.md) §5.3-5.5 | Topology-agnostic: the paper draft archive is a best-first draft tree ([02](02_paper_draft_archive_search.md) §5.1, `archive.depth` default 3), so draft `ReviewRecord`/`UtilityRecord`s produced by a retired `paper_reviewer` are staled by the identical closure at any depth. Anchor evidence for the retired reviewer is not reused (keyed on its `prompt_hash`; P-D "erase, don't re-scale"). |
+| Selective erasure closure (REUSE) | `ari-core/ari/rqgm/frontier_repair.py` — prompt-hash dependency closure, `_pending_anchor` (789), `_latest_utility` (804) + [Key invariants](../../concepts/rqgm_architecture.md#key-invariants) invariant 6 / [Frontier-repair schemas](../../reference/rqgm_schemas.md#frontier-repair-schemas-task-10) | Topology-agnostic: the paper draft archive is a best-first draft tree ([02](02_paper_draft_archive_search.md) §5.1, `archive.depth` default 3), so draft `ReviewRecord`/`UtilityRecord`s produced by a retired `paper_reviewer` are staled by the identical closure at any depth. Anchor evidence for the retired reviewer is not reused (keyed on its `prompt_hash`; P-D "erase, don't re-scale"). |
 | Best-belief selection precedent | `ari-core/ari/pipeline/verified_context.py` — `select_best_node` (36), `_scientific_score` (20) | The paper entry already picks the best node here for `run_paper_candidate_escalation`. Best-belief draft selection (owned by [02](02_paper_draft_archive_search.md)) is the archive analog; this task pins that it consumes only non-stale, in-epoch-frozen draft utilities (§5.8). |
 | Reviewer verdict surface | `ari-skill-paper/src/prompts/academic_reviewer.md` — `accept_recommendation ∈ {strong_accept, accept, weak_accept, reject}` (line 7) | The exact output field the anchor agreement metric compares against a corpus label. The seed prompt is LIFTED into the governed `paper_reviewer` founding prompt by [03](03_writer_reviewer_governed_roles.md); this task fixes the accept/reject binarization (§5.4). |
 | Reviewer anchor-case view | `ari-core/ari/rqgm/kernel_rules.py` — `CONTEXT_VIEW_WHITELISTS` (234), `constitution_hash` (292), `CONSTITUTION_HASH` (304) | [03](03_writer_reviewer_governed_roles.md) adds the `paper_reviewer` row whose view includes `reference_context/anchor_case`; this task owns the CONTENT of that `anchor_case` field (one reference manuscript + no leakage of its label). No `CONSTITUTION_HASH` change is authored here. |
 | Replay/anchor case sizing | `ari-core/ari/configs/defaults.yaml` — `rqgm.replay.max_cases_per_epoch: 8` (51), `use_cached_results: true` (53); `ari-core/ari/config/__init__.py` — `RQGMReplayConfig` (410), `RQGMConfig` (1039) | `sample_size` reuses this sizing idiom; the `rqgm.paper.anchor` block is a typed subsection of the paper RQGM config the same way `RQGMReplayConfig` is of `RQGMConfig`. |
 | Checkpoint registration | `ari-core/ari/paths.py` — `PathManager.META_FILES` (404); `ari-core/ari/orchestrator/node_report/builder.py` — `_INTERNAL_JSON_NAMES` (327) | `paper_anchor_corpus.jsonl` (and any anchor result snapshot) must be registered here or it contaminates node work dirs — the exact pattern used for `epoch_state.json` / `rqgm_erasure_state.json`. |
-| Ablation / metric consumer | [../ari_rqgm/13_evaluation_and_ablation.md](../ari_rqgm/13_evaluation_and_ablation.md) §5.3 (injection 5 "Judge bias" → AnchorBoard), §5.4 metric 6 (validated-attack precision), the `anchor_*` case namespace (line 197) | Task 13 already holds the eval set disjoint from `anchor_*` cases and audits judge/reviewer bias against anchor verdicts. The paper anchor corpus is the paper-phase instance of that anchor namespace; this task keeps the held-out sample disjoint from any eval fixture. |
+| Ablation / metric consumer | [Failure injections](../../guides/rqgm_evaluation.md#failure-injections) (injection 5 "Judge bias" → AnchorBoard; the held-out `eval_*` namespace disjoint from the reserved `adv_*` / `anchor_*` prefixes) and [Metrics](../../guides/rqgm_evaluation.md#metrics) (4–8 detection quality, incl. validated-attack precision) | The evaluation harness already holds the eval set disjoint from `anchor_*` cases and audits judge/reviewer bias against anchor verdicts. The paper anchor corpus is the paper-phase instance of that anchor namespace; this task keeps the held-out sample disjoint from any eval fixture. |
 
 ## 5. Proposed design
 
@@ -118,10 +120,14 @@ The RQGM governance layer trusts an evaluator to the extent it agrees with groun
 trusts a generator only through the evaluator. ARI already implements exactly this for
 exploration: the candidate lifecycle's `anchor_evaluation` stage
 (`ari/rqgm/prompt_evolution.py:826`) scores an evaluator candidate against a "fixed held-out
-anchor set … never generated by evolving components" ([../ari_rqgm/07](../ari_rqgm/07_prompt_spec_and_prompt_evolution.md)
-§5.3 stage 5), and the `AnchorBoard` (`ari/rqgm/governance/_adjudication.py`) bounds what the
-LLM `GovernanceJudge` may conclude. **We reuse this machinery unchanged and only supply a
-paper-phase anchor corpus.**
+anchor set … never generated by evolving components" — the corpus is written once by
+curation/bootstrap tooling and **never** by a governed role, "a fixed ground truth, not an
+evolvable artifact"
+([`paper_anchor_corpus.jsonl`](../../reference/rqgm_schemas.md#paper-anchor-corpus-jsonl-—-the-read-only-accept-reject-anchor))
+— and the `AnchorBoard` (`ari/rqgm/governance/_adjudication.py`) bounds what the
+LLM `GovernanceJudge` may conclude
+([The audit's determinism budget](../../reference/rqgm_schemas.md#the-audit-s-determinism-budget)).
+**We reuse this machinery unchanged and only supply a paper-phase anchor corpus.**
 
 Decision — BOTH roles are anchored (revised 2026-07-16; supersedes the earlier "mirror the
 paper's anchor-less writer" decision):
@@ -129,9 +135,9 @@ paper's anchor-less writer" decision):
 - **`paper_reviewer` is anchored** to the APReS-equivalent accept/reject corpus (§5.2). Its utility
   across epochs is its held-out agreement with that human ground truth. A reviewer that disagrees
   with the corpus loses trust and is a candidate for probation/retirement through the EXISTING
-  `RegistryTransitionEngine` + `GovernanceOrchestrator` (owned by
-  [03](03_writer_reviewer_governed_roles.md), reused from
-  [../ari_rqgm/05](../ari_rqgm/05_governance_orchestrator.md) / [/09](../ari_rqgm/09_registry_transition_engine.md)).
+  `RegistryTransitionEngine` + `GovernanceOrchestrator` (wired by
+  [03](03_writer_reviewer_governed_roles.md), reused unchanged —
+  [RQGM Architecture → The four facades](../../concepts/rqgm_architecture.md#the-four-facades)).
 - **`paper_writer` is ALSO anchored** — to a ground truth the RQGM paper's writer never had. The
   earlier decision copied the paper's *paper-writing* domain, where the writer writes from APReS
   titles/abstracts with no experiment to be faithful to, so "there is no correct manuscript" holds.
@@ -246,8 +252,8 @@ sorted by `case_id` on write (deterministic `board_score` sampling depends on th
   (`case_origin_epoch` reads this field, `governance_cache.py:86`).
 
 The corpus is **read-only** to every governed component: it is never authored, mutated, or
-extended by an evolving role (constitutional constraint mirrored from
-[../ari_rqgm/07](../ari_rqgm/07_prompt_spec_and_prompt_evolution.md) §5.3 stage 5).
+extended by an evolving role — written once by curation/bootstrap tooling, never by a governed
+role ([`paper_anchor_corpus.jsonl`](../../reference/rqgm_schemas.md#paper-anchor-corpus-jsonl-—-the-read-only-accept-reject-anchor)).
 
 ### 5.3 Held-out split and per-epoch sampling (deterministic, P2)
 
@@ -282,8 +288,8 @@ def assign_split(cases: list[dict], *, sample_size: int, corpus_digest: str) -> 
   constitutional violation, exactly like a mid-epoch active-set change).
 - **No leakage guard**: the `held_out` cases must be disjoint from anything the reviewer's founding
   prompt was distilled from and from Task 13's `eval_*` injection set. Enforced by a load-time
-  assertion on `case_id` namespaces (`anchor_*` vs `eval_*`, mirroring
-  [../ari_rqgm/13](../ari_rqgm/13_evaluation_and_ablation.md) §5.3 disjointness check).
+  assertion on `case_id` namespaces (`anchor_*` vs `eval_*`, mirroring the harness's own
+  namespace-disjointness rule — [Failure injections](../../guides/rqgm_evaluation.md#failure-injections)).
 - **Bootstrap-label cap (the corpus is itself an attack surface).** The anchor corpus is the
   evaluation of the evaluator — the single external ground the whole anti-collusion story stands
   on. A corpus that drifts to mostly `gate_bootstrap` labels silently redefines "fair reviewing"
@@ -376,7 +382,8 @@ is now visible instead of masked by a perfect score.
 - The stage's reported `anchor_pass_rate` (`_case_evaluation`, `prompt_evolution.py:914`) is the
   reviewer's **held-out accuracy** — the paper-phase APReS utility. `ties_favor_incumbent=True`
   is set by the existing `anchor_evaluation` branch (line 834), so a tie on anchors keeps the
-  incumbent reviewer (paper-faithful; [../ari_rqgm/07](../ari_rqgm/07_prompt_spec_and_prompt_evolution.md) §5.3).
+  incumbent reviewer (paper-faithful; "fixed anchor set; ties favor the incumbent" —
+  [RQGM Runtime Walkthrough → Prompt evolution](../../concepts/rqgm_runtime_walkthrough.md#_7-prompt-evolution-—-candidates-crawl-the-rte-adopts)).
 - The same boolean, cached as a 0/1 score keyed on `(case, reviewer prompt_hash)` via
   `replay_lookup_key`, feeds `AnchorBoard.board_score` when a reviewer impeachment/adoption motion
   is adjudicated — so the governance path and the lifecycle path agree by construction.
@@ -452,8 +459,9 @@ def capture_paper_utility_policy(
 - **Within-epoch freeze (global invariant "within-epoch freeze")**: for the duration of a paper
   epoch the active `paper_writer`/`paper_reviewer` hashes AND this policy are immutable;
   co-evolution happens only at boundaries through the reused `RegistryTransitionEngine` +
-  `ConstitutionalKernel`. This is the direct paper analog of
-  [../ari_rqgm/02](../ari_rqgm/02_epoch_state_and_registry.md) §5.6.
+  `ConstitutionalKernel`. This is the direct paper analog of the exploration active-set freeze
+  ([RQGM Architecture → Key invariants](../../concepts/rqgm_architecture.md#key-invariants) invariant 1;
+  [the institution freezes](../../concepts/rqgm_runtime_walkthrough.md#_3-epoch-000-opens-—-the-institution-freezes)).
 - **Cross-epoch REWRITE of this policy rides [../ari_rqgm/14](../ari_rqgm/14_governed_utility_evolution.md), not this doc.**
   `capture_utility_policy` (`ari-core/ari/rqgm/state.py:354-382`) now resolves the ADOPTED
   `utility_policy` entry from the registries, falling back to the resolved cfg only at epoch 0 /
@@ -492,9 +500,9 @@ versions are therefore not comparable:
 - **In-epoch**: the reviewer hash is frozen (§5.5), so all drafts of an epoch are ranked on one
   consistent policy — best-belief selection within the epoch is valid.
 - **Across epochs**: a boundary may adopt `paper_reviewer_v2`. A draft scored by `v1` and a draft
-  scored by `v2` cannot be compared directly. This is the score-comparability invariant from
-  [../ari_rqgm/10](../ari_rqgm/10_frontier_repair_and_selective_erasure.md) §5.6 / risk (I-11) and
-  ARI's B-17 status quo. Decision: **"best draft" is always the best under the CURRENT epoch's
+  scored by `v2` cannot be compared directly. This is the score-comparability invariant
+  ([Research and Governance State → Scores are only comparable inside one policy](../../concepts/research_and_governance_state.md#_5-scores-are-only-comparable-inside-one-policy))
+  and ARI's B-17 status quo. Decision: **"best draft" is always the best under the CURRENT epoch's
   frozen reviewer**, computed over drafts whose utility was produced under that reviewer (or
   recomputed under it via the erasure recompute path, §5.7). We do NOT re-rank a `v1`-scored draft
   against a `v2`-scored draft by their stored scalars.
@@ -540,11 +548,12 @@ versions are therefore not comparable:
 ### 5.7 Riding selective erasure
 
 The paper draft archive is a best-first tree whose nodes are drafts ([02](02_paper_draft_archive_search.md)
-§5.1), so it is a first-class citizen of the topology-agnostic erasure closure ([../ari_rqgm/10](../ari_rqgm/10_frontier_repair_and_selective_erasure.md),
+§5.1), so it is a first-class citizen of the topology-agnostic erasure closure
+([RQGM Architecture → Key invariants](../../concepts/rqgm_architecture.md#key-invariants) invariant 6,
 `ari/rqgm/frontier_repair.py`). Decision — the paper case maps onto the EXISTING per-role policy
 (no new erasure code):
 
-| Retired paper role | Stale records | Draft-node consequence (reuses [../ari_rqgm/10](../ari_rqgm/10_frontier_repair_and_selective_erasure.md) §5.4) |
+| Retired paper role | Stale records | Draft-node consequence (reuses the slot-scoped per-role erasure policy, [Key invariants](../../concepts/rqgm_architecture.md#key-invariants) invariant 6) |
 |---|---|---|
 | `paper_reviewer` | draft `ReviewRecord` → dependent draft `UtilityRecord` | **Recompute** the draft's utility under the incoming reviewer if `rqgm.frontier_repair.recompute_utilities: true`, else **invalidate** the draft for best-belief. Never arithmetic un-scaling (P-D). |
 | `paper_writer` | draft `ProposalRecord`/seed record (its very direction came from the retired writer) | **Invalidate**: the draft direction came from the retired writer prompt; the node stays in the archive as history, excluded from best-belief. |
@@ -582,7 +591,7 @@ Best-belief draft selection (the "hand the best draft to the claim gate" step, o
 consumes ONLY:
 
 1. drafts with `status=SUCCESS` and `_valid_for_frontier=True` and `_stale=False` (the erasure
-   sentinels from [../ari_rqgm/10](../ari_rqgm/10_frontier_repair_and_selective_erasure.md) §6),
+   sentinels — [Research and Governance State → Stale, invalidated, removed, deleted](../../concepts/research_and_governance_state.md#_6-stale-invalidated-removed-deleted-—-four-different-things)),
    and
 2. utilities produced (or recomputed, §5.7) under the **current** epoch's frozen `paper_reviewer`.
 
@@ -739,8 +748,10 @@ in the epoch fingerprint for the audit trail.
 ## 7. API / class changes
 
 All new code is internal (`ari-core/ari/rqgm/paper_anchor.py`); nothing enters `ari.public.*`, the
-CLI tree, or the MCP namespace (zero contract-snapshot churn, per
-[../ari_rqgm/13](../ari_rqgm/13_evaluation_and_ablation.md) §3 posture).
+CLI tree, or the MCP namespace (zero contract-snapshot churn — the same "internal machinery, no
+contract-surface change" posture the evaluation harness holds,
+[RQGM Evaluation and Ablation](../../guides/rqgm_evaluation.md#rqgm-evaluation-and-ablation), and the
+mode-wide rule in [Internal boundaries → RQGM mode boundary](../../reference/internal_boundaries.md#rqgm-mode-boundary-ari-rqgm)).
 
 | Symbol | Location (planned) | Contract |
 |---|---|---|
@@ -772,8 +783,9 @@ Preserve-existing-behavior policy (normative):
    AnchorBoard are unchanged; `anchor_cases(pool)` still returns `None` for every exploration pool.
    The paper anchor corpus is a *separate* pool object handed only to the paper reviewer lifecycle.
 3. **No physical erasure of the corpus.** The corpus is `origin_epoch_id="anchor_static"`, outside
-   every prompt-hash closure; the §9 byte-compare test asserts it is never rewritten (invariant 13,
-   [../ari_rqgm/10](../ari_rqgm/10_frontier_repair_and_selective_erasure.md) §5.1 P-A).
+   every prompt-hash closure; the §9 byte-compare test asserts it is never rewritten (erasure is
+   logical-only — nothing is physically deleted,
+   [RQGM Architecture → Key invariants](../../concepts/rqgm_architecture.md#key-invariants) invariant 6).
 4. **Additive schema only.** `paper_utility_policy` is an additive field in `paper_archive_state.json`;
    `RQGMPaperAnchorConfig` is a typed subsection with `extra: allow`; `paper_anchor_corpus.jsonl` is
    a new META file. Nothing existing changes shape.
@@ -868,16 +880,17 @@ Resume:
   self-certifying one (§5.3); accept+ai+gate_bootstrap self-labels are excluded from `held_out`
   outright; and both label-source mixes are frozen into the epoch fingerprint (§5.5) so a drift
   toward self-labelling cannot happen without changing epoch identity. Secondary (observability,
-  not enforcement): reviewer held-out accuracy is surfaced in the eval harness
-  ([../ari_rqgm/13](../ari_rqgm/13_evaluation_and_ablation.md)) so a corpus that teaches the wrong
+  not enforcement): reviewer held-out accuracy is surfaced in the eval harness as metric P2
+  ([Paper metrics P1–P5](../../guides/rqgm_evaluation.md#paper-metrics-p1–p5)) so a corpus that teaches the wrong
   thing is *also* visible to a human before it drives retirements. Residual: the cap bounds *how
   much* of the ground truth ARI authors, not whether a human-curated label is itself wrong — R3/R4
   cover thin and leaked evidence, and no in-band mechanism can validate a human label.
 - **R3 — Tiny corpus false-confidence.** An 8-case held-out set can rank two reviewers on luck.
   Mitigation: `ties_favor_incumbent` (incumbent presumption on thin evidence), the AnchorBoard
   `BOARD_HIGH/LOW` bounding of judge verdicts, and the transition thresholds
-  (`replay_min_cases`-style floors) that gate retirement on the reused
-  [../ari_rqgm/09](../ari_rqgm/09_registry_transition_engine.md) engine.
+  (`replay_min_cases`-style floors,
+  [Configuration → `rqgm.transition`](../../reference/configuration.md#rqgm-transition-—-registrytransitionengine-thresholds))
+  that gate retirement on the reused RegistryTransitionEngine.
 - **R4 — Held-out leakage.** If a held-out manuscript was in the reviewer's founding-prompt
   distillation, agreement is inflated. Mitigation: the load-time namespace-disjointness assertion
   (§5.3) plus a curation rule that anchor manuscripts are never used as seed prompts; the split is
@@ -892,9 +905,10 @@ Resume:
   which makes `utility_policy` a governed role rewritten at boundaries through the same
   `RegistryTransitionEngine` + `ConstitutionalKernel` path every other governed artifact uses;
   the paper phase consumes that path topology-agnostically and this doc adds no utility machinery
-  of its own (§5.5). This supersedes the earlier reading that inherited
-  [../ari_rqgm/10](../ari_rqgm/10_frontier_repair_and_selective_erasure.md)'s I-11 "axes frozen per
-  run" as a permanent scope boundary: I-11 described the *status quo* (`state.py:318-320` — "in v1
+  of its own (§5.5). This supersedes the earlier reading that inherited I-11 "axes frozen per
+  run" as a permanent scope boundary — that invariant is now repealed
+  ([RQGM Architecture → Governed utility evolution](../../concepts/rqgm_architecture.md#governed-utility-evolution)):
+  I-11 described the *status quo* (`state.py:318-320` — "in v1
   the frozen policy is constant across epochs within a run … per-epoch re-weighting is a Task 10/13
   decision"), and task 14 is where that decision is now made. Residual risk for this doc: none of
   its own — **task 14 has landed** (`capture_utility_policy` resolves the adopted policy,

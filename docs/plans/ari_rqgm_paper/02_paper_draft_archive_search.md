@@ -152,7 +152,7 @@ What the tree buys — and what a depth-1 star throws away:
   lineage column cannot be pruned, cannot be retired as `_sterile`, and —
   decisively — cannot be excluded by the selective-erasure clause
   (`_valid_for_frontier`, `bfts.py:508`;
-  [../ari_rqgm/10_frontier_repair_and_selective_erasure.md](../ari_rqgm/10_frontier_repair_and_selective_erasure.md)):
+  [RQGM Architecture → Key invariants](../../concepts/rqgm_architecture.md#key-invariants), invariant 6):
   a refinement written under a retired prompt would keep scoring through the column
   of a node that survives. As nodes, the erased sub-lineage simply stops expanding.
 - **Epoch attribution.** Each draft node carries its own `epoch_id` and prompt
@@ -188,8 +188,9 @@ already bound (§9 pins this), and the budget ladder is
 tree is an archive *with lineage*: `PaperArchiveStrategy`,
 `paper_draft_archive.jsonl` and `rqgm.paper.archive.*` are unchanged — only the
 topology claim is. The governance layer is unaffected either way, because it is
-topology-agnostic (parent set's
-[../ari_rqgm/01_execution_modes_and_compatibility.md](../ari_rqgm/01_execution_modes_and_compatibility.md)).
+topology-agnostic — the paper phase reuses the kernel, epochs, registry/transition,
+adversarial and budget machinery unchanged across the topology boundary
+([RQGM Architecture → The paper-archive layer](../../concepts/rqgm_architecture.md#the-paper-archive-layer)).
 
 ### 5.2 `PaperArchiveStrategy` — mapping the draft tree onto `bfts.py`
 
@@ -327,7 +328,7 @@ Lever-by-lever reuse of `bfts.py`:
 |---|---|---|
 | `should_prune` total cap | `bfts.py:501` (`current_total >= cfg.max_total_nodes`) | Reused as the per-epoch `max_expansions` budget cap (`1 + max_expansions`). **Checked first, before the depth cap** — the reason cost is `O(max_expansions)` at any depth (§5.1). |
 | `should_prune` depth cap | `bfts.py:503` (`node.depth >= cfg.max_depth`) | Reused verbatim with `max_depth = archive.depth` (=3) → a refine chain ends at depth 3; it is a shape knob, not the cost bound. |
-| erasure clause | `bfts.py:508` (`_valid_for_frontier`) | Kept — a draft erased by selective erasure ([../ari_rqgm/10_frontier_repair_and_selective_erasure.md](../ari_rqgm/10_frontier_repair_and_selective_erasure.md)) stays excluded. Inert unless 03/04 write the key. |
+| erasure clause | `bfts.py:508` (`_valid_for_frontier`) | Kept — a draft erased by selective erasure ([RQGM Architecture → Key invariants](../../concepts/rqgm_architecture.md#key-invariants), invariant 6) stays excluded. Inert unless 03/04 write the key. |
 | one-child-per-`expand` | `bfts.py:643` (`directions[:1]`) | Preserved: `expand()` yields ≤ 1 draft placeholder; the driver re-selects the frontier after every child, passing `existing_children` — the same idiom the exploration loop uses (`bfts_loop.py:328-340`). |
 | `select_best_to_expand` | `bfts.py:512` (LLM pick), `bfts.py:346` `_select_fallback` (deterministic) | **Real best-first frontier selection** over draft nodes by `_scientific_score + diversity_bonus`, seeds-first until `width` framings exist. Reuses BFTS's *deterministic* ranking shape rather than its LLM pick: the key is already a governed score (04), so an LLM re-rank buys only nondeterminism (P2) and cost. |
 | `select_next_node` | `bfts.py:409` (LLM pick) | **Overridden to be LLM-free**: `expand()` yields one child, and a draft node's direction is fixed (`seed` / `refine`), so the semantic pick buys nothing. |
@@ -665,7 +666,8 @@ max_expansions`) spend caps are [06](06_cost_control_and_budget.md).
 ## 7. API / class changes
 
 All new code lives in the internal `ari-core/ari/rqgm/` package (not exported via
-`ari.public.*`; no public-API contract-snapshot churn — mirrors [../ari_rqgm/01_execution_modes_and_compatibility.md](../ari_rqgm/01_execution_modes_and_compatibility.md) §7).
+`ari.public.*`; no public-API contract-snapshot churn — the mode costs no contract surface,
+[Internal boundaries → RQGM mode boundary](../../reference/internal_boundaries.md#rqgm-mode-boundary-ari-rqgm)).
 
 | Symbol | Location (planned) | Contract |
 |---|---|---|

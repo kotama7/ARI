@@ -25,8 +25,9 @@ The core claim, and why this task is mostly a reuse exercise: the budget machine
 the best exploration node through the SAME per-node level ladder, adversary cap, and
 `paper_candidate` L3 trigger that exploration nodes use. The archive loop plugs the
 `paper_reviewer` / `paper_self_preference` / anchor actors into that same manager. So this
-plan **inherits the parent-set Task 12 budget verbatim**
-([../ari_rqgm/12_cost_control_and_context_budget.md](../ari_rqgm/12_cost_control_and_context_budget.md))
+plan **inherits the exploration governance budget verbatim** (the L0–L3 level ladder and its
+deterministic triggers, [RQGM Runtime Walkthrough → Per node](../../concepts/rqgm_runtime_walkthrough.md#_4-per-node-—-proposal-execution-governance-level);
+the caps themselves, [Configuration → `rqgm.governance`](../../reference/configuration.md#rqgm-governance-—-governanceorchestrator-budgets-and-posture))
 and adds only the paper-specific *structural* guards that keep the draft tree cheap:
 
 1. **best-first under a hard node cap** — the draft search is a genuine tree, and its cost is
@@ -210,7 +211,8 @@ rqgm:
   of candidates is bounded by the shared `rqgm.prompt_evolution.max_total_candidates_per_epoch`
   (4). The paper path never introduces a `rqgm.paper.prompt_evolution.max_*` alias — the count
   cap has exactly one home. Rationale: mirrors the parent-set rule that adversary/score-jump
-  knobs have one schema home ([../ari_rqgm/12](../ari_rqgm/12_cost_control_and_context_budget.md) §5.3).
+  knobs have one schema home (`max_adversary_calls_per_epoch` is "the one schema home for this cap"
+  — [Configuration → `rqgm.adversarial`](../../reference/configuration.md#rqgm-adversarial-—-attack→defense→adjudication-loop)).
 - **D2 — the effective per-epoch node cap is `node_budget = min(width·(1 + refine_rounds),
   max_expansions)`, and it is PER-EPOCH.** The single source of truth is
   `paper_archive.archive_node_budget(knobs)`: `PaperArchiveStrategy` caps on it (`self.node_budget`)
@@ -408,8 +410,8 @@ writer/reviewer co-evolution per epoch (§5.4.6 — the epoch closes once, at ro
 multiplies a row that already contains its boundary. This is a fixed, small, tunable budget.
 
 Token cost scales the same way, weighted by the role context views (which are capped
-projections per the parent-set §5.7 context-budget rules
-([../ari_rqgm/12](../ari_rqgm/12_cost_control_and_context_budget.md) §5.7)): the
+projections — "each governance actor is handed a capped, role-specific projection … never the
+archive", [Internal boundaries → Governance context views](../../reference/internal_boundaries.md#governance-context-views-ari-rqgm-context-views)): the
 `paper_reviewer` sees `{draft_manuscript, verified_context, science_data,
 reference_context/anchor_case}` (Task 03), each capped, so per-call tokens are bounded and
 `Tokens(E) ≈ Calls(E) · O(capped context)` — still linear.
@@ -449,8 +451,10 @@ This gives a monotone cost dial: `width 1 no-co-evo` (≈ today) → `width K no
 > `GovernanceBudgetManager._spend_exhausted` filters `phase == "governance"` (`budget.py:314,333`),
 > so a distinct `phase="paper_governance"` would be **invisible to the spend cap**, silently
 > disabling `rqgm.budgets.max_governance_cost_usd_per_epoch` on the paper path — contradicting §2's
-> inherit-verbatim mandate, §3's no-redesign non-goal, and parent
-> [../ari_rqgm/12](../ari_rqgm/12_cost_control_and_context_budget.md)'s single phase vocabulary.
+> inherit-verbatim mandate, §3's no-redesign non-goal, and the single `phase="governance"` cost
+> vocabulary the spend caps are defined against
+> ([Configuration → `rqgm.budgets`](../../reference/configuration.md#rqgm-budgets-—-per-epoch-governance-spend-caps),
+> "per-epoch USD cap on governance-phase LLM spend").
 > The corrected, landed convention is in the bullet below.
 
 - **Phase/skill tagging (landed convention).** Paper governed actors ride the REUSED actors and
