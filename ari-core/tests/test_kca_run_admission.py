@@ -39,6 +39,7 @@ from ari.config import ARIConfig, SkillConfig
 from ari.config.skill_runtime import manifest_runtime_metadata
 from ari.mcp.dispatch_support import runtime_tool_ref
 from ari.protocols.immutable_store import rendered_json
+from ari.protocols.integrity import bytes_digest
 from ari.public.research_contract import (
     IdeaCandidateV1,
     IdeaGenerationLockV1,
@@ -381,12 +382,20 @@ def newer_providers(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def newer_harnesses(tmp_path_factory):
-    root = _newer_catalog_root(
+def newer_harness_root(tmp_path_factory):
+    """A catalog root where only the Harness catalog moved past the run."""
+
+    return _newer_catalog_root(
         tmp_path_factory.mktemp("newer-harnesses") / "config",
         "harnesses/catalog.yaml",
     )
-    return _admit(tmp_path_factory.mktemp("newer-harnesses-run"), config_root=root)
+
+
+@pytest.fixture(scope="module")
+def newer_harnesses(tmp_path_factory, newer_harness_root):
+    return _admit(
+        tmp_path_factory.mktemp("newer-harnesses-run"), config_root=newer_harness_root
+    )
 
 
 @pytest.fixture(scope="module")
@@ -620,8 +629,8 @@ def test_resume_never_rebinds_to_a_newer_provider_catalog(
         load_admission_artifacts(run)
 
 
-def test_resume_reads_the_admitted_harness_catalog_not_the_latest(
-    admitted_run, newer_harnesses, tmp_path
+def test_resume_pins_harness_snapshot(
+    admitted_run, newer_harnesses, newer_harness_root, tmp_path, no_re_resolution
 ):
     """Task 20 criterion 50: resume does not resolve against the latest
     Harness catalog.
@@ -632,18 +641,36 @@ def test_resume_reads_the_admitted_harness_catalog_not_the_latest(
     the suite either.  Which manifests that suite ends up holding depends on the
     machine the admission ran on and is deliberately not asserted here; the
     identity a resume must not exchange for a newer one is.
+
+    Three sides, because a resume could lose the criterion at any of them: the
+    record it reads back, the record it refuses to have replaced, and the live
+    Harness view the resumed process actually verifies against.  The last one is
+    where the criterion's word *resolve* lives -- a resume that re-entered the
+    resolver and happened to keep the old bytes would satisfy the first two --
+    so it enters ``admit_from_checkpoint`` with the newer catalog on disk and
+    the admission builder wired to fail if it is called at all.
+
+    The fields compared are not listed here.  They are whatever a newer Harness
+    catalog actually moved in ``KCARunAdmissionV1``, derived by diffing the two
+    admissions, so a field added to the record later is covered without editing
+    this test.
     """
 
     checkpoint, artifacts = admitted_run
     admitted = artifacts.admission
     latest = newer_harnesses.admission
-    assert (
-        latest.harness_catalog_snapshot_digest
-        != admitted.harness_catalog_snapshot_digest
-    )
+    moved = {
+        name
+        for name in KCARunAdmissionV1.model_fields
+        if getattr(latest, name) != getattr(admitted, name)
+    }
+    assert moved, "the newer Harness catalog moved no admitted identity to keep"
+    assert "harness_catalog_snapshot_digest" in moved
     # The baseline Harness Lock is resolved against a catalog snapshot, so a
     # newer catalog re-resolves it.
-    assert latest.baseline_harness_lock_digest != admitted.baseline_harness_lock_digest
+    assert "baseline_harness_lock_digest" in moved
+    # Only the Harness layer moved, so nothing below is a catalog that happened
+    # to stay still.
     assert (
         latest.knowledge_catalog_snapshot_digest
         == admitted.knowledge_catalog_snapshot_digest
@@ -654,18 +681,8 @@ def test_resume_reads_the_admitted_harness_catalog_not_the_latest(
     )
 
     resumed = _resumed(checkpoint)
-    assert (
-        resumed.admission.harness_catalog_snapshot_digest
-        == admitted.harness_catalog_snapshot_digest
-    )
-    assert (
-        resumed.admission.baseline_harness_lock_digest
-        == admitted.baseline_harness_lock_digest
-    )
-    assert (
-        resumed.admission.active_harness_lock_digest
-        == admitted.active_harness_lock_digest
-    )
+    for name in sorted(moved):
+        assert getattr(resumed.admission, name) == getattr(admitted, name), name
     assert resumed.documents["harness_catalog_snapshot.json"][
         "catalog_source_revision"
     ] == artifacts.documents["harness_catalog_snapshot.json"].catalog_source_revision
@@ -676,6 +693,20 @@ def test_resume_reads_the_admitted_harness_catalog_not_the_latest(
     assert (
         resumed.admission.oracle_bundle_digest == admitted.oracle_bundle_digest
     )
+
+    # The seam a resumed process enters, with the newer Harness catalog the one
+    # a fresh resolution would find.
+    live = _copy_run(checkpoint, tmp_path / "live")
+    runtime, _mcp = _runtime(live)
+    with _config_root(newer_harness_root):
+        replayed = runtime.admit_from_checkpoint(
+            checkpoint_dir=live, run_id=RUN_ID, task_tags=TASK_TAGS
+        )
+    assert replayed == admitted
+    assurance = runtime._assurance_bridge
+    assert assurance is not None, "the resumed run installed no Harness view"
+    assert assurance.catalog.snapshot_digest == admitted.harness_catalog_snapshot_digest
+    assert assurance.baseline.lock_digest == admitted.baseline_harness_lock_digest
 
     run = _copy_run(checkpoint, tmp_path)
     with pytest.raises(
@@ -904,3 +935,390 @@ def test_a_run_without_an_admission_reports_absence_rather_than_a_default(tmp_pa
 
     with pytest.raises(FileNotFoundError):
         load_run_admission(tmp_path)
+
+
+# ── Task 20 criterion 33: enforce admission fails below 100% coverage ────────
+#
+# ``admission_builder`` passes ``enforce_coverage=modes.assurance == "enforce"``
+# into the resolver.  The resolver's own refusal is covered elsewhere; what is
+# NOT covered is that switch -- pinning it to ``True`` or to ``False`` left
+# every test in this repository green.
+#
+# The shortfall below is authored, not found.  Resolving the shipped contract
+# against the shipped catalog can fall short for reasons that belong to the
+# registered harnesses and to the host -- an admission that refuses for one of
+# those reasons says nothing about the switch, and a run that happens to be
+# short everywhere gives no covered control to compare against.  So this run's
+# whole Harness layer is written here: one reviewed manifest, one tolerance
+# policy, and a property vocabulary whose required properties this test picks.
+
+COVERAGE_POLICY_ID = "coverage-fixture/v1"
+COVERED_PROPERTY = "numerical-equivalence"
+UNCOVERED_PROPERTY = "deliberately-uncovered-property"
+COVERAGE_HARNESS_ID = "fixture/covered-verifier"
+
+
+def _head_commit() -> str:
+    """HEAD of the repository the registration gates consult.
+
+    The source pin is checked for ANCESTRY, so a synthetic sha names nothing
+    and the gate correctly refuses to call the manifest reviewed.
+    """
+
+    import subprocess
+
+    from ari.assurance.registration_run import repository_root
+
+    done = subprocess.run(
+        ["git", "-C", str(repository_root()), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    return done.stdout.strip()
+
+
+def _write_harness_layer(root: Path, *, extra_required_property: str | None):
+    """Replace ``root/harnesses`` with a Harness layer this test owns.
+
+    Without *extra_required_property* the contract's every atom is covered by
+    the one reviewed manifest.  With it, the contract requires a property no
+    manifest declares, so coverage is short by exactly that atom and by nothing
+    else: the two roots differ in one vocabulary entry.
+    """
+
+    import shutil
+
+    import yaml
+
+    from ari.assurance.catalog import load_harness_catalog
+    from ari.assurance.contract import load_tolerance_policy
+    from ari.assurance.models import (
+        ContainerPinV1,
+        HarnessManifestV1,
+        HarnessPromotionApprovalV1,
+        HarnessPropertyCoverageV1,
+        HarnessRegistrationEvidenceV1,
+        HarnessResourceRequirementsV1,
+        PinnedHarnessAssetV1,
+        VerificationScopeV1,
+    )
+    from ari.assurance.registration import GateEvidence, registration_report
+
+    harnesses = root / "harnesses"
+    shutil.rmtree(harnesses)
+    (harnesses / "builtin").mkdir(parents=True)
+    (harnesses / "policies").mkdir(parents=True)
+
+    policy_path = (
+        harnesses / "policies" / (COVERAGE_POLICY_ID.replace("/", "-") + ".yaml")
+    )
+    policy_path.write_text(
+        yaml.safe_dump(
+            {
+                "id": COVERAGE_POLICY_ID,
+                "description": "Fixture tolerance policy for coverage admission.",
+                "absolute": 0.0,
+                "relative": 1e-9,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    _, policy_digest = load_tolerance_policy(policy_path)
+
+    required = [COVERED_PROPERTY]
+    if extra_required_property:
+        required.append(extra_required_property)
+    harnesses.joinpath("property_vocabulary.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "version": "coverage-fixture-properties/v1",
+                "properties": {name: ["differential-testing"] for name in required},
+                "target_kinds": {name: "shared-library" for name in required},
+                "correctness_properties": list(required),
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    commit = _head_commit()
+    digest_of = canonical_digest
+
+    def asset(revision):
+        return PinnedHarnessAssetV1(
+            revision=revision, sha256=digest_of(revision), license="MIT"
+        )
+
+    manifest = HarnessManifestV1.create(
+        id=COVERAGE_HARNESS_ID,
+        version="1.0.0",
+        kind="artifact_verifier",
+        status="verified",
+        description="Fixture verifier for the admission coverage switch",
+        maintainer="ari",
+        tags=("fixture",),
+        subject_types=("program",),
+        target_kinds=("shared-library",),
+        accepts_external_target=True,
+        supported_languages=("c",),
+        supported_hardware=("cpu",),
+        supported_architectures=("x86_64",),
+        supported_dtypes=("float64",),
+        supported_domains=("fixture",),
+        properties=(
+            HarnessPropertyCoverageV1(
+                property_id=COVERED_PROPERTY,
+                methods=("differential-testing",),
+                tiers=("screen", "validate", "certify"),
+                scope=VerificationScopeV1(values={}),
+                tolerance_policy_digest=policy_digest,
+            ),
+        ),
+        target_interface_contract="fixture-c-abi/v1",
+        target_interface_digest=digest_of("fixture-abi"),
+        source_repository="https://example.invalid/harness",
+        source_full_commit_sha=commit,
+        implementation_license="MIT",
+        dataset=asset("dataset-v1"),
+        oracle=asset("oracle-v1"),
+        driver=asset("driver-v1"),
+        model=asset("none"),
+        container=ContainerPinV1(
+            reference="example.invalid/harness@sha256:1",
+            resolved_digest=digest_of("container"),
+            license="MIT",
+        ),
+        network_policy="deny",
+        credential_policy="none",
+        filesystem_policy="isolated-readonly-target",
+        # No declared feature, so this manifest is compatible with whatever
+        # execution substrate the host offers: the shortfall under test must be
+        # the authored one, never an environment difference.
+        resources=HarnessResourceRequirementsV1(
+            cpu_cores=1, memory_bytes=1024, accelerators=0, disk_bytes=1024
+        ),
+        timeout_seconds=60,
+        scorer_determinism="deterministic",
+        nondeterminism_declaration="none",
+        hidden_test_policy="verifier-only",
+        oracle_independence="independent",
+        tolerance_policy_digest=policy_digest,
+        expected_result_schema="ari.native-hpc-result/v1",
+        expected_result_schema_digest=digest_of("result-schema"),
+        infrastructure_failure_policy="separate",
+        retry_limit=1,
+        negative_control_report_digest=digest_of("negative-controls"),
+        upstream_parity_report_digest=digest_of("upstream-parity"),
+    )
+
+    report = registration_report(
+        harness_id=manifest.id,
+        manifest_digest=manifest.manifest_digest,
+        evidence=GateEvidence(
+            manifest=manifest,
+            parity={
+                "driver_digest": manifest.driver.sha256,
+                "passed": True,
+                "controls": {
+                    "clean": {"verdict": "pass", "relative_spread": 0.01, "resolved": True},
+                    "negatives": [
+                        {"name": "wrong", "verdict": "fail", "detail": "failed the residual bound"},
+                    ],
+                },
+            },
+            driver_digest=manifest.driver.sha256,
+            report_schema={"$id": "fixture", "properties": {"verdict": {}}},
+            report_schema_version=manifest.expected_result_schema,
+            report_schema_digest=manifest.expected_result_schema_digest,
+            stability={"runs": 3, "relative_spread": 0.02},
+            repo_commit=commit,
+        ),
+    )
+    assert report.decision == "eligible-for-verified", report.decision
+
+    evidence_bytes = '"coverage-fixture-registration-evidence"'
+    harnesses.joinpath("builtin", "fixture.json").write_text(
+        evidence_bytes, encoding="utf-8"
+    )
+    evidence = HarnessRegistrationEvidenceV1.create(
+        harness_id=manifest.id,
+        harness_version=manifest.version,
+        manifest_digest=manifest.manifest_digest,
+        source_full_commit_sha=commit,
+        environment_digest=digest_of("coverage-fixture-environment"),
+        evidence_artifact_digests={
+            "builtin/fixture.json": bytes_digest(evidence_bytes.encode("utf-8"))
+        },
+        attestation_digests=(digest_of("coverage-fixture-attestation"),),
+        clean_control_verdict="pass",
+        negative_control_verdict="fail",
+        official_runner_parity=True,
+        result_schema_conformant=True,
+        network_isolation="proved",
+        target_write_isolation="proved",
+        oracle_visibility="denied",
+        run_count=3,
+    )
+    approval = HarnessPromotionApprovalV1.create(
+        harness_id=manifest.id,
+        harness_version=manifest.version,
+        actor_kind="human-maintainer",
+        actor_id="test-maintainer",
+        authorization_basis="coverage admission fixture",
+        approved_date="2026-08-05",
+        harness_manifest_digest=manifest.manifest_digest,
+        registration_report_digest=report.report_digest,
+        evidence_bundle_digest=evidence.evidence_digest,
+    )
+    harnesses.joinpath("builtin", "fixture.yaml").write_text(
+        yaml.safe_dump(manifest.model_dump(mode="json"), sort_keys=True),
+        encoding="utf-8",
+    )
+    harnesses.joinpath("builtin", "fixture.registration.json").write_text(
+        report.model_dump_json(), encoding="utf-8"
+    )
+    harnesses.joinpath("builtin", "fixture.evidence.json").write_text(
+        evidence.model_dump_json(), encoding="utf-8"
+    )
+    harnesses.joinpath("builtin", "fixture.approval.json").write_text(
+        approval.model_dump_json(), encoding="utf-8"
+    )
+    harnesses.joinpath("catalog.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "catalog_source_revision": "coverage-fixture/v1",
+                "driver_protocol_version": "ari.harness-driver/v1",
+                "entries": [
+                    {
+                        "id": manifest.id,
+                        "manifest": "builtin/fixture.yaml",
+                        "registration_report": "builtin/fixture.registration.json",
+                        "registration_report_digest": report.report_digest,
+                        "registration_evidence": "builtin/fixture.evidence.json",
+                        "registration_evidence_digest": evidence.evidence_digest,
+                        "promotion_approval": "builtin/fixture.approval.json",
+                        "promotion_approval_digest": approval.approval_digest,
+                    }
+                ],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    snapshot = load_harness_catalog(harnesses / "catalog.yaml")
+    assert [item.id for item in snapshot.manifests] == [COVERAGE_HARNESS_ID]
+    assert snapshot.manifests[0].status == "verified", (
+        "the fixture catalog holds no reviewed Harness, so nothing could cover "
+        "anything and every admission below would refuse for that reason"
+    )
+    return root
+
+
+def _coverage_root(tmp_path: Path, name: str, *, extra_required_property=None) -> Path:
+    import shutil
+
+    destination = tmp_path / name / "config"
+    with _config_root(None):
+        shutil.copytree(ari.config.finder.package_config_root(), destination)
+    return _write_harness_layer(
+        destination, extra_required_property=extra_required_property
+    )
+
+
+def _admit_under_assurance(checkpoint: Path, root: Path, mode: str):
+    """One admission at *mode*, over the Harness layer in *root*."""
+
+    checkpoint.mkdir(parents=True, exist_ok=True)
+    contract = _research_contract()
+    (checkpoint / "idea.json").write_text(
+        json.dumps(
+            {
+                "typed_schema_version": "ari.research-contract/v1",
+                "research_contract": contract.model_dump(mode="json"),
+                "research_contract_digest": contract.contract_digest,
+            }
+        ),
+        encoding="utf-8",
+    )
+    skill = _provider_skill()
+    cfg = _config(skill)
+    # Knowledge is off so the Verification Contract's requirements are exactly
+    # the correctness properties this fixture's vocabulary names, and nothing
+    # a Knowledge Skill happens to oblige.
+    cfg.knowledge.mode = "off"
+    cfg.assurance.mode = mode
+    cfg.assurance.tolerance_policy = COVERAGE_POLICY_ID
+    with _config_root(root):
+        return build_kca_admission(
+            cfg=cfg,
+            checkpoint_dir=checkpoint,
+            run_id=RUN_ID,
+            mcp=_FrozenMCP(_provider_lock(skill)),
+            foundation_state=None,
+            task_tags=(),
+        )
+
+
+def test_required_coverage_fail_closed(tmp_path):
+    """Task 20 criterion 33: enforce admission fails below 100% coverage.
+
+    THE COVERED CONTROL comes first.  ``enforce`` over a Harness layer that
+    covers every required atom admits the run and mints a baseline Lock, so the
+    refusal below is not "enforce refuses".
+
+    THE DELIBERATE SHORTFALL is one extra required property that no manifest
+    declares -- the only difference between the two config roots.  Under
+    ``enforce`` the admission refuses and names the atom; under ``audit``, over
+    the SAME root, the admission succeeds and records that atom as unsatisfied
+    while still covering the other one.
+
+    Same inputs, two answers, and the answer follows the assurance posture:
+    that is the switch.  Pinning it to ``True`` breaks the audit case, pinning
+    it to ``False`` breaks the enforce case.  The refused atoms are compared
+    against the ones ``audit`` recorded rather than against a digest written
+    here, so the two halves have to be talking about the same shortfall.
+    """
+
+    from ari.assurance.resolver import HarnessResolutionError
+
+    covered = _coverage_root(tmp_path, "covered")
+    admitted = _admit_under_assurance(tmp_path / "covered-run", covered, "enforce")
+    suite = admitted.documents["harness_suite.json"]
+    lock = admitted.documents["baseline_harness_lock.json"]
+    assert suite.requirements, "the control contract required nothing at all"
+    assert suite.unsatisfied_atom_digests == ()
+    assert set(suite.covered_atom_digests) == {
+        item.atom_digest for item in suite.requirements
+    }
+    assert [item.harness_id for item in lock.harnesses] == [COVERAGE_HARNESS_ID]
+
+    short = _coverage_root(
+        tmp_path, "short", extra_required_property=UNCOVERED_PROPERTY
+    )
+
+    audited = _admit_under_assurance(tmp_path / "short-audit", short, "audit")
+    audited_suite = audited.documents["harness_suite.json"]
+    unsatisfied = set(audited_suite.unsatisfied_atom_digests)
+    assert unsatisfied, "the authored shortfall did not make any atom uncoverable"
+    assert set(audited_suite.covered_atom_digests), (
+        "the shortfall removed ALL coverage; a total loss would also refuse "
+        "under enforce, which is not the case the criterion is about"
+    )
+    assert unsatisfied < {item.atom_digest for item in audited_suite.requirements}
+    assert audited.documents["baseline_harness_lock.json"].harnesses, (
+        "audit admitted the run without locking the coverage it did have"
+    )
+
+    with pytest.raises(HarnessResolutionError) as refusal:
+        _admit_under_assurance(tmp_path / "short-enforce", short, "enforce")
+    message = str(refusal.value)
+    assert "unsatisfied Harness coverage" in message
+    assert {digest for digest in unsatisfied if digest in message} == unsatisfied, (
+        "the enforce refusal does not name the atoms audit recorded as short"
+    )
