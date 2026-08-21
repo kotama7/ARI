@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-08-08
+last_verified: 2026-08-22
 ---
 
 # Troubleshooting
@@ -201,6 +201,18 @@ Each line is a flat `CallRecord` (`timestamp`, `node_id`, `phase`,
 `skill`, `model`, `*_tokens`, `estimated_cost_usd`, …); there is no
 nested `metadata` object.  The additive `epoch` field is written only
 by `ari_rqgm` runs, so it is absent on a default run.
+
+Under `ari_rqgm` that field is still stamped only on calls issued from the
+ARI **core** process: `RQGMRuntime` sets it at epoch open via
+`cost_tracker.set_default_metadata(epoch=...)`, and that default lives in the
+memory of the process that set it.  Each MCP skill server is a separate
+process whose `bootstrap_skill(...)` registers `skill` (and sometimes
+`phase`) only, and no environment variable carries the epoch across that
+boundary — so every skill-issued call is recorded with no `epoch`.  Summing
+`cost_trace.jsonl` by `epoch` therefore gives core-process spend, not the
+run's whole spend; group by `skill` for that.  Attributing skill calls to an
+epoch exactly would need per-call metadata plumbed through MCP, which ARI
+does not do.
 
 The biggest spend is usually the BFTS judge (`ari-skill-evaluator`)
 or the rubric review (`ari-skill-paper`).  Cap their models with

@@ -95,6 +95,26 @@ admissible mechanism is flagging plus read-time exclusion.
 - **Cross-run erasure.** v1 scope is one checkpoint. Propagation to child runs spawned via
   `fanout`/`switch_to_idea` is deferred (additive `meta.json` fields are the known channel; see
   Risks).
+- **Giving `UtilityRecord` a `target_component_id`.** This task recomputes utility records
+  (§5.4, §6) but does not add a component target to them.
+  > **ARRIVED AND ALREADY PERMANENT — forwarded here by
+  > [15](15_validated_attack_target_binding.md) §10 R5 / §12, which required R5 to be moved
+  > into this plan before that file is deleted.** It is recorded here to close that
+  > hand-off, and it costs this plan nothing, because the substance outlived plan 15 on its
+  > own: `docs/reference/rqgm_schemas.md`, under `rqgm_utility_record.schema.json`
+  > ("No component target — by design, and what that costs downstream"), states the whole
+  > finding permanently and in more detail than R5 did — the record names the penalised
+  > *node* and the component that computed the penalty, emits neither `target_component_id`
+  > nor `subject_component_id`, and no sink adds one; `utility_record` is nevertheless in
+  > the Evidence Clerk's admissible-kind map and among the kinds `candidate_refs_for_target`
+  > admits (`ari/rqgm/governance/_evidence.py`), a selector that keeps a record only when
+  > its target/subject id equals the prosecution target — so utility records are scanned
+  > into the epoch's record set and then never selected, the penalty channel contributes
+  > nothing to any evidence bundle, and citing it as an evidence source is a mistake.
+  > Nothing is owed here. Should a future recompute contract ever need the field, plan 15's
+  > shape (optional field, conditional emit, symmetric absence-tolerant read) is in git
+  > history — but no such need exists in this plan's §5.4 policy table, which keys
+  > recomputation on `input_refs` and the frozen policy, never on an accused component.
 
 ## 4. Existing ARI touchpoints
 

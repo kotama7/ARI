@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-08-08
+last_verified: 2026-08-22
 ---
 
 # 故障排查
@@ -186,6 +186,15 @@ PY
 `skill`、`model`、`*_tokens`、`estimated_cost_usd` 等），没有嵌套的
 `metadata` 对象。新增字段 `epoch` 仅由 `ari_rqgm` 运行写入，默认运行
 中不存在。
+
+即使在 `ari_rqgm` 运行中，该字段也只会打在由 ARI **核心**进程发出的调用上：
+`RQGMRuntime` 在 epoch 开启时通过 `cost_tracker.set_default_metadata(epoch=...)`
+设置它，而该默认值只存在于设置它的那个进程自己的内存里。每个 MCP 技能服务器都是
+独立进程，其 `bootstrap_skill(...)` 只登记 `skill`（有时还有 `phase`），也没有任何
+环境变量把 epoch 带过进程边界 —— 因此技能发出的每一次调用记录中都没有 `epoch`。
+所以按 `epoch` 汇总 `cost_trace.jsonl` 得到的是核心进程的开销，而不是整轮运行的
+开销；要看全貌请按 `skill` 汇总。要把技能调用精确归属到 epoch，需要通过 MCP 传递
+每次调用的元数据，而 ARI 并未这样做。
 
 最大开销通常来自 BFTS 评判器（`ari-skill-evaluator`）或
 rubric 评审（`ari-skill-paper`）。使用 `ARI_MODEL_EVAL` /

@@ -74,6 +74,24 @@ invariants 1–3, 10, 15):
 - Budget numbers and cache-key enforcement — Task 12 (this task references its knobs).
 - Evolving anything in the fixed layer: `ConstitutionalKernel`, fixed verifier, metric
   recomputer, audit log, hash registry are never prompt-evolution targets (invariant 16).
+- **Founding a `reviewer_v1` component** — not designed here, but the question is OWNED
+  here (jointly with [05](05_governance_orchestrator.md)) and is unanswered.
+  > **OPEN — forwarded here by [15](15_validated_attack_target_binding.md) §10 R2.**
+  > `reviewer` is a founded, evolvable **prompt** role: `reviewer_prompt_v1` loads
+  > `evaluator/peer_review` in `FOUNDING_PROMPT_TABLE`
+  > (`ari-core/ari/rqgm/prompt_spec.py`). There is no matching **component**:
+  > `FOUNDING_COMPONENT_TABLE` in that same module registers `generator_v1`,
+  > `artifact_judge_v1`, `defender_v1`, the seven `adversary_*_v1`, `auditor_v1`,
+  > `evidence_clerk_v1`, `proposal_router_v1` and the meta agents — and no `reviewer_v1`
+  > (the only reviewer component in the tree is the paper set's `paper_reviewer_v1`, in
+  > `PAPER_FOUNDING_COMPONENT_TABLE`). A registered prompt role with no component
+  > identity cannot be the target of an accusation, so exploration-side reviewer
+  > leniency is unaccusable however it behaves.
+  > This plan owns the founding-registration half: whether `reviewer_v1` should join the
+  > founding transaction, and what that does to the registry fingerprint and the
+  > "latest active wins" role rollup. Task 05 owns the other half (whether any of the
+  > seven exploration attack types should implicate `reviewer` in the first place).
+  > Recorded here so the question survives the deletion of plan 15.
 
 ## 4. Existing ARI touchpoints
 

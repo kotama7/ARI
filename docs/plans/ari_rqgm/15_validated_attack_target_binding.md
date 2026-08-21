@@ -632,6 +632,13 @@ regeneration (§6.3).
   exploration `reviewer_v1` component in `FOUNDING_COMPONENT_TABLE`, so no reviewer binding exists;
   that remains a Task 05/07 decision, filed against [05](05_governance_orchestrator.md) and
   [07](07_prompt_spec_and_prompt_evolution.md).
+  > **Filed for real 2026-08-22.** "Filed against 05 and 07" had not landed: neither plan
+  > mentioned `reviewer_v1`, an exploration reviewer component, or this decision. It is now
+  > an explicit open question in [05](05_governance_orchestrator.md) §3 (whether any of the
+  > seven types should implicate `reviewer` at all) and in
+  > [07](07_prompt_spec_and_prompt_evolution.md) §3 (whether `reviewer_v1` should join the
+  > founding registration), each stating that it is unanswered and must be re-homed or
+  > answered rather than deleted with a plan.
 - **R3 — A role can roll up to the judgment's own author.** The registry rolls a role up to one
   winner (`prompt_spec.py:228-231`). For `judge` that winner is `artifact_judge_v1` —
   `FOUNDING_COMPONENT_TABLE` carries exactly one judge row, and no `lineage_judge` component id
@@ -656,6 +663,19 @@ regeneration (§6.3).
   penalty channel contributes no evidence. Deliberately out of scope: the penalty's target is a
   node. If Task 10's recompute contract ever needs it, the shape designed here (optional field,
   conditional emit) transfers verbatim.
+  > **Discharged by pointer, 2026-08-22.** §12 requires R5 to be "moved to
+  > [10](10_frontier_repair_and_selective_erasure.md)" before this file is deleted. Task 10
+  > had no mention of it — but the substance had already outlived this plan on its own, in
+  > permanent docs: `docs/reference/rqgm_schemas.md`, under
+  > `rqgm_utility_record.schema.json`, carries "No component target — by design, and what
+  > that costs downstream", which states the finding more completely than this risk does
+  > (no `target_component_id` and no `subject_component_id`, no sink adds one, the record
+  > is nevertheless admissible-by-kind to the Evidence Clerk and to
+  > `candidate_refs_for_target`, and is therefore scanned into the epoch's record set and
+  > then never selected — so citing the penalty channel as an evidence source is a
+  > mistake). Plan 10 §3 now records the arrival and points at that section rather than
+  > copying it, which is the move §12 was asking for: the finding must survive this file,
+  > and it does.
 - **R6 — `smoke.py`'s second producer drifts.** Two call sites now construct validated records
   (`round.py:227`, `smoke.py:212-214`); only one binds. A future eval injection that needs a bound
   target must add the argument at the smoke site too. Mitigation: the §9 producer test names both
