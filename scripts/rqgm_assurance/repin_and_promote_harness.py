@@ -448,11 +448,20 @@ def pin_input_paths() -> set[Path]:
     ``source_full_commit_sha`` is not a derived pin, so moving it by hand is the
     ordinary way to arrive here holding a dirty manifest and be refused for it.
 
-    ``check``'s note is the half that fires constantly: it appears whenever a
-    manifest is dirty, which is precisely during a re-pin, where it carries no
-    information. And when a real instrument file IS dirty it adds nothing new,
-    because the stale-pin lines are already printing. Loud where it means
-    nothing, redundant where it matters.
+    ``check``'s note is the half that fired constantly: it appeared whenever a
+    manifest was dirty, which is precisely during a re-pin, where it carries no
+    information.
+
+    IT IS NOT REDUNDANT WHEN AN INSTRUMENT FILE IS DIRTY, which an earlier
+    version of this said and which would justify deleting it. The stale-pin
+    lines cover every manifest EXCEPT the one whose pin was taken over those
+    dirty bytes -- that one reads CURRENT, because ``check`` recomputes from the
+    same working tree the pin was computed from, so the pin matches the dirt.
+    Reproduced: with ``sandbox.py`` edited and the performance manifest pinned
+    over it, ``check`` printed the correctness manifest as stale, printed the
+    note, and did not mention the performance manifest at all. The note is that
+    manifest's ONLY signal, and it names the state -- a pin no checkout can
+    satisfy -- that is worse than a stale one because nothing else detects it.
     """
     return {path for path in covered_paths() if path.parent != BUILTIN}
 
