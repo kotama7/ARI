@@ -435,13 +435,24 @@ def pin_input_paths() -> set[Path]:
     computed from its bytes, and its content is bound by ``manifest_digest``
     instead.
 
-    Sharing one set inverted the signal, which is the defect and not the noise.
-    Re-pinning REQUIRES editing the manifest, so the refusal fired on the one
-    act it must permit -- ``repin`` had to be run from a clean checkout to write
-    a pin at all -- and ``check`` printed "these answers are about the working
-    tree" on every commit that touched a manifest, which is most of them. Loud
-    where it carried no information; and where a real instrument file was dirty
-    the same line said nothing new, because it was already being printed.
+    Sharing one set inverted the signal. MEASURED, at the commit that introduced
+    the refusal, rather than reasoned about -- and narrower than the first two
+    accounts of it, both of which overstated:
+
+      repin, then commit, then re-run   ->  "pins: already current", 15/15 gates
+      repin, then re-run without committing -> REFUSED
+
+    So the printed loop, followed as printed, does not hit it. What does is a
+    manifest that is ALREADY dirty when ``repin`` is invoked, and the path that
+    reaches that is editing a field this surface does not manage --
+    ``source_full_commit_sha`` is not a derived pin, so moving it by hand is the
+    ordinary way to arrive here holding a dirty manifest and be refused for it.
+
+    ``check``'s note is the half that fires constantly: it appears whenever a
+    manifest is dirty, which is precisely during a re-pin, where it carries no
+    information. And when a real instrument file IS dirty it adds nothing new,
+    because the stale-pin lines are already printing. Loud where it means
+    nothing, redundant where it matters.
     """
     return {path for path in covered_paths() if path.parent != BUILTIN}
 
