@@ -1094,11 +1094,10 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
     # published bundle would name this machine's filesystem. Values are scrubbed
     # of host identity as the sibling surface scrubs them, and every published
     # byte is checked again below.
-    environment_record = measurement_environment()
-    environment_record["variables"] = {
-        key: scrub_host_identity(value)
-        for key, value in environment_record["variables"].items()
-    }
+    # SCRUBBED BEFORE THE DIGEST. Rewriting the values and leaving the digest
+    # alone publishes a hash of the values that were just replaced, which
+    # confirms the host path to anyone who can guess it.
+    environment_record = measurement_environment(scrub=scrub_host_identity)
     outputs: dict[Path, bytes] = {}
     inventory_relative = "evidence/native_container_license_inventory.json"
     outputs[CONFIG_ROOT / inventory_relative] = inventory_bytes

@@ -940,12 +940,23 @@ _ENV_SECRET: tuple[str, ...] = (
 )
 
 
-def measurement_environment(extra: dict[str, str] | None = None) -> dict[str, Any]:
+def measurement_environment(extra: dict[str, str] | None = None, *,
+                            scrub: Any = None) -> dict[str, Any]:
     """What the measurement was taken under, with a digest.
 
     Recorded, not restricted: a variable outside this prefix set is neither
     captured nor known to be harmless, and the note says so rather than implying
     coverage.
+
+    ``scrub`` rewrites every value BEFORE the digest is taken, and callers that
+    publish this record must pass one. Scrubbing afterwards is what the two
+    attestation scripts did, and it leaves the digest covering the values that
+    were replaced: measured on the shipped bundles, the recorded sha256 did not
+    match the published variables and did match them with the absolute home path
+    restored -- so the record published a one-hash confirmation oracle for the
+    host path it had just replaced, beside a note saying the values were
+    scrubbed. Taking the digest here, over exactly what is returned, is the only
+    arrangement in which that note is true of the digest as well as the values.
     """
     import json as _json
 
@@ -959,6 +970,8 @@ def measurement_environment(extra: dict[str, str] | None = None) -> dict[str, An
     if extra:
         env.update({k: v for k, v in extra.items()
                     if not any(f in k.upper() for f in _ENV_SECRET)})
+    if scrub is not None:
+        env = {key: scrub(value) for key, value in env.items()}
     digest = hashlib.sha256(
         _json.dumps(env, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return {

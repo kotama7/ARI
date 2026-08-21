@@ -735,6 +735,41 @@ def test_the_shipped_schema_is_the_one_this_model_generates():
     assert "max_rel_error" in shipped["$defs"]["PerfRepetitionV1"]["required"]
 
 
+def test_the_environment_digest_covers_the_values_that_are_published():
+    """A record that scrubs its values must scrub them before it hashes them.
+
+    THE DEFECT. Every publication boundary took the record and then rewrote its
+    values -- ``environment["variables"] = {k: scrub_host_identity(v) ...}`` in
+    both attestation scripts and in the promotion surface -- leaving ``sha256``
+    over the values that had just been replaced. Measured on the shipped
+    bundles: the recorded digest did not match the published variables, and did
+    match them with the absolute home path restored. The record therefore
+    published a one-hash confirmation oracle for the host path, directly beside
+    a note stating that the values were scrubbed.
+    """
+    import hashlib
+    import json as _json
+
+    from ari.assurance.native_perf_common import measurement_environment
+
+    monkey = "ARI_TEST_ENVIRONMENT_DIGEST_PATH"
+    record = measurement_environment({monkey: "/a/host/path"},
+                                     scrub=lambda value: value.replace(
+                                         "/a/host/path", "<scrubbed>"))
+    published = record["variables"]
+    assert published[monkey] == "<scrubbed>", "the scrub must reach the values"
+    recomputed = hashlib.sha256(_json.dumps(
+        published, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    assert record["sha256"] == f"sha256:{recomputed}", (
+        "the digest names values other than the ones published beside it")
+
+    # And the unscrubbed value is not what was hashed.
+    leaked = hashlib.sha256(_json.dumps(
+        {**published, monkey: "/a/host/path"},
+        sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    assert record["sha256"] != f"sha256:{leaked}"
+
+
 def test_the_report_carries_no_host_path():
     """The launch's sandbox record names the per-run temporary directory.
 

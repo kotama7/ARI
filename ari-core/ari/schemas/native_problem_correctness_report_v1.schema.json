@@ -135,11 +135,6 @@
       "title": "Case Results",
       "type": "array"
     },
-    "contention": {
-      "additionalProperties": true,
-      "title": "Contention",
-      "type": "object"
-    },
     "crossed_compiler_boundary": {
       "title": "Crossed Compiler Boundary",
       "type": "boolean"
@@ -282,7 +277,6 @@
     "environment",
     "placement",
     "sandbox",
-    "contention",
     "negative_control",
     "report_digest"
   ],

@@ -26,7 +26,10 @@ from ari.assurance.drivers.problem_correctness import (
     ProblemCorrectnessDriver,
     problem_correctness_driver_digest,
 )
-from ari.assurance.native_problem_correctness import verify_problem_correctness
+from ari.assurance.native_problem_correctness import (
+    NativeProblemCorrectnessReportV1,
+    verify_problem_correctness,
+)
 from ari.assurance.problems import load_problem
 
 PROBLEM = "gemm-dense-fp64/v1@2026q3"
@@ -1139,18 +1142,31 @@ def test_the_placement_does_not_name_the_partition():
     assert partition not in json.dumps(measurement_placement())
 
 
-def test_one_candidate_verified_twice_produces_one_digest(problem):
+def test_one_candidate_verified_twice_produces_one_digest(problem, monkeypatch):
     """Nothing in this report may move between runs that reached one verdict.
 
-    Two things depend on it and neither says so where the report is written: a
-    manifest pins ``negative_control_report_digest``, and the registration's
-    stability gate establishes that a deterministic verifier repeats by
-    requiring byte-identical clean controls. Recording the ambient run-queue
-    length in the report broke both at once, and the harness could no longer be
-    registered at all -- so the check that would have caught it is here, run
-    against the machine rather than reasoned about from the field list.
+    The registration's stability gate establishes that a deterministic verifier
+    repeats by requiring byte-identical clean controls across runs
+    (``probe_repeatedly``), and ``report_digest`` is what it compares. Recording
+    the ambient run-queue length in the report broke that, and the harness could
+    no longer be registered at all.
+
+    TWO RUNS ALONE DO NOT CATCH IT, which is the correction that produced this
+    shape. ``peak_load`` was the ONE-MINUTE load average, and these two
+    verifications are under a second apart, so on a quiet machine it reads the
+    same number twice and the digests match: the first version of this test
+    passed with the defect reintroduced most of the time, and passed most
+    reliably in exactly the quiet condition a registration runs in. So the
+    reading is FORCED to move -- every call to the sampler returns a new value --
+    and the digest still may not. Any future field fed by that sampler fails
+    here deterministically rather than when the machine happens to be busy.
     """
+    from ari.assurance import native_perf_common
     from ari.assurance.native_perf_common import measurement_placement
+
+    ticking = iter(range(1, 10_000))
+    monkeypatch.setattr(native_perf_common, "run_queue_length",
+                        lambda: float(next(ticking)))
 
     source = problem.path(problem.definition.scaffolding.reference)
     first = _verify(problem, source)
@@ -1164,3 +1180,48 @@ def test_one_candidate_verified_twice_produces_one_digest(problem):
     # either: an allocation would otherwise differ from itself.
     placement = measurement_placement()
     assert not [k for k in placement if "load" in k.lower()]
+
+
+def test_the_shipped_schema_is_the_one_this_model_generates():
+    """The manifest pins this FILE's bytes as the contract the driver emits.
+
+    Its sibling has had this guard since the perf report moved without the
+    schema; this report had none, and dropping a field from the model left the
+    shipped schema still declaring it REQUIRED under
+    ``additionalProperties: false``. Every report the harness emitted then
+    failed validation against the contract its own manifest pinned, while the
+    pin still matched the file and ``result_schema_conformance`` still passed --
+    that gate compares the version, the digest and that ``properties`` is
+    non-empty, and never validates an instance.
+
+    The three envelope keys are the generating script's rather than the model's,
+    so they are required to be present and not compared.
+    """
+    shipped = json.loads(
+        (pathlib.Path(__file__).resolve().parents[1] / "ari" / "schemas"
+         / "native_problem_correctness_report_v1.schema.json").read_text())
+    generated = NativeProblemCorrectnessReportV1.model_json_schema()
+    for key in ("$id", "$schema", "description"):
+        assert shipped.get(key), f"the shipped schema lost {key}"
+        generated[key] = shipped[key]
+    assert shipped == generated, (
+        "the shipped schema no longer describes NativeProblemCorrectnessReportV1; "
+        "regenerate it from the model rather than editing the JSON")
+
+
+def test_a_report_this_driver_emits_validates_against_the_pinned_schema(problem):
+    """What the digest pin cannot say, checked on a real report.
+
+    The conformance gate never instance-validates, so a schema that has drifted
+    from the model passes every check ARI runs and fails only in the hands of the
+    consumer the pin was published for.
+    """
+    jsonschema = pytest.importorskip("jsonschema")
+
+    shipped = json.loads(
+        (pathlib.Path(__file__).resolve().parents[1] / "ari" / "schemas"
+         / "native_problem_correctness_report_v1.schema.json").read_text())
+    report = _verify(problem, problem.path(problem.definition.scaffolding.reference))
+    errors = list(jsonschema.Draft202012Validator(shipped).iter_errors(
+        json.loads(report.model_dump_json())))
+    assert not errors, [error.message for error in errors]

@@ -1199,9 +1199,11 @@ def promote(args: argparse.Namespace) -> int:
     commit = repository_commit(allow_dirty=False)
 
     probe = driver.parity_probe(manifest)
-    environment = measurement_environment()
-    environment["variables"] = {key: scrub_host_identity(value)
-                                for key, value in environment["variables"].items()}
+    # SCRUBBED BEFORE THE DIGEST, not after. Rewriting the values here and
+    # leaving the digest alone published a hash of the values that had just been
+    # replaced -- a confirmation oracle for the host path, beside a note saying
+    # the values were scrubbed.
+    environment = measurement_environment(scrub=scrub_host_identity)
     artifacts["registration_report.json"] = _json_bytes(report)
     artifacts["gate_findings.json"] = _json_bytes(
         {gate.gate_id: {"passed": gate.passed, "detail": gate.detail}

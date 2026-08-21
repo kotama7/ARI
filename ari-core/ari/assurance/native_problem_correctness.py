@@ -218,15 +218,18 @@ class NativeProblemCorrectnessReportV1(DigestBoundModel):
     #: never alters a verdict.
     negative_control: bool
     #: Covers every field above, so nothing here may vary between two runs that
-    #: reached the same verdict. THIS IS A CONSTRAINT, not a description: a
-    #: manifest pins ``negative_control_report_digest`` and the registration's
-    #: stability gate establishes that a deterministic verifier repeats by
-    #: requiring byte-identical clean controls. Recording the ambient run-queue
-    #: length here broke both at once -- the pin became unsatisfiable and the
-    #: harness unregisterable -- because a load reading is a live measurement of
-    #: the machine, not of the answer. The performance report carries that
-    #: reading, where the verdict IS a time and the load is the confound; a
-    #: residual bound has no duration for it to contaminate.
+    #: reached the same verdict. THIS IS A CONSTRAINT, not a description, and
+    #: what enforces it is the registration's stability gate: for a verifier
+    #: declared deterministic, ``probe_repeatedly`` requires the clean control to
+    #: be BYTE-IDENTICAL across runs, and this digest is what it compares.
+    #: Recording the ambient run-queue length here made the harness
+    #: unregisterable -- measured, the gate reported "no repeated-run evidence"
+    #: because a live load reading is a measurement of the machine, not of the
+    #: answer. A manifest also pins ``negative_control_report_digest``, but
+    #: nothing recomputes that field and compares it, so it is recorded rather
+    #: than enforced and it is not a second guard. The performance report carries
+    #: the load reading, where the verdict IS a time and the load is the
+    #: confound; a residual bound has no duration for it to contaminate.
     report_digest: str
 
 
