@@ -359,19 +359,57 @@ def test_baseline_harness_lock_immutable(tmp_path):
     assert path.read_bytes() == written
 
 
+#: Pinned digests the strengthening branch deliberately does NOT compare, with
+#: the reason, because an unexplained omission reads to the next person as an
+#: oversight and gets "fixed" in whichever direction is wrong.
+_NOT_COMPARED_BY_STRENGTHENING = {
+    # A strengthening revision carries a NEW manifest by definition -- raising a
+    # tier or adding a property moves it -- so comparing it would refuse every
+    # legitimate strengthening. The test below sets it on every swap for exactly
+    # that reason.
+    "manifest_digest": "a strengthening is a new manifest for an existing id",
+    # KNOWN GAP, recorded rather than closed here. The result schema can move
+    # without the driver moving -- that happened on this tree -- so a
+    # strengthening revision can swap the schema its results are validated
+    # against and nothing refuses it. Closing it is a production change to
+    # `validate_harness_revision`, not a test edit, and it is a maintainer's
+    # call because it would also refuse a revision that legitimately follows a
+    # regenerated schema.
+    "result_schema_digest": "not compared today; see the note above",
+}
+
+
 def _pinned_fields_compared_by(function) -> tuple[str, ...]:
     """The digests the strengthening branch refuses to see swapped.
 
-    Read off the guard's own comparison rather than restated here, so a sixth
-    digest added to it is covered on the day it lands. Scoped to the loop over
-    ``added_or_strengthened_harnesses`` because that is the branch this
-    inventory is for. ``harness_id`` is excluded: it is the key the baseline
-    entry is looked up BY, not one of the bytes pinned under it -- an entry
-    carrying a new id is a new Harness, which the test below admits.
+    THE UNIVERSE COMES FROM THE MODEL, NOT FROM THE GUARD, and that is the whole
+    point. An earlier version read the inventory out of the guard's own AST so
+    that "a sixth digest added to it is covered on the day it lands" -- but an
+    inventory derived from the mechanism SHRINKS WITH THE MECHANISM. Measured:
+    deleting the dataset, oracle, driver and container terms and leaving only
+    tolerance collapsed the derived set to one field, the test drove only what
+    was left, and it PASSED with four comparisons gone. A sweep of 503 tests
+    under that mutation produced a failure set identical to the baseline, and
+    `grep 'cannot swap'` finds exactly one exerciser in the repository -- this
+    test. So a revision swapping the dataset, oracle, driver or container out
+    from under an already-locked Harness was refused by nothing any test noticed.
+
+    `LockedHarnessV1`'s field list does not shrink when a comparison is deleted,
+    so deleting one leaves that field unclassified and this fails. Adding a
+    pinned digest to the model also fails, until someone decides which side it
+    is on. The classification is the assertion.
     """
     import ast
     import inspect
     import textwrap
+
+    from ari.assurance.models import LockedHarnessV1
+
+    declared = {name for name in LockedHarnessV1.model_fields
+                if name.endswith("_digest")}
+    assert len(declared) >= 5, (
+        f"only {len(declared)} pinned digests found on LockedHarnessV1; the "
+        f"model inventory is not reaching this test")
 
     tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
     loops = [
@@ -382,14 +420,23 @@ def _pinned_fields_compared_by(function) -> tuple[str, ...]:
         and node.iter.attr == "added_or_strengthened_harnesses"
     ]
     assert len(loops) == 1, "the strengthening branch was not found"
-    names = {
+    compared = {
         node.attr
         for node in ast.walk(loops[0])
         if isinstance(node, ast.Attribute)
         and isinstance(node.value, ast.Name)
         and node.value.id in {"item", "previous"}
-    }
-    return tuple(sorted(names - {"harness_id"}))
+    } & declared
+
+    unclassified = declared - compared - set(_NOT_COMPARED_BY_STRENGTHENING)
+    assert not unclassified, (
+        f"{sorted(unclassified)} are pinned on LockedHarnessV1 and are neither "
+        f"compared by the strengthening branch nor listed as deliberately "
+        f"uncompared. A digest that is silently not compared can be swapped out "
+        f"from under an already-locked Harness.")
+    stale = set(_NOT_COMPARED_BY_STRENGTHENING) - declared
+    assert not stale, f"{sorted(stale)} are excluded but no longer exist"
+    return tuple(sorted(compared))
 
 
 def _changed_locked_field(name: str, value):
