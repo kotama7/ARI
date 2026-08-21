@@ -659,11 +659,16 @@ def test_a_dirty_manifest_is_not_a_pin_taken_over_uncommitted_bytes() -> None:
     because no digest is computed from a manifest's bytes; it is what a pin is
     written INTO.
 
-    Sharing one set inverted the signal. Re-pinning requires editing the
-    manifest, so the refusal fired on the one act it has to permit, and
-    ``check`` announced "these answers are about the working tree" on every
-    commit that touched a manifest. Measured here rather than argued: the two
-    sets differ by exactly the shipped manifests, and by nothing else.
+    Sharing one set inverted the signal. Measured at the commit that introduced
+    the refusal: the printed loop -- re-pin, commit, re-run -- does NOT hit it,
+    and an earlier account of this saying it was "guaranteed to" was wrong. What
+    hits it is a manifest already dirty when ``repin`` is invoked, reached by
+    editing a field this surface does not manage. ``check``'s note is the half
+    that fires constantly, since a manifest is dirty during exactly the re-pin
+    it is describing.
+
+    Measured here rather than argued: the two sets differ by exactly the shipped
+    manifests, and by nothing else.
     """
     trigger = repin_module.covered_paths()
     inputs = repin_module.pin_input_paths()
