@@ -421,8 +421,29 @@ def dirty_covered_paths() -> list[str]:
     from ari.assurance.registration_run import modified_paths
 
     changed = set(modified_paths())
-    covered = {str(path.relative_to(REPO_ROOT)) for path in covered_paths()}
-    return sorted(changed & covered)
+    inputs = {str(path.relative_to(REPO_ROOT)) for path in pin_input_paths()}
+    return sorted(changed & inputs)
+
+
+def pin_input_paths() -> set[Path]:
+    """The files a derived pin is computed FROM. Not the same set as the trigger.
+
+    ``covered_paths`` answers "does this commit touch anything that could
+    invalidate a pin", which the hook needs, and the manifests belong in that
+    answer: editing one is exactly when the pins want re-checking. They do not
+    belong in THIS one. A manifest is what a pin is written INTO; no digest is
+    computed from its bytes, and its content is bound by ``manifest_digest``
+    instead.
+
+    Sharing one set inverted the signal, which is the defect and not the noise.
+    Re-pinning REQUIRES editing the manifest, so the refusal fired on the one
+    act it must permit -- ``repin`` had to be run from a clean checkout to write
+    a pin at all -- and ``check`` printed "these answers are about the working
+    tree" on every commit that touched a manifest, which is most of them. Loud
+    where it carried no information; and where a real instrument file was dirty
+    the same line said nothing new, because it was already being printed.
+    """
+    return {path for path in covered_paths() if path.parent != BUILTIN}
 
 
 def _files_read_by(digest_fn) -> set[Path]:

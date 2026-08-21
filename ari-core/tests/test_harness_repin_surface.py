@@ -650,6 +650,34 @@ def test_check_says_when_its_answer_is_about_the_working_tree(
     assert "not about any commit" in out
 
 
+def test_a_dirty_manifest_is_not_a_pin_taken_over_uncommitted_bytes() -> None:
+    """The trigger set and the pin-input set answer different questions.
+
+    ``covered_paths`` answers "does this commit touch anything that could
+    invalidate a pin", and the manifests belong there -- editing one is when the
+    pins want re-checking. They must NOT be in the set the dirty checks use,
+    because no digest is computed from a manifest's bytes; it is what a pin is
+    written INTO.
+
+    Sharing one set inverted the signal. Re-pinning requires editing the
+    manifest, so the refusal fired on the one act it has to permit, and
+    ``check`` announced "these answers are about the working tree" on every
+    commit that touched a manifest. Measured here rather than argued: the two
+    sets differ by exactly the shipped manifests, and by nothing else.
+    """
+    trigger = repin_module.covered_paths()
+    inputs = repin_module.pin_input_paths()
+    assert inputs < trigger, "the pin-input set must be the narrower one"
+    only_trigger = trigger - inputs
+    assert only_trigger == set(repin_module.BUILTIN.glob("*.yaml")), (
+        "the two sets may differ by the manifests and by nothing else: "
+        f"{sorted(path.name for path in only_trigger)}")
+
+    # The instrument files stay in BOTH: a dirty one is a real refusal.
+    names = {path.name for path in inputs}
+    assert {"sandbox.py", "native_perf_common.py"} <= names, sorted(names)[:12]
+
+
 def test_the_covered_set_is_observed_and_not_listed(monkeypatch) -> None:
     """dirty_covered_paths must ask the digest functions what they read.
 
