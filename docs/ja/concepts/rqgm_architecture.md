@@ -579,7 +579,7 @@ Judge に `{"margin": 0.0}` と読めるファイルを「その攻撃自身の�
 ありません。そしてこのフェーズが走らせない探索ロールに予算を使うことは
 決してありません。探索起動はこの分岐に到達しません。設定された P0–P4 の
 評価姿勢（`rqgm.eval.enabled` と `rqgm.eval.paper_ablation.condition_id`、
-`ari/rqgm/evaluation/paper_ablation.py`）は `role_evolution_enabled` を通じて
+`ari/rqgm/paper_ablation.py`）は `role_evolution_enabled` を通じて
 2 段目のフィルタを適用し、`paper_writer` または `paper_reviewer` を個別に
 オフにできます（他のロールはそのまま通過）; 評価ラン以外では姿勢は存在せず、
 2 段目のフィルタもありません。この候補チャネル全体の ON/OFF スイッチは

@@ -28,7 +28,7 @@ from ari.config import ARIConfig
 from ari.rqgm.evaluation import conditions as _cond
 from ari.rqgm.evaluation import injection as _inj
 from ari.rqgm.evaluation import metrics as _m
-from ari.rqgm.evaluation import paper_ablation as _paper_ablation
+from ari.rqgm import paper_ablation as _paper_ablation
 from ari.rqgm.paper_runtime import PaperArchiveRuntime
 from ari.rqgm.store import ImmutableAuditLog
 

@@ -154,7 +154,7 @@ class RQGMRuntime:
             # P0-P4 are evaluation presets over ordinary runtime switches.
             # Fail fast on a mislabeled experimental arm: silently running a
             # different mechanism set would invalidate the comparison.
-            from ari.rqgm.evaluation.paper_ablation import config_violations
+            from ari.rqgm.paper_ablation import config_violations
 
             violations = config_violations(cfg)
             if violations:
@@ -256,7 +256,7 @@ class RQGMRuntime:
 
         if not self._paper_phase:
             return None
-        from ari.rqgm.evaluation.paper_ablation import posture_from_config
+        from ari.rqgm.paper_ablation import posture_from_config
 
         return posture_from_config(getattr(self, "cfg", None))
 

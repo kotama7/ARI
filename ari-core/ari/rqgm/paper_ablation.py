@@ -1,10 +1,33 @@
-"""RQGM-paper-aligned P0-P4 evaluation postures.
+"""RQGM-paper-aligned P0-P4 postures, read by the paper runtime during a run.
 
 The postures are experimental arms, not product modes.  Existing mechanism
 switches still control the archive, adversary, repair engine, and kernel
 enforcement.  This module owns the only missing distinction: which governed
 paper roles may evolve, and validates that a preset's ordinary switches match
 the declared RQGM-paper condition.
+
+WHY THIS IS NOT IN ``ari.rqgm.evaluation``.  It lived there, and that made the
+production paper path depend on the Task-13/20 evaluation harness: the ordinary
+``ari paper`` run reaches ``paper_phase=True`` and imports this module at five
+sites in ``runtime`` and ``paper_runtime``, none of them behind an
+evaluation-only flag.  Deleting or not shipping the evaluation package would
+have broken an ordinary paper run outright at ``RQGMRuntime.__init__``.
+
+It never belonged there.  The evaluation package is the LLM-free machinery
+behind ``scripts/rqgm_eval/run_ablation.py`` -- the metric computer, the
+injection appliers, the doubles, the condition expansion, the smoke runner --
+all of which run OVER a finished checkpoint.  This runs DURING a run, and no
+module inside that package ever imported it; its only importers were the two
+production runtimes.  Its input is a production config field declared in
+``ari.config`` (``rqgm.eval.paper_ablation``) with a default in
+``configs/defaults.yaml``, so the schema was already production and only its
+interpreter was filed under evaluation.
+
+Inert by construction rather than by placement: ``posture_from_config`` returns
+``None`` unless ``rqgm.eval.enabled`` is set, and ``config_violations`` then
+returns nothing.  A normal run reads the field, gets ``None``, and behaves
+exactly as it did before.  The evaluation harness may import this (production is
+the allowed direction to depend on); production must not import the harness.
 """
 
 from __future__ import annotations

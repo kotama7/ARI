@@ -19,8 +19,6 @@ Modules
   checkpoint assertion (``virsci_absence_violations``: a VirSci-off condition
   must leave behind no VirSci prompt use, no VirSci transcript directory, and
   no ``generator: virsci`` proposal record).
-- ``paper_ablation`` — evaluation-only P0-P4 posture definitions, role-level
-  paper evolution gating, and ordinary-switch consistency validation.
 - ``metrics`` — ``compute_metric_report(checkpoint_dir, ...)``: the thirteen
   metrics of docs/guides/rqgm_evaluation.md, "Metrics", as pure functions over
   persisted checkpoint artifacts, plus the ``rqgm_eval_metrics.json`` writer.

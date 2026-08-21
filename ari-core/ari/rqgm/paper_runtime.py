@@ -1077,7 +1077,7 @@ class PaperArchiveRuntime:
             getattr(self.cfg, "ari", None), "mode", ""
         )
         try:
-            from ari.rqgm.evaluation.paper_ablation import posture_from_config
+            from ari.rqgm.paper_ablation import posture_from_config
 
             posture = posture_from_config(self.cfg)
             evaluation_condition_id = (
@@ -1599,7 +1599,7 @@ class PaperArchiveRuntime:
         round_bests: list = []
         prior_reviewer_hash = ""
         try:
-            from ari.rqgm.evaluation.paper_ablation import posture_from_config
+            from ari.rqgm.paper_ablation import posture_from_config
 
             comparison_posture = posture_from_config(self.cfg)
         except Exception:
@@ -2365,7 +2365,7 @@ class PaperArchiveRuntime:
         unfaithful draft has two culpable components). Best-effort: never raises
         into the paper phase."""
         try:
-            from ari.rqgm.evaluation.paper_ablation import posture_from_config
+            from ari.rqgm.paper_ablation import posture_from_config
 
             posture = posture_from_config(self.cfg)
         except Exception:

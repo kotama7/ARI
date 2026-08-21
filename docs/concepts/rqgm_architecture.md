@@ -582,7 +582,7 @@ registered, and it never spends that budget on exploration roles this phase
 does not run. An exploration boot never reaches the branch. A configured
 P0–P4 evaluation posture (`rqgm.eval.enabled` plus
 `rqgm.eval.paper_ablation.condition_id`,
-`ari/rqgm/evaluation/paper_ablation.py`) applies a second filter through
+`ari/rqgm/paper_ablation.py`) applies a second filter through
 `role_evolution_enabled`, which can switch `paper_writer` or `paper_reviewer`
 off individually and passes every other role through; outside an evaluation
 run there is no posture and no second filter. The on/off switch for the whole

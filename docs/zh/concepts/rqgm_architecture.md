@@ -498,7 +498,7 @@ classify_target →` 弹劾链。研究 `generator` 现在是已注册的创始�
 该过滤决定的是「哪些角色消耗每纪元的候选预算」，而非「哪些角色被注册」，
 并且绝不把预算花在此阶段并不运行的探索角色上。探索启动根本到不了这个分支。
 一个被配置的 P0–P4 评估姿态（`rqgm.eval.enabled` 加上
-`rqgm.eval.paper_ablation.condition_id`，`ari/rqgm/evaluation/paper_ablation.py`）
+`rqgm.eval.paper_ablation.condition_id`，`ari/rqgm/paper_ablation.py`）
 会经由 `role_evolution_enabled` 施加第二道过滤，可以单独关闭 `paper_writer`
 或 `paper_reviewer`，其余角色一律放行；在评估运行之外没有姿态，也没有第二道
 过滤。整个候选通道的开关是 `rqgm.paper.prompt_evolution.enabled` —— 与探索侧
