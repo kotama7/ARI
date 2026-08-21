@@ -120,6 +120,7 @@ from ari.assurance.drivers.native import (  # noqa: E402
 )
 from ari.assurance.container_identity import read_binding  # noqa: E402
 from ari.assurance.executors import PinnedContainerExecutor  # noqa: E402
+from ari.assurance.native_perf_common import measurement_placement
 from ari.assurance.models import (  # noqa: E402
     ContainerPinV1,
     HarnessManifestV1,
@@ -960,6 +961,35 @@ def _bundle_replacement(
     return BundleReplacement(harness_id, bundle_root, frozenset(produced))
 
 
+def refuse_off_pinned_placement(manifest, here: dict | None = None) -> None:
+    """Refuse to measure a harness anywhere but the placement it pins.
+
+    A timed verdict is a statement about a machine, and a manifest that pins one
+    is saying which. ``prepare`` enforces that, but only once a REQUEST exists --
+    so on this surface the pin was honoured by nothing at all. Both siblings
+    compare and refuse first (``attest_gemm_performance`` at its control
+    sequence, ``repin_and_promote_harness`` before its gate report); this one
+    compared nothing. It was harmless only because the three families it serves
+    pin an EMPTY placement, which is a property of today's manifests rather than
+    of this code: one manifest edit would have had it promote a verdict measured
+    on whatever machine happened to run it.
+
+    An empty pin means "this harness claims no machine", so it passes -- that is
+    the same answer the comparison gives, not a special case exempting it.
+
+    ``here`` is injectable so the refusal can be tested without a second machine.
+    """
+    pinned = dict(getattr(manifest, "registered_placement", None) or {})
+    observed = measurement_placement() if here is None else here
+    differs = {key: (pinned[key], observed.get(key)) for key in sorted(pinned)
+               if observed.get(key) != pinned[key]}
+    if differs:
+        raise RuntimeError(
+            f"this is not the placement {manifest.id} pins: {differs}. Its "
+            f"evidence would describe that machine, and a control run taken "
+            f"elsewhere would attest to a different one")
+
+
 def _immutable_outputs(
     outputs: dict[Path, bytes],
     *,
@@ -1141,6 +1171,7 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
                 architecture=platform.machine(),
             )
             manifests[kind] = manifest
+            refuse_off_pinned_placement(manifest)
             run, run_artifacts = _run_registration(
                 kind=kind,
                 manifest=manifest,

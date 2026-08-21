@@ -955,3 +955,65 @@ def test_the_host_identity_guard_actually_refuses_this_surfaces_outputs() -> Non
              f'{{"variables": {{"ARI_X": "{home}/thing"}}}}'.encode("utf-8")})
     promotion.refuse_host_identity(
         {"evidence/x/measurement_environment.json": b'{"variables": {}}'})
+
+
+# --- the placement pin is honoured on THIS surface too -----------------------
+#
+# The pin was enforced by two of the three promotion surfaces. `prepare()`
+# refuses off-placement, but only once a REQUEST exists, so a surface that
+# measures before minting one is unprotected -- and this was that surface. It
+# was harmless only because the three families it serves pin an EMPTY
+# placement, which is a fact about today's manifests, not about this code.
+
+class _PinnedManifest:
+    """Just the two attributes the refusal reads."""
+
+    def __init__(self, placement):
+        self.id = "hpc/fixture"
+        self.registered_placement = placement
+
+
+def test_a_manifest_that_pins_no_placement_claims_no_machine():
+    # An empty pin is a pass because the comparison says so, not because it is
+    # exempted -- which is what keeps the three shipped families working while
+    # the guard is live for anything that does pin.
+    promotion.refuse_off_pinned_placement(
+        _PinnedManifest({}), here={"machine": "x86_64", "thread_budget": "96"})
+    promotion.refuse_off_pinned_placement(
+        _PinnedManifest(None), here={"machine": "aarch64"})
+
+
+def test_measuring_off_the_pinned_placement_is_refused_before_anything_runs():
+    with pytest.raises(RuntimeError, match="is not the placement"):
+        promotion.refuse_off_pinned_placement(
+            _PinnedManifest({"machine": "aarch64", "thread_budget": "48"}),
+            here={"machine": "x86_64", "thread_budget": "96"})
+
+
+def test_the_refusal_names_both_halves_so_the_reader_can_act():
+    with pytest.raises(RuntimeError) as excinfo:
+        promotion.refuse_off_pinned_placement(
+            _PinnedManifest({"thread_budget": "2"}), here={"thread_budget": "96"})
+    message = str(excinfo.value)
+    # Deterministic and self-explaining: a retry loop that cannot tell this from
+    # an unresolved measurement burns an allocation repeating it.
+    assert "'2', '96'" in message.replace('"', "'")
+
+
+def test_a_matching_placement_is_not_refused():
+    promotion.refuse_off_pinned_placement(
+        _PinnedManifest({"machine": "x86_64", "thread_budget": "2"}),
+        here={"machine": "x86_64", "thread_budget": "2", "extra": "ignored"})
+
+
+def test_promote_calls_the_refusal_before_it_runs_a_registration():
+    """Order is the property, not presence: refusing after measuring is no guard."""
+    tree = ast.parse(SOURCE)
+    promote = next(n for n in ast.walk(tree)
+                   if isinstance(n, ast.FunctionDef) and n.name == "promote")
+    calls = [n.func.id for n in ast.walk(promote)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+             and n.func.id in {"refuse_off_pinned_placement", "_run_registration"}]
+    assert calls, "promote calls neither the refusal nor a registration"
+    assert calls[0] == "refuse_off_pinned_placement", (
+        f"promote reaches {calls[0]} before refusing off-placement")
