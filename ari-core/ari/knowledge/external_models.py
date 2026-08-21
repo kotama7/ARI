@@ -21,6 +21,7 @@ from ari.protocols.integrity import (
     DigestBoundModel,
     FULL_GIT_COMMIT_PATTERN,
     SHA256_DIGEST_PATTERN,
+    Sha256Digest,
     StrictModel,
     bytes_digest,
 )
@@ -275,7 +276,7 @@ class KnowledgeCollectionImportProvenanceV1(DigestBoundModel):
     commit: str = Field(pattern=FULL_GIT_COMMIT_PATTERN)
     root_subpath: str = Field(min_length=1, max_length=1024)
     import_profile_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
-    skill_snapshot_digests: tuple[str, ...] = Field(min_length=1)
+    skill_snapshot_digests: tuple[Sha256Digest, ...] = Field(min_length=1)
     collection_identity_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
 
     @field_validator("root_subpath")

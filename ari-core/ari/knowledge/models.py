@@ -16,6 +16,7 @@ from ari.protocols.integrity import (
     DigestBoundModel,
     FULL_GIT_COMMIT_PATTERN,
     SHA256_DIGEST_PATTERN,
+    Sha256Digest,
     StrictModel,
 )
 from ari.protocols.scientific_requirements import EvaluationObligationV1
@@ -350,7 +351,7 @@ class InstructionCompositionV1(DigestBoundModel):
     base_prompt_hash: str
     base_prompt_sha256: str = Field(pattern=SHA256_DIGEST_PATTERN)
     active_rqgm_prompt_hashes: tuple[str, ...]
-    ordered_knowledge_skill_hashes: tuple[str, ...]
+    ordered_knowledge_skill_hashes: tuple[Sha256Digest, ...]
     knowledge_composition_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     capability_binding_lock_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     verification_contract_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
