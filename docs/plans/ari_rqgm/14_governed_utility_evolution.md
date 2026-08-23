@@ -1191,7 +1191,13 @@ Task-specific criteria (all additionally required):
   and in `adversarial/records.py`'s `UtilityRecord` docstring, replacing the "not prompt-backed"
   sentence, so the version boundary in the JSONL is self-documenting.
 - The §5.9 distinction (governed boundary rewrite vs ungoverned weight smuggling) is in
-  `MetricSpecWeightCap`'s class docstring and in the permanent RQGM developer guide.
+  `MetricSpecWeightCap`'s class docstring and in
+  [ARI-RQGM Architecture → Governed utility evolution](../../concepts/rqgm_architecture.md#governed-utility-evolution).
+  AMENDED 2026-08-22 by the maintainer: §12 named "the permanent RQGM developer
+  guide", and no document carries that name — `docs/guides/` has
+  `rqgm_migration.md`, `rqgm_evaluation.md` and `rqgm_gui.md`, none of which is
+  where the apparent contradiction arises. The architecture page is, because it
+  is the page that states weights are rewritten at every boundary.
 - The I-11 repeal has landed in every §5.10 site **and** in the permanent execution-mode /
   architecture docs — the invariant is quoted outside `docs/plans/`, so deleting the plans must not
   resurrect the old text.
