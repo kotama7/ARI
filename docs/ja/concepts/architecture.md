@@ -4,6 +4,12 @@ sources:
     role: implementation
   - path: ari-core/ari/agent/loop.py
     role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/mcp/client.py
+    role: implementation
+  - path: ari-core/ari/checkpoint.py
+    role: implementation
   - path: ari-core/ari/pipeline
     role: implementation
   - path: ari-core/ari/evaluator/llm_evaluator.py
@@ -12,9 +18,13 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/rqgm
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-17
 ---
 
 # ARI アーキテクチャ
@@ -35,6 +45,17 @@ ARI はエンドツーエンドの自律研究システムです。平文の研�
 10. **再現性検証** - 論文テキストのみから実験を再実行し再現性を検証
 
 ドメイン知識はハードコードされていません。同じパイプラインが HPC ベンチマーク、ML ハイパーパラメータチューニング、化学最適化、その他あらゆる測定可能な現象に対して動作します。
+
+### 併読すべきコンセプトページ
+
+このページが扱うのは研究システムそのもの — ゴールを論文へ変えるパイプライン — です。
+そのシステムを*観測*し*記述*する層については、次の 2 つの兄弟ページを併せて読む
+価値があります:
+
+| ページ | 答えること |
+|---|---|
+| [ダッシュボードアーキテクチャ](gui_architecture.md) | Web ダッシュボードの構造: レガシー画面と v2 ワークスペースを載せる 1 つのシェル、ルートレジストリ、ラン単位のサーバー状態キャッシュ、無効化としてのリアルタイム、そして HTTP からチェックポイント成果物までのシーム。 |
+| [研究状態とガバナンス状態](research_and_governance_state.md) | 1 つのランが同時に抱える状態語彙 — ランライフサイクル、研究フェーズ、ガバナンス段階、ノードスコア状態 — がなぜ別物であり、なぜ stale / invalidated / removed / 物理削除が 4 つの別物なのか。 |
 
 ---
 
@@ -64,11 +85,13 @@ flowchart TB
 
     subgraph post["post-BFTS パイプライン（workflow.yaml）"]
         direction TB
+        provenance["audit_node_provenance<br/>ノード成果物を再ハッシュ"]
         transform["transform_data → science_data.json"]
         figures["generate_figures → VLM レビュー"]
         paper["write_paper → review_paper<br/>（アンサンブル + Area Chair メタ査読）"]
-        claimtail["claim-evidence テール（Story2Proposal）:<br/>link_paper_claims → claim_evidence_hard_gate<br/>→ evidence_grounded_semantic_review → merge_reviews<br/>→ paper_refine → render_paper → finalize_paper"]
+        claimtail["claim-evidence テール（Story2Proposal）:<br/>link_paper_claims → claim_evidence_hard_gate<br/>→ evidence_grounded_semantic_review → merge_reviews<br/>→ paper_refine → render_paper → finalize_paper<br/>→ locked 再チェック → render_final_paper → lock_paper_build"]
         ear["generate_ear → curate → publish（EAR）"]
+        provenance --> transform
         transform --> figures
         transform --> ear
         figures --> paper
@@ -80,7 +103,8 @@ flowchart TB
 
     subgraph ors["ORS 再現性検証 — PaperBench 互換、2 フェーズ"]
         direction LR
-        rubric["ors_generate_rubric"] --> p1["Phase 1 run_reproduce<br/>slurm / docker / apptainer / local"]
+        rubric["ors_generate_rubric"] --> audit["ors_audit_rubric<br/>flags unsound leaves"]
+        audit --> p1["Phase 1 run_reproduce<br/>slurm / docker / apptainer / local"]
         p1 --> p2["Phase 2 grade_with_simplejudge<br/>+ 負例コントロール"]
     end
 
@@ -89,13 +113,54 @@ flowchart TB
 
 | グループ | 役割 | 詳細 |
 |---------|------|------|
-| survey / generate_ideas | 文献調査 + VirSci による仮説・主指標の確定 | [完全なデータフロー](#完全なデータフロー) |
+| survey / generate_ideas | 文献調査 + VirSci による仮説・主指標の確定 | [完全なデータフロー](#完全なデータフロー) |
 | BFTS | 実験構成の最良優先木探索 | [BFTS アルゴリズム](bfts.md) |
-| ReAct ノード実行 | 実機で実験を回すノード単位エージェントループ | [ノードごとのプロンプト構築](#ノードごとのプロンプト構築) |
-| LLMEvaluator | ランキングを駆動する査読スコアリング | [設定 → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) |
+| ReAct ノード実行 | 実機で実験を回すノード単位エージェントループ | [ノードごとのプロンプト構築](#ノードごとのプロンプト構築) |
+| LLMEvaluator | ランキングを駆動する査読スコアリング | [設定 → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) |
 | メモリ | ノード間で受け渡される祖先スコープの知識 | [メモリアーキテクチャ](memory.md) |
 | post-BFTS パイプライン | データ → 作図 → 執筆 → 査読 → EAR | [出版ライフサイクル](publication-lifecycle.md) |
 | ORS 再現性検証 | 論文からゼロ再現し採点する | [PaperBench クイックスタート](../guides/paperbench/paperbench_quickstart.md) |
+
+### 実行モード: `simple_bfts`（デフォルト）と `ari_rqgm`（オプトイン）
+
+このページのすべての記述は、デフォルトの実行モードである `simple_bfts` を
+説明しています。オプトインの `ari_rqgm` モード（Constitutional ARI-RQGM）は、
+同じ BFTS ループをエポックベースのガバナンスと共進化で包みます: 探索戦略は
+純粋委譲の `GovernedSearchStrategy`（`ari/rqgm/runtime.py`）でラップされ、
+MCP クライアントは憲法的ケイパビリティゲート（`ari/core.py` の
+`_install_capability_gate` — 統治対象ツール呼び出しはすべて監査され、重大
+違反はエポック途中の緊急隔離へエスカレートします）でラップされ、
+完了したノードには敵対的な attack/defend/judge ラウンドが付き、各エポック
+境界では決定論的な憲法カーネルがすべてのガバナンス状態変更（コンポーネント
+の採用/退役、プロンプト進化、フロンティア修復）を検証します。有効になるのは
+`ari.mode: ari_rqgm` と `rqgm.enabled: true` が一致するときのみです;
+デフォルト設定では `ari.rqgm` モジュールは一切インポートされず、
+チェックポイントは RQGM 以前の ARI とバイト単位で同一です。レイヤ、
+エポックアルゴリズム、不変条件は
+[Constitutional ARI-RQGM アーキテクチャ](rqgm_architecture.md)を、有効化と
+モード切替ポリシーは[実行モード](../guides/execution_modes.md)を参照して
+ください。
+
+### `manuscript` 軸（オプトイン、既定は off）
+
+`workflow.yaml` は 3 本目のトップレベルスイッチ `manuscript.mode`
+（`off` | `audit` | `enforce`、既定は `"off"`。併せて
+`profile: generic_empirical_v1`、`brief_character_budget: 24000`、既定が
+`disabled` の `repair.policy`）を持ちます。これは `ari.mode` とも
+`paper.mode` とも独立です。`off` はレガシーと完全同一 — manuscript の
+インポート・成果物・ゲート・修復のいずれも発生しません; `audit` は影の
+完全性評価を記録し、`enforce` は authoring 要件が解決されるまで執筆を
+ブロックします（`repair.policy: auto` にはこれが必須）。`workflow.yaml` の
+各パイプラインステージは `segment: evidence | authoring | verification` を
+宣言するようになり、これにより
+`generate_paper_section(..., include_segments=…)` が論文パイプラインを
+セグメント単位で実行できます: 除外されたセグメントは*派生*ワークフロー上で
+無効ステージとして表現されるので、セグメントをまたぐ `depends_on` は永続化
+済みの出力で満たされたままです。この選択自体に mode は不要で、
+`ARI_MANUSCRIPT_RUNTIME_MODE` が `off` 以外のときに加わるのは
+segment-execution レコードです — 実行が workflow digest と論理的な入力に
+束縛され、一致する completed レコードがあれば再実行せず再利用されます。既定の `include_segments=None` では従来どおり
+有効なステージがすべて走ります。
 
 ---
 
@@ -124,19 +189,37 @@ flowchart TB
      │                            │                              │
 ┌────▼──────────┐  ┌─────────────▼──────┐  ┌───────────────────▼──┐
 │ari-skill-hpc  │  │ari-skill-idea      │  │ari-skill-evaluator   │
-│ slurm_submit  │  │ survey             │  │ make_metric_spec     │
-│ job_status    │  │ generate_ideas     │  │ (scientific_score)   │
-│ run_bash      │  │ (VirSci MCP)       │  │                      │
+│ job_submit    │  │ survey             │  │ make_metric_spec     │
+│ job_status    │  │ generate_ideas     │  │ claim_evidence_      │
+│ slurm_submit  │  │ (VirSci MCP)       │  │   hard_gate          │
 └───────────────┘  └────────────────────┘  └──────────────────────┘
 
 Post-BFTS Pipeline (workflow.yaml):
 ┌─────────────────┐  ┌──────────────────┐  ┌──────────────────┐
 │ari-skill-       │  │ari-skill-plot    │  │ari-skill-paper   │
 │transform        │  │ generate_figures │  │ write_paper      │
-│ nodes_to_       │  │ _llm (LLM writes │  │ review_compiled  │
-│ science_data    │  │  matplotlib)     │  │ reproduce_from   │
-│ (LLM analysis)  │  │                  │  │  _paper          │
+│ nodes_to_       │  │ _llm (matplotlib │  │ review_compiled  │
+│ science_data    │  │  plots + SVG     │  │  (rubric-driven, │
+│ (LLM analysis)  │  │  diagrams)       │  │   ensemble+meta) │
 └─────────────────┘  └──────────────────┘  └──────────────────┘
+                                            ┌──────────────────┐
+                                            │ari-skill-replicate│
+                                            │ generate_rubric  │
+                                            │ audit_rubric     │
+                                            │  (PaperBench fmt)│
+                                            └──────────────────┘
+                                            ┌──────────────────┐
+                                            │ari-skill-paper-re│
+                                            │ fetch_code_bundle│
+                                            │ build_reproduce_sh│
+                                            │ run_reproduce    │
+                                            │  (slurm/docker/  │
+                                            │   apptainer/local)│
+                                            │ grade_with_      │
+                                            │  simplejudge     │
+                                            │  (PaperBench via │
+                                            │   LiteLLM judge) │
+                                            └──────────────────┘
 ```
 
 ---
@@ -201,25 +284,26 @@ BFTS expand() (ari/orchestrator/bfts.py)
   - スコアを子提案 LLM に渡す
   - LLM が展開呼び出しごとに 1 つの子方向を提案（改善 / アブレーション / 検証 / ドラフト / デバッグ / その他）
   - ドメインヒントなし — LLM が「改善」の意味を決定
-  - v0.7.0: 親に node_report.json があるとき、プロンプトに delta_vs_parent /
-    self_assessment.concerns / next_steps_hints と files added/modified を
+  - v0.7.0: 親に node_report.json があるとき、プロンプトに構造化された
+    files added/modified/deleted、self_assessment.concerns、next_steps_hints を
     追加。sibling dedup は filter_nodes(for_synthesis) で絞り込み、各 sibling の
     files_changed.added を併記して同じファイルを書く direction を
     物理的に避けられるようにする。
 
 ノード自己レポート (v0.7.0)
-  ari-core/ari/orchestrator/node_report.py が mark_success / mark_failed 時に
-  node_report.json を生成。記録内容:
+  ari-core/ari/orchestrator/node_report/ が mark_success / mark_failed 時に
+  node_report.json を生成（ari-core/ari/cli/bfts_loop.py の post-future フック）。
+  記録内容:
     - files_changed (added / modified / deleted / inherited_unchanged)
       — 親と子の work_dir の sha256 diff から導出
     - original_direction (bfts.expand が child 作成時に保存、evaluator は上書き不可)
-    - self_assessment.{succeeded, headline, concerns} — evaluator の axis_rationales
-      から導出 (axis_score < 0.4 → concerns、0.4..0.7 → next_steps_hints、
-      ≥0.7 → 採用しない)
+    - measurement_valid と evaluation_cases — 評価器の客観出力。各ケースは
+      `valid` とハーネス定義のスカラー測定値辞書を持つ
+    - self_assessment.{headline, concerns} と next_steps_hints —
+      エージェントが生成した LLM Reflection。客観的な有効判定とは別に保存
     - build_command / run_command — work_dir 内の run_job.sh / Makefile を grep
-    - artifacts[].role — 拡張子から決定論的に分類 (data_output / log / binary /
+    - artifacts[].role — 決定論的なロール分類 (data_output / log / binary /
       figure / unknown)
-    - migration_source ("fresh" or "auto")
   PathManager.META_FILES に node_report.json を追加してあるので、親→子の物理
   work_dir コピーで親レポートを子が継承することはない。
 
@@ -240,26 +324,77 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
     ▼
 [workflow.yaml Post-BFTS パイプライン]
 
-  ステージ 1: transform_data  (ari-skill-transform)
+  ステージ 0: audit_node_provenance  (ari-skill-memory: audit_memory)  [ステージ 1 の前]
+    node_report が sha256 を記録した全ノード成果物を再ハッシュしてディスクと
+    照合する — ノード出力が「実験結果」であることをやめて「論文の証拠」に
+    なる境界。成果物ごとに verified / mismatch（ハッシュ記録後に書き換え）/
+    missing（削除）/ unhashed（記録されたベースラインなし）を報告。ARI 自身の
+    メタデータはそもそも監査に届かない: `_FILES_CHANGED_BLOCKLIST_NAMES` と
+    `PathManager.is_meta_file(scope="node")` が `files_changed` の段階で
+    除外する。一方、ノード自身の `results.json` と `*.log` は意図的に
+    node-visible（`NODE_VISIBLE_NAMES` / `NODE_VISIBLE_EXTENSIONS`）なので
+    ハッシュされ verified になる。unhashed と報告されるのは `files_changed`
+    が一度も覆っていない `artifacts[]` エントリで、監査時にはその記録済み
+    ハッシュを（自分自身と照合しても無意味なので）意図的に捨てる。
+    ゲートではなくシグナルであり、transform_data がこれに depends_on します。
+    出力: node_provenance_audit.json
+
+  ステージ 1: transform_data  (ari-skill-transform)  [ステージ 0 の後]
     全ツリーの BFS 走査（ルート → リーフ）
     LLM が全ノードの成果物を読み取り（stdout、ログ、生成コード）
     LLM が抽出: ハードウェアスペック、手法、主要な知見、比較
-    出力: science_data.json  { configurations, experiment_context, per_key_summary }
+    入力には primary_metric / higher_is_better が含まれる（tpl_vars 経由で
+      evaluation_criteria.json 由来）。これにより summary_stats を下流で
+      導出し直さずに方向付きで求められる。
+    出力: science_data.json
+      configurations[*]:
+        rank, label, eval_summary
+        parameters / measurements / predictions / scores  ← typed split。
+                                                             検証済み results.json
+                                                             からのみ採用し、
+                                                             evaluator の
+                                                             _params_dict /
+                                                             _measurements_dict は
+                                                             意図的に事実として
+                                                             採用しない
+        metrics                                            ← 後方互換のフラット union
+        _typed_source: "results.json" | (なし)
+      per_key_summary  （入力パラメータのキーと "_…" 予約キーは除外）
+      summary_stats    { count, primary_metric, direction,
+                         primary_metric_best, primary_metric_n,
+                         typed_split_coverage }
+      experiment_context  （LLM が抽出した手法 / ハードウェア / 知見）
+      implementation_overview （任意）
+      report_driven    （node_report.json が LLM 入力を駆動したとき true）
 
-  ステージ 2: search_related_work  (ari-skill-web)  [ステージ 1 と並列]
-    LLM 生成キーワード → 切替可能な検索バックエンド (Semantic Scholar / AlphaXiv / both)
+  ステージ 2: search_related_work  (ari-skill-web: search_papers)  [ステージ 1 と並列]
+    LLM 生成キーワード → ピン留めされた 1 プロバイダ（workflow.yaml が
+    provider: semantic-scholar / max_results: 15 / mode: record をピン留め）。
+    record は応答をスナップショットするので後の replay はネットワーク不要;
+    record と live はプロバイダを切り替えない。ステージは
+    skip_if_exists: related_refs.json を持つ — 記録済み検索は不変の実験入力
+    なので、resume は再クエリせず再利用する。
     出力: related_refs.json
 
-  ステージ 3: generate_figures  (ari-skill-plot)  [ステージ 1 の後]
-    入力: 完全な science_data.json（experiment_context を含む）+ {{vlm_feedback}}
-    LLM が完全な matplotlib コードを記述 → 実行 → PDF 図表を保存
-    図表の種類はデータから自律的に選択（事前指定なし）
-    出力: figures_manifest.json
+  ステージ 3: generate_figures  (ari-skill-plot: generate_figures_llm)  [ステージ 1 の後]
+    入力: science_data.json + {{experiment_summary}} + {{vlm_feedback}}
+    LLM はプランナに徹する: 出せるのは metric_id / chart_type /
+    x_mode だけ。数値・単位・キャプション・パス・画像バイトは、検証済みの
+    science レコードから固定レンダラが決定論的に生成し
+    （execution_mode "declarative-fixed-renderer"）、図ごとに
+    figures/revisions/{NN}/{figure_id}/ 配下へ source_data.json /
+    figure_spec.json / .png / .pdf を書き出す。revision > 0 には直前の
+    manifest ダイジェストに紐づく VLM フィードバックが必須で、revision 0 は
+    フィードバックを拒否する。
+    出力: figures_manifest.json  {figures, latex_snippets, figure_kinds}
+      （figure_kinds は spec の chart_type）
 
-  ステージ 3b: vlm_review_figures  (ari-skill-vlm)  [ステージ 3 の後]
-    VLM が代表図 (fig_1.png) を視覚的にレビュー
+  ステージ 3b: vlm_review_figures  (ari-skill-vlm: review_figures_all)  [ステージ 3 の後]
+    VLM が figures_manifest.json の**全図**をレビュー。集約スコアは図ごとの
+    最小値なので、1 枚でも弱ければループが回る。issues / suggestions には
+    [fig_id] が前置され、どの図を直すべきかが再生成側に伝わる。
     スコア < 0.7: VLM フィードバックと共に generate_figures へループバック（最大 2 反復）
-    出力: vlm_figure_review.json
+    出力: vlm_review.json
 
   ステージ 4: generate_ear  (ari-skill-transform)  [ステージ 1 の後]
     node_report 駆動の決定論的 ear/ 構築。
@@ -300,9 +435,21 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
         → evidence_grounded_semantic_review_post_refine
         → claim_evidence_hard_gate_final   (FINAL gate; strict モードで finalize をブロック)
         → finalize_paper            (下記ステージ 8)
-    workflow.yaml のトップレベル claim_gate_policy ブロックで制御される
-      (デフォルト mode: warn — FINAL gate は非ブロッキング; mode: strict は
-      FINAL gate で finalize_paper をブロック)。解決の優先順位は最終的に
+        → link_paper_claims_locked  (Code Availability 注入後に claim を再照合)
+        → claim_evidence_hard_gate_locked        (phase: final。実際にコンパイル
+                                                  され lock される TeX そのものを検査)
+        → evidence_grounded_semantic_review_locked   (phase: locked、助言的)
+        → render_final_paper        (注入後の TeX をそのままコンパイル)
+        → lock_paper_build          (入力・呼び出し・査読・gate・コンパイルログ・
+                                     TeX・BibTeX・PDF を fail-closed で固める
+                                     PaperBuildV1 ロック)
+    workflow.yaml のトップレベル claim_gate_policy ブロックで制御される。
+      ブロックできるのは FINAL フェーズだけで、draft フェーズのレポートは
+      決してブロックしない。mode: off は一切ブロックせず、mode: warn（既定）
+      でも客観的完全性の always_block_on 層（invariant_violation /
+      correctness_failed / recompute_mismatch など）はブロックする。
+      mode: strict はさらに設定された block_on の所見と strict セクションの
+      未カバー数値をブロックする。解決の優先順位は最終的に
       env ARI_CLAIM_GATE_MODE (off | warn | strict) と ARI_COMPARISON_SCOPE。
     重い gate ロジックは新しい ari/pipeline/claim_gate/ パッケージ
       (contract / gate / policy / numeric / latex / invariants / resolve) に
@@ -335,8 +482,9 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
   ステージ 9: ear_publish  (ari-skill-transform: publish_ear)  [ステージ 7 の後、任意]
     ear_published/ から再現可能な tarball を構築し、backend
     (ari-registry / local-tarball / gh / zenodo) に転送。最初は常に
-    visibility=staged (FR-P5)。デフォルトは無効、workflow.yaml で
-    `enabled: true` にするかワーカーに publish=true を渡してオプトイン。
+    visibility=staged (FR-P5)。workflow.yaml では既定で有効
+    (`enabled: true`、backend `local-tarball`、`dry_run: false`) で、
+    finalize_paper がこれに依存する。
     出力: publish_record.json
 
   ステージ 10: review_paper / merge_reviews  (ari-skill-paper)  [ステージ 5+3b の後]
@@ -346,50 +494,77 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
     合成 (LLM 不使用)。
     出力: review_report.json (vlm_figure_review が後付けで添付される)
 
-  ステージ 11: ors_generate_rubric  (ari-skill-replicate)  [v0.7.0]
+  ステージ 11: ors_generate_rubric  (ari-skill-replicate)  [lock_paper_build の後, v0.7.0]
     最終論文から PaperBench 形式 (TaskNode ツリー) のオートルーブリックを
     生成。task_category と finegrained_task_category は PaperBench の閉じた
-    語彙に固定 (LLM が外したら decided 正規化で補正)。JSON 出力時は迷い
-    LaTeX backslash escape をサニタイズ。
+    語彙に固定 (freeze の前に決定論的な normalizer が LLM の表記ゆれを
+    allow-list のエントリへ写像する)。JSON 出力時は迷い LaTeX backslash
+    escape をサニタイズ。ルーブリックのエンベロープは正規化 JSON + 論文
+    ダイジェストに対する sha256 で凍結される。
     出力: ors_rubric.json + ors_rubric.meta.json
 
-  ステージ 12: ear_publish  (ari-skill-transform)  [v0.7.0, デフォルト有効]
+  ステージ 12: ors_audit_rubric  (ari-skill-replicate: audit_rubric)  [ステージ 11 の後]
+    以降のすべての採点が依拠するルーブリック自体を監査する。各葉に
+    vague_qualifier / no_paper_evidence / duplicate (決定論的) と
+    unverifiable (葉ごとに LLM 1 回) のフラグを付け、ors_rubric.json を
+    その場で書き換え、20% 超にフラグが付くと regen_recommended を返す。
+    ゲートではなくシグナルで、採点はどちらでも進む。
+    ARI_MODEL_RUBRIC_AUDIT で生成側と別モデルを指定できる。
+    出力: ors_rubric.audit.json (+ ors_rubric.json 内にフラグ)
+
+  ステージ 13: ear_publish  (ari-skill-transform)  [v0.7.0, デフォルト有効]
     ear_published/ をバンドルにパッケージし publish_record.json を生成。
     既定 backend は local-tarball (依存ゼロ)。外部公開なら ari-registry /
     zenodo / gh も利用可能。
     出力: bundle.tar.gz + publish_record.json
 
-  ステージ 13: ors_seed_sandbox  (ari-skill-paper-re: fetch_code_bundle)  [v0.7.0]
+  ステージ 14: ors_seed_sandbox  (ari-skill-paper-re: fetch_code_bundle)  [v0.7.0]
     キュレート済み EAR バンドルから repro_sandbox/ への決定論的種まき。
     publish_record.json から ref + sha256 を自動読込 (LLM 不使用)。EAR が
     OFF の時は publish_record.json が無いので no-op し、次の LLM フォール
     バックに任せる。
     出力: ors_seed.json
 
-  ステージ 14: ors_build_reproduce  (ari-skill-paper-re: build_reproduce_sh)  [v0.7.0]
-    LLM 駆動の replicator: 論文とルーブリックの expected_artifacts を読み、
-    自己完結の reproduce.sh + ソースファイルをサンドボックスに書き出す。
+  ステージ 15: ors_build_reproduce  (ari-skill-paper-re: build_reproduce_sh)  [v0.7.0]
+    replicator: PaperBench 系の ReAct エージェント (BasicAgent、
+    `iterative_agent: true` なら IterativeAgent。ari-skill-paper-re/vendor/
+    paperbench に vendoring) をサンドボックスを workspace として駆動する。
+    エージェントは論文とルーブリックの expected_artifacts を読み、bash/python
+    ツールを繰り返し呼びながら reproduce.sh と補助ソースを書き出し、submit か
+    wall-clock 予算 (time_limit_sec、既定 12 時間) の尽きるまで続ける。
+    v0.6 の単発 LLM replicator を置き換えたもの。
     reproduce.sh が既存なら skip (ors_seed_sandbox の後ろに置けば EAR ON
     では発火しない)。LiteLLM 経由で provider neutral。
     出力: ors_replicator.json + repro_sandbox/{reproduce.sh, source...}
 
-  ステージ 15: ors_run_reproduce  (ari-skill-paper-re: run_reproduce)  [v0.7.0]
+  ステージ 16: ors_run_reproduce  (ari-skill-paper-re: run_reproduce)  [ステージ 15 の後、v0.7.0]
     Phase 1。reproduce.sh をサンドボックスで実行:
       slurm (sbatch + ARI_SLURM_PARTITION = BFTS と同じ partition)
       → docker (デーモン利用可かつ HPC 外) → apptainer → singularity →
       local。ARI_PHASE1_SANDBOX で上書き可。
-    SLURM 経路は sbatch --wait + spool relocation 対策 wrapper。
+    SLURM 経路は型付きスケジューラライフサイクルへの handoff。実行要求は
+    JobRequestV1 + ResourceRequestV1 になり、ari-skill-hpc と同じ
+    SlurmScheduler へ submit されて終端状態まで poll される
+    (_execute_reproduction_slurm)。
+    reproduce.log を捕捉し、rubric の expected_artifacts と照合する。
     出力: ors_phase1.json { executed, exit_code, log_path,
                               artifacts, missing, sandbox_kind,
                               [partition, cpus, walltime] }
 
-  ステージ 16: ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [v0.7.0]
-    Phase 2。メイン採点 completer を LiteLLM 経由化 (任意 provider 対応)、
-    structured score-parser は gpt-4o-2024-08-06 のまま。N 回 (デフォルト 3)、
-    重み付き葉スコア集約 + 負例コントロール。
+  ステージ 17: ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [ステージ 16 の後、v0.7.0]
+    Phase 2。PaperBench SimpleJudge を rubric の葉に対して
+    (repo_dir + reproduce.log + 論文) で走らせる。メイン採点 completer を
+    LiteLLM 経由化 (任意 provider 対応)、structured score-parser 2 本も同じ
+    judge_model から作られ、response_format だけが異なる。N 回
+    (デフォルト 1 — PaperBench §4.1 の single-pass 採点。増やすときは
+    ARI_JUDGE_N_RUNS)、重み付き葉スコア集約。負例コントロール
+    (空リポジトリ + 自明な reproduce.sh) が「作業の不在」を報酬しない
+    rubric であることを検証する — 両コントロールとも 5% 未満でなければ
+    ならない。
     出力: ors_grade.json { ors_score, raw_score, leaf_grades,
                            judge_model, n_runs, rubric_sha256,
-                           negative_control: {empty, boilerplate, passed} }
+                           negative_control_check: {empty, boilerplate,
+                                                    passed, status, error} }
 ```
 
 ---
@@ -423,7 +598,9 @@ checkpoints/{run_id}/
 ├── science_data.json           # Transform-skill 出力
 ├── related_refs.json           # 文献検索結果
 ├── figures_manifest.json       # 生成図メタデータ
-├── fig_*.{pdf,png,eps,svg}     # 生成された図
+├── figures/revisions/{NN}/{figure_id}/  # 図ごとのレンダリング結果:
+│                               #   source_data.json / figure_spec.json /
+│                               #   {figure_id}.png / .pdf / figure_manifest.json
 ├── vlm_review.json             # VLM 図レビュー出力
 ├── full_paper.tex              # 生成された LaTeX 論文
 ├── refs.bib                    # BibTeX 参照
@@ -452,8 +629,12 @@ checkpoints/{run_id}/
 ノード毎の作業ディレクトリは `checkpoints/` と兄弟ディレクトリとして作成される:
 
 ```
-{workspace}/experiments/{slug}/{node_id}/
+{workspace}/experiments/{run_id}/{node_id}/
 ```
+
+中間のセグメントはトピック slug ではなく **`run_id`** である。`PathManager.node_work_dir`
+は `run_id` を受け取り、`ari/cli/bfts_loop.py` がそれを渡すため、実験名が同じ 2 つの
+ラン同士が同じバケットに書き込むことはない。
 
 ノード実行時、`_run_loop` は以下のユーザファイルを各ノードの work_dir にコピーする:
 - **Provided files**: `experiment.md` の `## Provided Files` (`## 提供ファイル` / `## 提供文件`) にリストされたパス
@@ -461,9 +642,15 @@ checkpoints/{run_id}/
 - **uploads サブディレクトリ**: `checkpoint/uploads/` 内の非 meta ファイル
 
 `PathManager.META_FILES` がノード work_dir に絶対にコピーしてはいけないファイルを定義
-(`experiment.md`, `tree.json`, `nodes_tree.json`, `launch_config.json`, `meta.json`,
-`results.json`, `idea.json`, `cost_trace.jsonl`, `cost_summary.json`, `workflow.yaml`,
-`ari.log`, `evaluation_criteria.json`, `.ari_pid`, `.pipeline_started`)。
+する。ラン単位のメタデータ (`experiment.md`, `tree.json`, `nodes_tree.json`,
+`launch_config.json`, `meta.json`, `results.json`, `idea.json`, `cost_trace.jsonl`,
+`cost_summary.json`, `provenance.json`, `workflow.yaml`, `ari.log`,
+`evaluation_criteria.json`, `.ari_pid`, `.pipeline_started`)、各ノードが自分で
+書くべきノード単位の記録 (`node_report.json`, `full_log.json`, `_run_env.json`,
+`_exec_env.json`)、そして RQGM / 論文アーカイブの成果物を含む。ノード単位の項目は
+実効的な重みを持つ: `full_log.json` / `_run_env.json` / `_exec_env.json` は
+`bfts_loop` の `_OUTPUT_BLACKLIST` に無いため、親の実行ログ・マシン・ロード済み
+モジュールが子へ入るのを止めているのはこの集合だけである。
 拡張子が `.log` のファイルも meta 扱い。
 
 ### tree.json と nodes_tree.json
@@ -472,8 +659,8 @@ checkpoints/{run_id}/
 
 | ファイル          | 書き込み元                                            | フェーズ          | スキーマ                                              |
 |-------------------|-------------------------------------------------------|-------------------|-------------------------------------------------------|
-| `tree.json`       | `cli.py` の `_save_checkpoint()`                      | BFTS 中          | `{run_id, experiment_file, created_at, nodes}`        |
-| `nodes_tree.json` | `_save_checkpoint()` + `generate_paper_section()`     | BFTS + post-BFTS | `{experiment_goal, nodes}` (軽量)                    |
+| `tree.json`       | `cli/bfts_loop.py` の `_save_checkpoint()`            | BFTS 中          | `{run_id, experiment_file, created_at, nodes}`        |
+| `nodes_tree.json` | `_save_checkpoint()` + `WorkflowDriver.run()`（`ari/pipeline/driver.py`。`ari/pipeline/orchestrator.py` の `run_pipeline()` 経由で、`generate_paper_section()` から呼ばれる） | BFTS + post-BFTS | `{experiment_goal, nodes}` (軽量)                    |
 
 **読み取り側の規約**: 全ての読み取りは `tree.json` を優先し、`nodes_tree.json` にフォールバック
 しなければならない。これにより BFTS 中の最新データを保ちつつ、`nodes_tree.json` を前提とする
@@ -485,18 +672,87 @@ ARI はグローバルな設定ディレクトリを持たない。設定ファ�
 すべてアクティブなチェックポイント配下に保存されるため、実験ごとに状態が分離される。
 v0.5.0 でグローバルな `$HOME/.ari/` ディレクトリは廃止された。残るファイルシステム
 フォールバックは `DeprecationWarning` を出し、v1.0 で完全削除される
-（詳細は `docs/_archive/refactor_audit.md` と `docs/guides/migration.md`）:
+（詳細は `docs/guides/migration.md`）:
 
 ```
 checkpoints/{run_id}/
 ├── settings.json        # GUI 設定 (LLM モデル、プロバイダ、HPC デフォルト)
-├── memory_backup.jsonl.gz   # Letta スナップショット (ステージ境界＋終了時に自動)
+├── memory_backup.v1.json.gz # Letta スナップショット (ステージ境界＋終了時に自動)
 ├── memory_access.jsonl       # write/read テレメトリ
 └── ...                  # tree.json / launch_config.json / uploads / ari.log
 ```
 
 API キーは **絶対に** `settings.json` には保存されない。`.env` ファイル
 (探索順: checkpoint → ARI root → ari-core → home) または起動時に注入された環境変数から読み取る。
+
+### ワークスペースルートの解決
+
+上記のパスに現れる `{workspace}` は固定ディレクトリではない。これを決めるのは
+`RuntimePathResolver.resolve_workspace_root()` (`ari/paths.py`) ただ 1 つの関数である。
+優先順位は先に一致したものが勝つ:
+
+1. **`ARI_CHECKPOINT_DIR`** — pin されたチェックポイントディレクトリからルートを
+   *復元* する: 最も外側の `checkpoints/` 祖先まで遡ってその親を採る。`checkpoints/`
+   祖先が無い場合はチェックポイントディレクトリ自身の親を採る。
+2. 明示的に渡された `workspace_root` 引数。
+3. **`ARI_ROOT`** → `{ARI_ROOT}/workspace`。
+4. `{repo root}/workspace` — `{repo root}/ari-core` がディレクトリである場合、
+   つまりチェックアウト内部から実行している場合にのみ採用される。
+5. プロセスの作業ディレクトリ。
+
+ステップ 1 がステップ 2 より強いのは踏みやすい落とし穴である: `ARI_CHECKPOINT_DIR` が
+設定されている間は、`workspace_root` を明示的に渡してもルートは **移動しない**。
+現時点でこのポリシーに乗っている呼び出し元は `ari/config/__init__.py` (`auto_config`。
+既定の `{workspace}/checkpoints/{run_id}` テンプレートをここから組み立てる)、
+`ari/harness_registry.py` (`{workspace}/harnesses`)、および `ari/viz/v1/` 配下の
+v1 GUI ドキュメントストアと launch のパスである。
+
+このポリシーは opt-in であり、暗黙には効かない: 引数なしで構築した `PathManager()` は
+依然としてプロセスの作業ディレクトリを既定とし、上記のチェーンを一切参照しない。
+ここに挙げた呼び出し元だけがこの方式でルートを解決する。
+
+### バケット化された `runs/` レイアウト — 設計のみで未採用
+
+`RuntimePathResolver` は、ラン単位でバケット化された第 2 のレイアウトも理解する:
+
+```
+{workspace}/runs/{run_id}/
+├── workspace/     # ノード毎のスクラッチ (レガシー相当: 上記のノード作業ディレクトリ)
+├── checkpoints/   # ラン単位メタデータ JSON (レガシー相当: チェックポイントルート)
+├── artifacts/     # 図、LaTeX、refs.bib
+├── traces/        # コスト / プロンプト / メモリアクセスのログ
+└── reports/       # node_report.json、レビュー・再現性レポート、ors_*.json
+```
+
+**このレイアウトを書くものは存在せず、`ari/paths.py` の外にこれを要求する呼び出し元も
+存在しない。** これは設計されたのち採用されなかった目標形として読むこと — 現在の
+ディスク上のレイアウトでもなければ、進行中の移行でもない。ARI が実際に生成するパスは
+すべて上記のフラットなレイアウトである。`ari/paths.py` に実在するのは読み取り側の許容
+だけで、バケット化されたランが万一現れれば解決できる、という状態にとどまる:
+
+- `checkpoint_file(run_id, name)` は `bucket_for` で `name` を分類し
+  (コスト / プロンプト / テレメトリと RQGM ログの固定ファイル名集合および
+  `memory_access.*.jsonl` は `traces`、
+  `node_report.json` / `review_report.json` / `reproducibility_report.json` と
+  `ors_*.json` は `reports`、`fig_` 接頭辞または `.tex` / `.pdf` / `.bbl` / `.bib` /
+  `.png` / `.svg` 拡張子は `artifacts`、それ以外はすべて `checkpoints`)、そのバケットを
+  先に、残り 3 つを後に調べ、どれも存在しなければフラットな
+  `checkpoints/{run_id}/{name}` を返す。分類は走査の *順序* を決めるだけで、いずれに
+  せよ全バケットを調べるため、分類を誤っても誤ったパスにはならない。
+- `artifacts_dir` / `traces_dir` / `reports_dir` は該当ディレクトリが既に存在する場合の
+  みバケットを返し、そうでなければフラットなチェックポイントルートを返す。
+  `workspace_dir` は `runs/{run_id}/workspace/` が存在する場合のみ
+  `runs/{run_id}/workspace/{node_id}` を返し、そうでなければ上記 *ノード作業ディレクトリ*
+  のレガシーパスを返す。
+
+バケットを作るものが存在しない以上、これらはすべて構造上フラットなパスを返す。
+`runs_root` / `run_dir` / `bucket_for` と dual-layout アクセサ (`checkpoint_file`、
+`artifacts_dir`、`traces_dir`、`reports_dir`、`workspace_dir`) には
+`ari/paths.py` 自身の外に呼び出し元が無く、これらを行使しているのは
+`ari-core/tests/test_paths.py` (と `tests/test_rqgm_proposals.py` の `bucket_for`
+アサーション 1 件) だけである。新しいレイアウト作業のお手本として扱ってはならない。
+維持コストは安いが ARI のレイアウトとして説明すると誤解を招く、読み取り側の死んだ
+足場だと理解すること。
 
 ---
 
@@ -506,18 +762,35 @@ API キーは **絶対に** `settings.json` には保存されない。`.env` �
 
 | モジュール | 説明 |
 |--------|-------------|
-| `ari/orchestrator/bfts.py` | Branch-and-Frontier Tree Search — ノードの展開、選択、枝刈り; フォールバックランキング戦略は `BFTSConfig.frontier_score` (`scientific_plus_diversity` / `scientific_only` / `depth_penalized` / `ucb_like`) で**設定可能** — [Configuration → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) を参照 |
+| `ari/orchestrator/bfts.py` | Branch-and-Frontier Tree Search — ノードの展開、選択、depth / sterile / total の枝刈り、展開回数の追跡; フォールバックランキング戦略は `BFTSConfig.frontier_score` (`scientific_plus_diversity` / `scientific_only` / `depth_penalized` / `ucb_like`) で**設定可能** — [Configuration → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) を参照 |
 | `ari/orchestrator/node.py` | Node データクラス — id, parent_id, depth, label, metrics, artifacts, memory |
+| `ari/orchestrator/node_report/` | ノード単位の自己レポート ビルダー + レガシー再構築（v0.7.1 でパッケージに分割） |
+| `ari/orchestrator/lineage_decision.py` | lineage 判断の LLM フック（BFTS rewind / branch / continue） |
+| `ari/orchestrator/root_idea_selector.py` | VirSci プール → `ideas[0]` の再選択器 |
+| `ari/rqgm/` | Constitutional ARI-RQGM ランタイム（オプトイン `ari_rqgm` モード）: `RQGMRuntime` ファサード、憲法カーネル、ガバナンスオーケストレータ（`governance/` の弾劾パイプライン）、レジストリ遷移エンジン、フロンティア修復、提案/敵対/プロンプト進化の各レイヤ、論文アーカイブ共進化ランタイム（`PaperArchiveStrategy` — ドラフト空間上の第二の最良優先探索）、および Knowledge–Capability–Assurance 層（`admission.py` が原子的なラン受理ベースラインを公開し、`kernel_knowledge_integrity` / `kernel_capability_integrity` / `kernel_harness_integrity` がその純粋なカーネル検査）。`simple_bfts` の下では決してインポートされない — [Constitutional ARI-RQGM アーキテクチャ](rqgm_architecture.md)を参照 |
 | `ari/agent/loop.py` | ReAct エージェントループ — ノードごとの LLM + ツール呼び出し; SLURM ジョブの自動ポーリング; 祖先メモリの注入 |
+| `ari/agent/message_utils.py` / `tool_manager.py` / `guidance.py` | `agent/loop.py` から切り出したヘルパー（Phase 3D, v0.7.1） |
 | `ari/agent/workflow.py` | WorkflowHints — 実験テキストから自動抽出（ツールシーケンス、メトリクスキーワード、パーティション） |
-| `ari/pipeline.py` | Post-BFTS パイプラインドライバー — テンプレート解決、ステージ実行、出力の接続 |
-| `ari/evaluator/llm_evaluator.py` | メトリクス抽出 + 査読スコアリング（`scientific_score`、`comparison_found`）。合成式 (`harmonic_mean` / `arithmetic_mean` / `weighted_min` / `geometric_mean`) と軸セット (`legacy` / `dynamic` / `custom`) は `EvaluatorConfig` で**設定可能** — [Configuration → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) を参照 |
-| `ari/memory/file_client.py` | ファイルベースのメモリクライアント（祖先チェーンスコープ） |
+| `ari/agent/react_driver.py` | 論文パイプラインの各ステージが使う、パイプライン駆動の ReAct エントリポイント |
+| `ari/pipeline/` | Post-BFTS パイプラインドライバー。`experiment_md`、`yaml_loader`、`stage_control`、`context_builder`、`stage_runner`、`orchestrator` に分割（Phase 3C, v0.7.1） |
+| `ari/evaluator/llm_evaluator.py` | メトリクス抽出 + 査読スコアリング（`scientific_score`、`comparison_found`）。合成式 (`harmonic_mean` / `arithmetic_mean` / `weighted_min` / `geometric_mean`) と軸セット (`legacy` / `dynamic` / `custom`) は `EvaluatorConfig` で**設定可能** — [Configuration → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) を参照 |
+| `ari/memory/letta_client.py` | `LettaMemoryClient` — `ari_react_*` Letta コレクションを backend とする ReAct トレースの永続化 |
+| `ari/memory/file_client.py` | 非推奨の v0.5.x ファイルベース クライアント。`ari memory migrate --react` のためだけに残されている |
+| `ari/memory_cli.py` | `ari memory …` サブコマンド（migrate / backup / restore / start-local / …） |
 | `ari/mcp/client.py` | 非同期 MCP クライアント — スレッドセーフ、並列実行用の新しいイベントループ |
 | `ari/llm/client.py` | litellm 経由の LLM ルーティング（Ollama、OpenAI、Anthropic、任意の OpenAI 互換） |
-| `ari/config.py` | 設定データクラス（BFTSConfig、LLMConfig、PipelineConfig） |
-| `ari/core.py` | トップレベルのランタイムビルダー — 全コンポーネントの接続 |
-| `ari/cli.py` | CLI: `ari run`, `ari paper`, `ari status` |
+| `ari/config/` | 設定データクラス（BFTSConfig、LLMConfig、PipelineConfig）+ workflow.yaml のファインダ（Phase 2） |
+| `ari/configs/` | `FilesystemConfigLoader` 経由で読み込む YAML ルックアップテーブル（`model_prices.yaml`、`defaults.yaml`） |
+| `ari/prompts/` | `FilesystemPromptLoader` 経由で読み込む外部化 LLM プロンプト。コミット済みテンプレートのディレクトリは `agent/`、`orchestrator/`、`pipeline/`、`evaluator/`、`viz/`、`llm/`（CLI シムのシステムプロンプトに注入される MCP ツール名解決フラグメント）に加え、RQGM 期の 2 ディレクトリ — `governance/`（弾劾パイプラインの `auditor` / `defender` / `governance_judge` アクタ）と `rqgm/`（ProposalRouter のジェネレータ群、敵対 → 防御 → 裁定のループ、PromptMutator と clean-room のメタプロンプト）。どのディレクトリも同じバージョン付きスキームを使う: `load_versioned("<dir>/<name>")` はテンプレート本文と `sha256(text)[:12]` を返し、この短いハッシュがレコードの `prompt_hash` として保存される — [RQGM スキーマ → Id とハッシュの規律](../reference/rqgm_schemas.md#id-とハッシュの規律) を参照。ランタイムで *進化した* プロンプト本文はここにコミットされず、チェックポイント単位で保持される。ピン留めは `tests/test_prompt_extraction.py`（手書きの sha256 一覧）と `tests/test_prompt_snapshots.py`（配下の `*.md` を自動探索）|
+| `ari/protocols/` | 層をまたぐ Protocol — `Evaluator`、`PromptLoader`、`ConfigLoader` |
+| `ari/paths.py` | `PathManager` — `ARI_CHECKPOINT_DIR` の読み書きにおける単一の真実の源泉（Phase 1） |
+| `ari/checkpoint.py` | `tree.json` / `nodes_tree.json` の共有 I/O（Phase 2） |
+| `ari/_deprecation.py` | DR1–DR4 の警告を支える `warn_deprecated_path / _env / _field` ヘルパー |
+| `ari/migrations/v05_to_v07/` | 隔離された v0.5 → v0.7 マイグレーション シム（v1.0 で削除予定） |
+| `ari/public/` | skill が import してよい安定した再エクスポート層（`container`、`cost_tracker`、`paths`、`llm`、`config_schema`、および skill が実際に依存する型付き契約モジュール — `execution`、`result`、`science_data`、`figures`、`visual_review`、`claim_gate`、`research_contract`、`manuscript` など）。`tests/test_public_api_boundary.py` が CI で強制 |
+| `ari/core.py` | トップレベルのランタイムビルダー — Protocol 注入される依存関係の composition root |
+| `ari/cli/` | Typer CLI 分割パッケージ: `__init__`, `run`, `projects`, `commands`, `bfts_loop`, `lineage`, `migrate`（Phase 3A, v0.7.1）+ `paper_dispatch`（`ari run` / `ari resume` / `ari paper` が共有する論文フェーズ実行モードディスパッチ） |
+| `ari/viz/routes.py` / `websocket.py` / `ui_helpers.py` / `checkpoint_*` / `state_sync.py` | HTTP + SSE の GUI バックエンド。レガシーな `viz/server.py` と `viz/api_state.py` から分離（Phase 3B, v0.7.1） |
 
 ### Skills (MCP サーバー)
 
@@ -525,27 +798,30 @@ API キーは **絶対に** `settings.json` には保存されない。`.env` �
 
 | Skill | ツール | 役割 | LLM? |
 |-------|-------|------|------|
-| `ari-skill-hpc` | `slurm_submit`, `job_status`, `job_cancel`, `singularity_build`, `singularity_run`, `singularity_pull`, `singularity_build_fakeroot`, `singularity_run_gpu` | HPC ジョブ管理 + Singularity コンテナ | ✗ |
-| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory`, `get_experiment_context` | 祖先スコープのノードメモリ（Letta バックエンド） | △ |
-| `ari-skill-idea` | `survey`, `generate_ideas` | 文献検索（Semantic Scholar）+ VirSci マルチエージェント仮説生成 | ✓ |
-| `ari-skill-evaluator` | `make_metric_spec` | 実験ファイルからのメトリクス仕様抽出 | △ |
-| `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear` | BFTS ツリー → 科学データ + EAR + curate/publish ライフサイクル (v0.7.0) | ✓ |
-| `ari-skill-web` | `web_search`, `fetch_url`, `search_arxiv`, `search_semantic_scholar`, `collect_references_iterative` | Web 検索、arXiv、Semantic Scholar、反復的引用収集 | △ |
-| `ari-skill-plot` | `generate_figures`, `generate_figures_llm` | 決定論的 + LLM 図表生成（図ごとに matplotlib プロットまたは SVG 図を `kind` フィールドで選択） | ✓ |
-| `ari-skill-paper` | `list_venues`, `get_template`, `generate_section`, `compile_paper`, `check_format`, `review_section`, `revise_section`, `write_paper_iterative`, `review_compiled_paper`, `list_rubrics`, `inject_code_availability`, `merge_reviews` | LaTeX 論文執筆、コンパイル、ルーブリック駆動査読 (AI Scientist v1/v2 互換)。v0.7.0: `inject_code_availability` で `\codeavailability{}` / `\codedigest{}` / `\coderef{}` マクロ注入、`merge_reviews` で text-review + VLM-review JSON を後付け合成。 | ✓ |
-| `ari-skill-paper-re` | `fetch_code_bundle`, `run_reproduce`, `grade_with_simplejudge` | PaperBench 形式の再現性 (v0.7.0)。`ari.clone` でサンドボックス事前展開、Phase 1 サンドボックス runner、Phase 2 PaperBench SimpleJudge 採点。PaperBench は `vendor/paperbench` に同梱。 | ✓ |
-| `ari-skill-replicate` | `generate_rubric`, `audit_rubric` | PaperBench 形式のオートルーブリック生成器・監査器 (v0.7.0)。ORS 再現性フローを駆動。 | ✓ |
-| `ari-skill-benchmark` | `analyze_results`, `plot`, `statistical_test` | CSV/JSON/NPY 分析、プロット、scipy 統計（BFTS analyze ステージで使用） | ✗ |
-| `ari-skill-vlm` | `review_figure`, `review_table` | VLM ベースの図表・テーブルレビュー（VLM レビューループを駆動） | ✓ |
-| `ari-skill-coding` | `write_code`, `run_code`, `read_file`, `run_bash` | コード生成 + 実行 + ページネーション付きファイル読取 | ✗ |
+| `ari-skill-hpc` | `job_submit`, `container_submit`, `job_status`, `job_result`, `job_logs`, `job_cancel`, `probe_platform_capabilities`, `counter_support`, `measure_counters`, `slurm_submit` | digest 固定された request による型付き SLURM ジョブライフサイクル。コンテナはコマンドごとの Singularity tool ではなく `container_submit` から到達し、`slurm_submit` はバッチスクリプトのブリッジとして残る | ✗ |
+| `ari-skill-memory` | `add_memory`, `search_memory`, `search_research_memory`, `get_node_memory`, `get_experiment_context`, `get_verified_context`, `consolidate_node_memory`, `add_experiment_result`, `add_failure_case`, `add_procedure_memory`, `add_reflection`, `add_reproducibility_event`, `audit_memory` | 祖先スコープのノードメモリ（Letta バックエンド）。`audit_memory` は `audit_node_provenance` ステージを駆動 | △ |
+| `ari-skill-idea` | `survey`, `generate_ideas`, `mint_contract_for_proposal` | 文献検索（Semantic Scholar）+ VirSci マルチエージェント仮説生成。`mint_contract_for_proposal` は本 skill が生成していない proposal に対して typed Research Contract を発行する | ✓ |
+| `ari-skill-evaluator` | `make_metric_spec`, `propose_metric_contract`, `claim_evidence_hard_gate`, `evidence_grounded_semantic_review` | 実験ファイルからのメトリクス仕様抽出 + `ari/pipeline/claim_gate/` を包む薄い MCP 面 | △ |
+| `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `promote_ear`, `publish_ear` | BFTS ツリー → 科学データ + EAR + curate/promote/publish ライフサイクル (v0.7.0) | ✓ |
+| `ari-skill-web` | `web_search`, `fetch_url`, `search_papers`, `rerank_retrieval_records`, `walk_citations`, `list_uploaded_files`, `read_uploaded_file` | Web 検索 + 1 回の呼び出しにつき 1 つのピン留めされた学術プロバイダ（`semantic-scholar` / `arxiv` / `alphaxiv`; `both` は拒否）を `record` / `live` / `replay` のスナップショットモードで利用、引用の追跡、アップロードファイルへのアクセス | △ |
+| `ari-skill-plot` | `render_figure`, `generate_figures`, `generate_figures_llm` | 宣言的な figure spec を固定レンダラが描画する。`generate_figures` は決定論的な既定 spec、`generate_figures_llm` は LLM に `metric_id` / `chart_type` / `x_mode` だけを選ばせる | ✓ |
+| `ari-skill-paper` | `list_venues`, `get_template`, `compile_paper`, `check_format`, `write_paper_iterative`, `review_compiled_paper`, `list_rubrics`, `link_paper_claims`, `paper_refine`, `inject_code_availability`, `merge_reviews`, `finalize_paper_build` | LaTeX 論文執筆、コンパイル、ルーブリック駆動査読 (AI Scientist v1/v2 互換)。v0.7.0: `inject_code_availability` で `\codeavailability{}` / `\codedigest{}` / `\coderef{}` マクロ注入、`merge_reviews` で text-review + VLM-review JSON を後付け合成、`finalize_paper_build` が fail-closed な `PaperBuildV1` ロックを書く。 | ✓ |
+| `ari-skill-paper-re` | `fetch_code_bundle`, `build_reproduce_sh`, `run_reproduce`, `grade_with_simplejudge` | PaperBench 形式の再現性 (v0.7.0)。`ari.clone` でサンドボックス事前展開、Phase 1 サンドボックス runner、Phase 2 PaperBench SimpleJudge 採点。PaperBench は `vendor/paperbench` に同梱。 | ✓ |
+| `ari-skill-replicate` | `generate_rubric`, `audit_rubric`, `suggest_target_leaf_count` | PaperBench 形式のオートルーブリック生成器・監査器 (v0.7.0)。ORS 再現性フローを駆動。 | ✓ |
+| `ari-skill-benchmark` | `analyze_results`, `statistical_test`, `compare_runs` | CSV/JSON/NPY 分析、scipy 統計、ラン間比較（BFTS analyze ステージで使用） | ✗ |
+| `ari-skill-vlm` | `review_figure`, `review_figures_all`, `review_table` | VLM ベースの図表・テーブルレビュー（`review_figures_all` が figure バッチ全体の VLM レビューループを駆動） | ✓ |
+| `ari-skill-coding` | `write_code`, `edit_code`, `run_code`, `run_bash`, `read_file`, `emit_results`, `describe_environment` | コード生成・編集 + 実行、ページネーション付きファイル読取、型付き結果出力、環境の記述 | ✗ |
 
 **追加 skills**（利用可能、デフォルトワークフローには含まれない）:
 
 | Skill | ツール | 役割 | LLM? |
 |-------|-------|------|------|
-| `ari-skill-orchestrator` | `run_experiment`, `get_status`, `list_runs`, `list_children`, `get_paper` | ARI を MCP サーバーとして公開、再帰的サブ実験、デュアル stdio+HTTP トランスポート | ✗ |
+| `ari-skill-orchestrator` | `run_experiment`, `get_status`, `get_result`, `stop_experiment`, `list_runs`, `list_children`, `list_artifacts`, `read_artifact`, `get_paper`, `get_ear`, `list_skills`, `get_workflow` | ARI を MCP サーバーとして公開、再帰的サブ実験、デュアル stdio+HTTP トランスポート | ✗ |
+| `ari-skill-tool-registry` | `discover`, `describe`, `invoke`, `invoke_scheduled`, `get_status`, `get_result` | 大規模な外部 MCP コレクションに対する provider 中立な discovery / admission / 不変な invoke / replay。`invoke_scheduled` は scheduler へ投入する leaf 用に分離された同一 dispatch の surface | ✗ |
+| `ari-skill-knowledge` | `search_knowledge_skills`, `describe_knowledge_skill`, `list_active_knowledge_skills`, `request_knowledge_skill` | content-addressed な手続き的知識への read-only クエリ + 非権威的リクエスト面 | ✗ |
+| `ari-skill-harness` | `search_harnesses`, `describe_harness`, `request_auxiliary_verification`, `read_attestation`, `list_verification_requirements` | Harness カタログ / 要件 / Attestation の read-only クエリと非権威的な補助リクエスト | ✗ |
 
-✗ = LLM なし、△ = 一部ツールのみ LLM、✓ = 主要ツールが LLM を使用。**全 14 skills**（13 デフォルト、1 追加）— v0.7.0 で `ari-skill-replicate` を追加。
+✗ = LLM なし、△ = 一部ツールのみ LLM、✓ = 主要ツールが LLM を使用。**skill パッケージは全 17**（デフォルト `workflow.yaml` に登録済み 13、追加 4）— v0.7.0 で `ari-skill-replicate` を追加。
 
 ---
 
@@ -592,11 +868,19 @@ generate_ideas (idea-skill)
             新 idea を append (上書きしない)。
 ```
 
-`ARI_RUBRIC` がどの venue ファイルを読むかを決めます。切り替えると
-BFTS のスコアリング軸 (Phase 3) と論文 review の評価基準が同時に変化
-します — **同じ rubric が両方を駆動**します。
+`ARI_RUBRIC` (既定 `neurips`) は BFTS のスコアリング軸 (Phase 3、
+`ari/core.py` の `_load_rubric_dict_for_axes`) を導く venue ファイルを
+選びます。論文 review はこの選択を共有しなくなりました: `review_paper`
+ステージは `rubric_id: {{paper_rubric}}` を渡し、その値は
+`workflow.yaml` のトップレベル `paper_rubric` キー (既定
+`generic_conference`) から解決されます。`resolve_rubric` は空の id を
+env にフォールバックせず拒否します。同じ venue でスコアリングと review
+の両方を駆動したい場合は、`ARI_RUBRIC` と `paper_rubric` に同じ id を
+設定してください。
 
 ### サブ実験での継承
+
+各子ランは、以下のチャネルに沿って親から継承します:
 
 | チャネル | 継承 | 仕組み |
 |---|---|---|
@@ -609,11 +893,48 @@ BFTS のスコアリング軸 (Phase 3) と論文 review の評価基準が同�
 — lineage walk は **catalog 経路** で、VirSci と sub-experiment launcher
 が明示的に呼ぶときだけ動きます。これにより子は自由に pivot できます。
 
+**既知のギャップ — 存在するように見えて存在しない第 5 のチャネル。**
+lineage hook が `switch_to_idea` を選ぶとき、同時に
+`disable_generate_ideas=True` を設定します。その意図は「子は選ばれた
+alternative をそのまま実行し、再サンプリングしない」ことであり、
+`ari/cli/lineage.py` は launch の直前に `ARI_DISABLED_TOOLS_FOR_CHILD`
+を設定することでその意図を運びます。しかしこの変数を読み返すコードは
+どこにもありません。`disabled_tools` は YAML から埋まる config フィールド
+（加えて `bfts_pipeline` stage が無効化されたツールを自動マージする経路）
+であって環境変数からは決して埋まらないため、子は `os.environ` の残りと
+一緒にこの変数を継承したうえで無視します。
+
+pin が排他的だと期待していた場合、実際に起きることは次のとおりです。
+どの lineage action で launch された子も `generate_ideas` を実行します
+— この stage は `skip_if_exists` を宣言していないので、seed 済みの
+`idea.json` があっても止まりません。`_pinned` マーカーが買うのは
+**順序であって抑制ではありません**: 継承されたエントリは `ideas[0]` に
+留まり、子が新しく生成した idea が（pinned とタイトルが一致するものを
+除いて）その後ろに追記されます（`ari_rqgm` の proposal router も同じ
+やり方でマーカーを保存します）。この追記分が `ideas[1:]` であり、これは
+`build_lineage_state` が **子自身の** stagnation pivot に渡す
+alternatives プールそのものです。つまり `switch_to_idea` は子の出発点を
+決めると同時に、その子が後で乗り換えられるプールを補充しています。
+
+このギャップは誰かが引いたスコープ境界ではなく、引き取り手のいない決定
+です。open item として提起され、sub-run spawning を統治するはずの層へ
+転送されましたが、その層は取り上げず、以後どのコンポーネントもこれを
+自分の担当だと主張していません。上の表は完全なものとして読んでください:
+lineage launch 経路では、親は子の spawn 自体を拒否できます
+（`terminate` が親自身の `meta.json` に `parent_terminated` を書き、
+`_api_launch_sub_experiment` が launch を拒否します）し、seed エントリを
+1 件 pin できます。その二つの間には何もありません。子の `meta.json` が
+記録するのは run id・親子関係・depth・作成時刻・checkpoint dir・
+`inherit_idea_index` だけで governance フィールドは無く、
+`parent_terminated` の 2 フィールドは子ではなく **親** のファイルに
+書かれます。親が子に対して他に何を制約できるべきかについて、立場は一切
+表明されていません。
+
 ### work_dir 継承 — 出力アーティファクト ブラックリスト (v0.7.0 / Phase 7)
 
 BFTS が子ノードを expand する際、子の `work_dir` は親をコピーして seed されます。フィルタなしだと子は親の `results.csv` / `slurm-*.out` / `run.log` をバイト単位で再利用できてしまい、run-`20260504120448` の post-mortem では 9 子全員が単一の SLURM job 結果を再報告していました — 結果ファイルが既に存在するため ReAct agent が「実験は完了済み」と判定したためです。
 
-`ari-core/ari/cli.py` の `_OUTPUT_BLACKLIST` は親 → 子コピー時に **明示的に skip** するパターンを列挙しています:
+`ari-core/ari/cli/bfts_loop.py` の `_OUTPUT_BLACKLIST` は親 → 子コピー時に **明示的に skip** するパターンを列挙しています:
 
 | 継承する | ブラックリスト |
 |---|---|
@@ -621,8 +942,10 @@ BFTS が子ノードを expand する際、子の `work_dir` は親をコピー�
 | コンパイル済みバイナリ (`a.out`, 拡張子無し ELF) | `*.metrics.json`, `metrics.json` |
 | `data/`, `inputs/` 配下のデータ | `run.log`, `run_*.log`, `*.run.log` |
 | ネスト ソースディレクトリ (例: `src/lib.cpp`) | `slurm-*.out`, `slurm-*.err`, `stdout.txt`, `stderr.txt`, `out.txt`, `err.txt`, `node_report.json` |
+|  | `results.json`, `*_results.json`, `selftest_output.txt`, `*_output.txt` — 親の**数値**。コードチャネルに乗せてはならない |
+|  | `heterogeneous_env.json`（tooling 出力かつ probe したマシン情報。子は自分で probe し直す） |
 
-実行後、`compute_files_changed(parent, child)` が sha256 diff から `{added, modified, deleted, inherited_unchanged}` を返します。`added=0 ∧ modified=0 ∧ deleted=0` の場合 loop はその子を **sterile** と判定し (`metrics["_sterile"]=True`、`_scientific_score=0.0`、`has_real_data=False`)、BFTS は非 sterile 兄弟を優先し、全ての子が sterile なら parent-terminate cascade が継承チェーンを刈り取ります。子 agent の最初の user message にも mandatory-new-artifacts 指示 (「この work_dir で **新しい** result/log/metric を生成すること; 継承ファイルに依存しない」) が入り、prompt 側からも実験実行を促します。
+実行後、`compute_files_changed(parent, child)` が sha256 diff から `{added, modified, deleted, inherited_unchanged}` を返します。`added=0 ∧ modified=0 ∧ deleted=0` の場合 loop はその子を **sterile** と判定し (`metrics["_sterile"]=True`、`_scientific_score=0.0`、`has_real_data=False`)、`BFTS.should_prune` がその sterile ノード自身を frontier から退役させ、二度と展開しません。親は sterile な子では **退役させません**: `_child_retires_parent`（Rule B-6 A、`ari/cli/bfts_loop.py`）が child-beat-parent の退役を sterile な子については抑止します — 逐語コピーのスコア「勝利」は evaluator のタイミングノイズであり、それで親を退役させると 2 ノードで frontier が空になるためです。子 agent の最初の user message にも mandatory-new-artifacts 指示 (「この work_dir で **新しい** result/log/metric を生成すること; 継承ファイルに依存しない」) が入り、prompt 側からも実験実行を促します。
 
 ---
 
@@ -630,7 +953,7 @@ BFTS が子ノードを expand する際、子の `work_dir` は親をコピー�
 
 BFTS 自身の ReAct ループ(`ari.agent.AgentLoop`、`Node` ツリーと密結合)とは別に、BFTS コンテキストを必要としない ReAct エージェント向けの軽量ドライバ `ari.agent.react_driver.run_react` が存在します。ステージが `react:` ブロックを宣言したときに `ari.pipeline._run_react_stage` から呼び出されます。
 
-**v0.7.0**: `reproducibility_check` ステージは `react_driver` を使わなくなりました。PaperBench 形式のフロー (`ors_generate_rubric` → `ors_run_reproduce` → `ors_grade`) が決定的な Phase 1 サンドボックス runner + Phase 2 SimpleJudge 採点 (`ari-skill-paper-re`) でこれを置き換えています。`react_driver` 自体は将来の `react:` 宣言ステージ向けにコードベースに残っていますが、デフォルトの `workflow.yaml` には接続されていません。
+**v0.7.0**: `reproducibility_check` ステージは `react_driver` を使わなくなりました。PaperBench 形式のフロー (`ors_generate_rubric` → `ors_audit_rubric` → `ors_run_reproduce` → `ors_grade`) が決定的な Phase 1 サンドボックス runner + Phase 2 SimpleJudge 採点 (`ari-skill-paper-re`) でこれを置き換えています。`react_driver` 自体は将来の `react:` 宣言ステージ向けにコードベースに残っていますが、デフォルトの `workflow.yaml` には接続されていません。
 
 ```
 pipeline.py ──▶ pre_tool (MCP)  → 主張値 config
@@ -644,22 +967,22 @@ pipeline.py ──▶ pre_tool (MCP)  → 主張値 config
 主な性質:
 
 - **Phase ホワイトリスト**: `workflow.yaml` の `skills[].phase` は単一文字列または配列。ステージの `react.agent_phase` 値が phase リストに含まれるスキルだけがエージェントに見える。デフォルト `workflow.yaml` では `web-skill` / `vlm-skill` / `hpc-skill` / `coding-skill` が `reproduce` にオプトイン。`memory-skill` / `transform-skill` / `evaluator-skill` は意図的に除外され、エージェントは BFTS の状態(`nodes_tree.json`、祖先メモリ、science data)を観測できない。
-- **サンドボックス**: `react.sandbox` はディレクトリ(既定 `{{checkpoint_dir}}/repro_sandbox/`)。ツール呼び出しの引数は絶対パスと `..` トラバーサルを走査され、sandbox 外 (論文 `.tex` の allow-list を除く) は MCP 到達前に `sandbox violation` として拒否される。MCP サーバー起動前に `ARI_WORK_DIR` を sandbox にセットするため、`coding-skill.run_bash` も自然に sandbox で cwd される。
+- **サンドボックス**: `react.sandbox` はステージ自身の `react:` ブロックで宣言するディレクトリで、組み込みの既定値はない(`stage_runner` は `react_cfg.get("sandbox", "")` を読み、キーがなければ sandbox 自体を作らない)。同梱の `workflow.yaml` にこれを宣言するステージはなく、ORS ステージは各自のステージ入力として `{{checkpoint_dir}}/repro_sandbox/` を指す。ツール呼び出しの引数は絶対パスと `..` トラバーサルを走査され、sandbox 外 (論文 `.tex` の allow-list を除く) は MCP 到達前に `sandbox violation` として拒否される。MCP サーバー起動前に `ARI_WORK_DIR` を sandbox にセットするため、`coding-skill.run_bash` も自然に sandbox で cwd される。
 - **終了条件**: エージェントは `react.final_tool`(既定 `report_metric`)を呼んでループを終える。その呼び出しは MCP には転送されずドライバが捕捉し、引数が post_tool に渡る `actual_value` / `actual_unit` / `actual_notes` となる。
 
-この分離により、`reproduce_from_paper` スタイルのステージにおける「論文テキストのみを読む」制約が、スキル Python 内ではなく YAML から監査可能になります。
+この分離により、再現ステージの「論文テキストのみを読む」制約が、スキル Python 内ではなく YAML から監査可能になります。
 
 ---
 
 ## ノードごとのプロンプト構築
 
-すべての BFTS ノードは `ari/agent/loop.py:370` の `AgentLoop.run(node, experiment)` という単一エントリポイントから実行されます。同じループが root ノードと子ノードの両方を処理し、構築されるプロンプトは `node.depth` と祖先から継承された状態によってのみ分岐します。本セクションは *エージェントがノード開始時に実際に何を見るか* の正典です。ここを変更する場合は慎重なレビューが必要です。
+すべての BFTS ノードは `ari/agent/loop.py:2067` の `AgentLoop.run(node, experiment)` という単一エントリポイントから実行されます。同じループが root ノードと子ノードの両方を処理し、構築されるプロンプトは `node.depth` と祖先から継承された状態によって変わります。本セクションは *エージェントがノード開始時に実際に何を見るか* の正典です。ここを変更する場合は慎重なレビューが必要です。
 
 ### `AgentLoop.run` への入力
 
 呼び出しごとに 2 つの引数が渡ります:
 
-1. **`node: Node`** — `BFTS.expand` (`ari/orchestrator/bfts.py:431-441`) で生成。プロンプトに影響するフィールド:
+1. **`node: Node`** — `BFTS.expand` (`ari/orchestrator/bfts.py:734-745`) で生成。プロンプトに影響するフィールド:
    - `id`、`depth`、`label`（`draft|improve|debug|ablation|validation|other`）、`raw_label`
    - `ancestor_ids` — root から親まで（親含む）の厳格な CoW チェーン。`search_memory` のフィルタに使われる。
    - `eval_summary` — 拡張直後の子ノードでは LLM が提案した方向性（1 文）を保持。実行後は評価器のサマリで上書きされる。
@@ -669,7 +992,9 @@ pipeline.py ──▶ pre_tool (MCP)  → 主張値 config
    - `work_dir` — `PathManager` が作成するノード専用ディレクトリ
    - `slurm_partition`、`slurm_max_cpus` — SLURM 有効時に `env_detect` から取得
 
-### システムプロンプト — `ari/agent/loop.py:41-58`
+### システムプロンプト — `ari/prompts/agent/system.md`
+
+本体は外部化されたテンプレート（キー `agent/system`、`_system_prompt_versioned()` で読み込み `loop.py:2230` で `str.format`）です。`loop.py` 側が組み立てるのは `{tool_desc}` / `{memory_rules}` / `{extra}` の置換だけです:
 
 ```
 You are a research agent. You MUST use tools to execute experiments. ...
@@ -687,16 +1012,16 @@ RULES:
 {memory_rules}{extra}
 ```
 
-`{extra}` ブロック（L448-453 で構築）は以下を追加します:
+`{extra}` ブロック（L2218-2223 で構築）は以下を追加します:
 
 | サブブロック | 出所 | 備考 |
 |-------------|------|------|
-| `NODE ROLE: {label_hint}` | `node.label.system_hint()` | BFTS ラベルから引かれる 1 文の振る舞いキュー |
-| `EXPERIMENT ENVIRONMENT` | L433-442 | `work_dir` + 既存ファイル + SLURM partition/CPUs + コンテナイメージ（`ARI_CONTAINER_IMAGE`） |
-| `RESOURCE BUDGET` | L443-447 | `max_react_steps`、`timeout_per_node // 60` 分 |
+| `NODE ROLE: {label_hint}` | `node.label.system_hint()` | BFTS ラベルから引かれる 1 文の振る舞いキュー。`ARI_BFTS_NO_LABEL`（`labels_disabled()`）を立てると全ノードが同じ中立ロールになる |
+| `EXPERIMENT ENVIRONMENT` | L2202-2211 | work directory（ノードの container root である `/workspace`）+ 既存ファイル + SLURM partition/CPUs（scheduler ツールが実際に利用可能なときのみ）+ コンテナイメージ（`ARI_CONTAINER_IMAGE`） |
+| `RESOURCE BUDGET` | L2213-2217 | `max_react_steps`、`timeout_per_node // 60` 分 |
 | `extra_system_prompt` | `WorkflowHints.extra_system_prompt` | `from_experiment_text` / pipeline 設定が任意で設定するエスケープハッチ |
 
-`{memory_rules}` ブロック（L454-456）は `add_memory` ツールが実際に利用可能なときのみ追加され、アクティブなノード ID をインライン展開して LLM が誤って別スコープに書けないようにします:
+`{memory_rules}` ブロック（L2224-2226）は `add_memory` ツールが実際に利用可能なときのみ追加され、アクティブなノード ID をインライン展開して LLM が誤って別スコープに書けないようにします:
 
 ```
 - When available, save decisive intermediate findings with
@@ -706,20 +1031,20 @@ RULES:
 
 ### ツールカタログ（`tool_desc`）
 
-L389 の `tools = self._available_tools_openai(suppress=..., phase="bfts")` が `phase="bfts"` で MCP が公開する全ツールを列挙し、`_suppress_tools` に入っているものを除外します。可変な suppression セットは `AgentLoop` インスタンスに乗り、ループ進行に応じて更新されます:
+L2116 の `tools = self._available_tools_openai(suppress=..., phase="bfts")` が `phase="bfts"` で MCP が公開する全ツールを列挙し、`_suppress_tools` に入っているものを除外します。suppression セットは `AgentLoop._suppress_tools` プロパティ（L1489-1495）経由で参照され、その実体は worker スレッドごとの状態（`_NodeLocalState(threading.local)`、L1183-1194）で、ループ進行に応じて更新されます:
 
-- 最初の `generate_ideas` 成功呼び出しの後、`self._suppress_tools = {"generate_ideas"}`（L873-874）が設定され、後続ノードはアイデアを再生成しません。
+- idea が admitted となった `generate_ideas` 呼び出しの後、`self._suppress_tools = {"generate_ideas"}`（L3005-3007）が設定され、後続ノードはアイデアを再生成しません。
 - `survey` は子ノードに対して **suppress されません**。下記「User message #1 — 子ノード」の通り、文章でのみ非推奨化されています。子が指示を無視すれば `survey()` を呼べてしまいます。
 
-`_PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}`（L613）はメッセージウィンドウのトリマーが必ず保持するツール結果を表します。チャット履歴が圧縮されても、これらの結果は全 ReAct ラウンドで生き残ります。
+`_PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}`（L2634）はメッセージウィンドウのトリマーが必ず保持するツール結果を表します。チャット履歴が圧縮されても、これらの結果は全 ReAct ラウンドで生き残ります。
 
 ### User message #1 — root ノード（`node.depth == 0`）
 
-`loop.py:501-511`:
+`loop.py:2434-2440`:
 
 ```
 Experiment goal:
-{goal_text(1500 文字に切り詰め)}
+{goal_text(ARI_GOAL_MAX_CHARS 文字で切り詰め、既定 8000)}
 
 Node: {node.id} depth={node.depth}
 
@@ -727,34 +1052,46 @@ START NOW: call {first_tool}() immediately. Do NOT output any text or
 plan — your first response must be a {first_tool}() tool call.
 
 WORKFLOW ORDER: (1) generate_ideas() sets the research direction and
-primary_metric; (2) make_metric_spec() derives the success metrics from
-that primary_metric (NOT from a guessed list); (3) survey() gathers related
-literature. The survey results are used to generate citations — without
-survey, the paper will have no references.
+primary_metric; (2) make_metric_spec() derives success metrics from the
+established primary_metric; (3) survey() gathers related literature for
+grounded citations.
 ```
+
+`WORKFLOW ORDER` 行は、suppression を通過した setup ツール（`generate_ideas` → `make_metric_spec` → `survey`）に対して `_setup_descriptions` から組み立てられるので、suppress されたツールの名前は決して出ません。どれも利用できないときは「use only the available tools shown above.」に縮退します。
 
 `first_tool` は `WorkflowHints.tool_sequence[0]`。現在のデフォルトは `generate_ideas` です。`enrich_hints_from_mcp` は、対応スキルが存在するとき setup ツールを `generate_ideas` → `make_metric_spec` → `survey` → executor の順に並べます（idea の `primary_metric` が成功基準なので、`make_metric_spec` はそれを推測したリストから決めるのではなく、idea の後に続けて派生させる必要があります）。
 
 ### User message #1 — 子ノード（`node.depth > 0`）
 
-`loop.py:477-500`:
+`loop.py:2345-2382`:
 
 ```
 Experiment goal:
-{goal_text(1500 文字に切り詰め)}
+{goal_text(ARI_GOAL_MAX_CHARS 文字で切り詰め、既定 8000)}
 
 Node: {node.id} depth={node.depth} task={node.label}
 
 Task: {label-specific one-line description from _label_desc}
 The parent node already completed the survey and established a research
-direction. Prior results are provided below. Implement and run your
-specific experiment, then return JSON with measurements.
+direction. Prior results are provided below for context — but they belong
+to the parent, NOT to you.
+
+MANDATORY: You must produce NEW artifacts to count as having run an
+experiment.
+  • Inherited files: source code, scripts, configs, compiled binaries.
+  • NOT inherited: the parent's results.json/results.csv, ...（_OUTPUT_BLACKLIST を列挙）
+  ...（label に応じたコード変更、再ビルド・再実行・新しい結果ファイル。
+      差分ゼロのノードは STERILE 判定）
+Implement and run your specific experiment, then return JSON with
+measurements.
 
 Workflow:
 {WorkflowHints.post_survey_hint}        ← 例: slurm_submit / run_bash 手順
 ```
 
-`_label_desc`（L479-485）はノード単位プロンプトでラベル意味論が顔を出す唯一の場所です:
+「Prior results are provided below」の一文は条件付きです。handoff arm がサマリも親ログも注入しない子には、代わりに「親の *コード* は継承するが結果は渡されない」と伝えるので、届かないブロックを約束することはありません。
+
+`_label_desc`（L2311-2322）はノード単位プロンプトでラベル意味論が顔を出す唯一の場所です:
 
 | Label | 1 行タスク |
 |-------|-----------|
@@ -769,7 +1106,7 @@ Workflow:
 
 ### User message #2 — ワーキングコンテキスト注入（全ノード）
 
-旧来の子ノード限定 `search_memory` ダンプ（`[Prior knowledge from ancestor nodes …]` を集約 800 文字に切り詰めた単一メッセージ）は、モジュールレベルの `build_working_context_messages()`（`loop.py:108-224`）に **置き換え** られました。これは `AgentLoop.run` から **全ノード** に対して呼ばれます。read-only で、メモリには一切書き込みません。最大 3 つの上限付きティアを組み立てます:
+旧来の子ノード限定 `search_memory` ダンプ（`[Prior knowledge from ancestor nodes …]` を集約 800 文字に切り詰めた単一メッセージ）は、モジュールレベルの `build_working_context_messages()`（`loop.py:561-789`）に **置き換え** られました。これは `AgentLoop.run` から **全ノード** に対して呼ばれます。read-only で、メモリには一切書き込みません。最大 3 つの上限付きティアを組み立てます:
 
 - **Tier 1a — 実験コア（全ノード）。** `get_experiment_context` を呼び、`primary_metric`、`higher_is_better`、`metric_rationale`、`hardware_spec` に **加えて** `selected_idea` サマリを含む `[Experiment context (stable across all nodes):]` ブロックを注入します。root にも全ての子孫にも適用されるため、`generate_ideas` を再実行しないノードでも、指標だけでなく設計意図（計画された機構＋対象ワークロード）を継承できます。
 - **Tier 1b — 祖先コア（子ノードのみ）。** 各祖先について `get_node_memory(node_id=aid)` を呼び、`metadata.type == "result_summary"` のエントリだけを残して `[Established conclusions from ancestor nodes (N):]` ブロックを出力します。これは決定論的で完全な祖先ごとのハンドオフです。各結論は **エントリ単位** で cap され（集約カットではない）、木の深さで境界づけられるため丸ごと注入されます。順序は `ancestor_ids`（root → 親）に従います。
@@ -777,20 +1114,20 @@ Workflow:
 
 失敗（メモリバックエンド停止、結果が壊れている等）は `logger.debug` レベルで握り潰され、ノードは実行を継続します。
 
-レガシーな `search_global_memory` 注入ブロック（`loop.py:517-540`）は v0.6.0 ではデッドコードです。グローバルメモリツールは削除されており（`CHANGELOG.md` v0.6.0 §3）、条件分岐は発火しません。
+レガシーな `search_global_memory` 注入ブロック（`loop.py:2517-2539`）は v0.6.0 ではデッドコードです。グローバルメモリツールは削除されており（`CHANGELOG.md` v0.6.0 §3）、条件分岐は発火しません。
 
 ### 切り詰めの早見表
 
 | 項目 | 上限 | コード |
 |-----|-----|-------|
-| `goal_text` | 1500 文字 | `loop.py:434-438` |
-| Survey 結果メモリエントリ | 先頭 5 論文、各 abstract 200 文字 | `loop.py:794-799` |
-| Tier 1a — 実験コアの各フィールド | `_CORE_FIELD_CAP = 400` 文字／フィールド | `loop.py:94` |
-| Tier 1a — `selected_idea` サマリ | `_IDEA_FIELD_CAP = 1500` 文字 | `loop.py:95` |
-| Tier 1b — 祖先ごとの `result_summary` | `_ANCESTOR_SUMMARY_CAP = 600` 文字／エントリ（集約カットではない） | `loop.py:98` |
-| Tier 2 — サプリメントクエリ | 200 文字 | `loop.py:201` |
-| Tier 2 — サプリメントエントリ | Letta `passages.search` 埋め込みランクで上位 5 件 | `loop.py:202-206` (Memory Architecture 節を参照) |
-| Tier 2 — サプリメントの各エントリ | `_SUPPLEMENT_CAP = 400` 文字／エントリ | `loop.py:99` |
+| `goal_text` | `ARI_GOAL_MAX_CHARS` 文字、既定 **8000**。`0` で上限を完全に無効化 | `loop.py:2274-2283` |
+| Survey 結果メモリエントリ | 先頭 5 論文、各 abstract 200 文字 | `loop.py:2943-2946` |
+| Tier 1a — 実験コアの各フィールド | `_CORE_FIELD_CAP = 400` 文字／フィールド | `loop.py:342` |
+| Tier 1a — `selected_idea` サマリ | `_IDEA_FIELD_CAP = 1500` 文字 | `loop.py:343` |
+| Tier 1b — 祖先ごとの `result_summary` | `_ANCESTOR_SUMMARY_CAP = 600` 文字／エントリ（集約カットではない） | `loop.py:346` |
+| Tier 2 — サプリメントクエリ | 200 文字 | `loop.py:759` |
+| Tier 2 — サプリメントエントリ | Letta `passages.search` 埋め込みランクで上位 5 件 | `loop.py:760-764` (Memory Architecture 節を参照) |
+| Tier 2 — サプリメントの各エントリ | `_SUPPLEMENT_CAP = 400` 文字／エントリ | `loop.py:347` |
 
 ### 意図的に **注入されていない** 情報
 
@@ -802,15 +1139,23 @@ Workflow:
 
 なお `get_experiment_context()` のペイロード（`primary_metric`、`higher_is_better`、`metric_rationale`、`hardware_spec`）は **もはやこのリストには含まれません** — 上記ワーキングコンテキスト注入の Tier 1a として全ノードに自動注入されるようになりました。
 
-### CoW ブリッジ — メモリスキルとの同期維持
+### 署名付き call context — メモリスキルとの同期維持
 
-LLM へのラウンドトリップが始まる直前、`loop.py:378-381` で:
+ブリッジツールも「現在ノード」を持つ環境変数も存在しません。そのノードのツール呼び出しが始まる前に `loop.py:1601` が不変のコンテキストを 1 つ組み立て、そのノードの全呼び出しで共有します:
 
 ```python
-self.mcp.call_tool("_set_current_node", {"node_id": node.id})
+ToolCallContextV1.for_node(
+    run_id=run_id,
+    node_id=node.id,
+    parent_node_id=node.parent_id,
+    ancestor_node_ids=node.ancestor_ids or [],
+    phase=phase,
+)
 ```
 
-を発行します。これは `ari-skill-memory` が公開する内部ツールで、プールされたスキルサブプロセス内の `$ARI_CURRENT_NODE_ID` を更新し、後続の `add_memory(node_id=...)` 呼び出しがアクティブノードに対して CoW 検証されるようにします。エージェントはこのツールを見ません ── `_INTERNAL_MCP_TOOLS` で `tool_desc` から除外されています。
+`MCPClient` はスキル接続ごとに 256-bit の authority key を発行し（`new_context_authority_key()`、`mcp/client.py:76-77`）、スキルのサブプロセスへ `ARI_CONTEXT_AUTHORITY_KEY` としてエクスポートします。`context_requirement` が `none` でないツールでは、ディスパッチが HMAC 署名済みコンテキストを呼び出し引数へ注入し（`connection.authorize_args`、`mcp/client.py:540-545`）、`ari-skill-memory` はバックエンドに触れる前に `verify_tool_context(...)` で署名を検証します（`ari-skill-memory/src/server.py:46-51`）。
+
+つまりアクティブノードはサブプロセスの環境ではなく **署名された各呼び出しの中** で運ばれます。プールされた 1 つのサブプロセスを兄弟ノードが並行して共有しても安全なのはこのためです。
 
 ### Soft 強制 vs Hard 強制
 
@@ -818,7 +1163,7 @@ self.mcp.call_tool("_set_current_node", {"node_id": node.id})
 
 | ルール | 強制方法 |
 |-------|---------|
-| 他ノードのメモリに書けない | **Hard** — バックエンドが `node_id` ≠ `$ARI_CURRENT_NODE_ID` を reject |
+| 他ノードのメモリに書けない | **Hard** — 署名付き call context のノードと `node_id` が一致しない書き込みをスキルが reject（"node write target is not the authorized self node"） |
 | 兄弟メモリを読めない | **Hard** — `search_memory` が `ancestor_ids` でフィルタ |
 | `generate_ideas` は最大 1 回 | **Hard** — 初回後 `_suppress_tools` で除外 |
 | 子は `survey` を呼ぶべきでない | **Soft** — 文章のみ（"parent already completed the survey"）。ツールは `tool_desc` に残る |
@@ -842,6 +1187,226 @@ ARI のプロダクションコードには**ドメイン知識がゼロ**です
 | ノードのランク付け方法 | LLM が付与する `_scientific_score` |
 | 引用キーワードの選定 | ノードサマリーから LLM が生成 |
 | 環境/セットアップ情報を収集するかどうか | ReAct エージェント LLM（システムプロンプトの再現性原則に従う） |
+
+---
+
+## 探索フェーズの must-not-break レジスタ（BX-1 … BX-19）
+
+以下の 19 項目が**探索フェーズの互換性契約**です。BFTS フェーズへの変更が
+互換と見なされるために壊してはならないものを列挙しています。ここに書かれた
+すべては既定の `simple_bfts` モードで文字どおり成立します。`ari_rqgm` は
+加算的かつ config ゲート付きで、VirSci のアイデア経路は config から除去可能
+です。[RQGM スキーマ](../reference/rqgm_schemas.md)の paper フェーズ用
+レジスタと同じく、このレジスタの価値は**1 つのリストである**ことにあります。
+19 項目のうち 4 項目だけ照合しても部分的な合格にはなりません。
+
+**なぜ `BX-` 接頭辞か**。この契約はもともと `B-1 … B-19` と番号付けされて
+いましたが、この repo ではその接頭辞がすでに二重に使われています。
+`CHANGELOG.md` は無関係な v0.7.2 の BFTS リファクタ項目に `B-1 … B-10` を
+使っており、コードのコメントは*そちら*を指しています —
+`ari-core/ari/cli/bfts_loop.py` の `# B-6 Rule A` / `# B-6 Rule B`、
+`ari-core/ari/orchestrator/bfts.py` の `# B-7:` と `# B-6:`、そして本ページの
+*work_dir 継承 — 出力アーティファクト ブラックリスト* 節にある「Rule B-6 A」。
+つまり素の `B-3` は、どの文書を手にしているかで 2 つの別物を指してしまいます。
+そこでこのレジスタは番号をそのままに **`BX-`**（B、e**x**ploration）で
+持ち込みます: **`BX-n` は元レジスタの項目 `B-n` そのもの**です。この接頭辞は
+リポジトリ内の衝突する `B-n` 番号とレジスタを区別するためのもので、既存の
+素の `B-n` 引用がそれだけでここに解決するようになるわけではありません。
+引用を辿る側は上記の対応を知っている必要があります。`BX-20` は存在しません。
+
+4 項目は最初に書かれた時点から表現を改めています。ツリーが動いたためで、
+BX-3・BX-6・BX-11・BX-17 が各々何が変わったかを述べます。
+
+### ループと探索のセマンティクス
+
+- **BX-1 expand ごとに子は 1 つ。** `BFTS.expand` は LLM 経路で子をちょうど
+  1 つ追加し、LLM が使える方向を返さなかった場合はフォールバックの子を 1 つ
+  追加するので、空リストを返すことはありません。ラン ループのスロット充填の
+  計算はこの下限に依存しています。
+- **BX-2 ノードのリトライはない。** FAILED ノードが再実行されることはありま
+  せん。フロンティアに入り `debug` の子へ展開されるので、回復は新しいノードと
+  して起きます。
+- **BX-3 リタイア規則・sterile ゲート・出力ブラックリスト。**
+  Rule A（`_child_retires_parent`）は子が上回った親をリタイアさせますが、
+  子が `_sterile` のときは除外します。Rule B はノードが
+  `max_expansions_per_node` 回展開された時点でリタイアさせます。
+  `_OUTPUT_BLACKLIST` は親の出力アーティファクトを work_dir コピーから
+  除外します。3 つのいずれを緩めても、上の *work_dir 継承* 節に記した
+  結果重複インシデントが再発します。
+  **レジスタ執筆時点からの変更**: 元の項目は sterile ゲートを、スコアを 0.0 に
+  クランプし LLM ジャッジを上回る単一の規則として書いていました。現在
+  sterility は 2 箇所で判定され、クランプするのは後者だけです。前段の検査
+  （`ari-core/ari/cli/bfts_loop.py` の `_flag_sterile_node`）は
+  `metrics["_sterile"] = True` を立てるだけで、スコア・`has_real_data`・
+  `evaluation_status` には意図的に触れません — docstring は sterility を
+  「探索制御上の性質」であって正しさや測定の失敗ではないと述べています —
+  また harness が `score_inputs` を宣言している場合は、work_dir 全体を差分
+  比較するのではなく、まさにそのファイル群をハッシュして判定します。後段の
+  ノードレポート時点の検査は、ファイル差分がゼロなら従来どおり
+  `_scientific_score` を 0.0 に、`has_real_data` を False にクランプし、
+  ハッシュできなかったファイルしか変化がない場合は明示的にクランプしません。
+- **BX-4 展開のゲートとワーカー上限。** `frontier_expand` を無効にすると
+  ループは pending を消化するだけで展開しません。並列度は config ではなく
+  コードで上限固定です:
+  `max_workers = max(1, min(cfg.bfts.max_parallel_nodes, 4))`。
+- **BX-5 すべての LLM 判断に完全な決定的フォールバックがある。** 選択は
+  `BFTS._select_fallback` に、展開は BX-1 のフォールバック子に落ちます。
+  パースできない lineage 判断は `continue` に縮退します
+  （`ari-core/ari/orchestrator/lineage_decision.py` の `VALID_ACTIONS` に
+  対する `_parse_decision`）。root アイデア選択は、入力が空・JSON が無い・
+  パースエラー・オブジェクトでない・index が不正・範囲外・LLM エラーの
+  いずれでも index 0 に落ちます。新しい LLM 判断にも同じ義務があります。
+- **BX-6 フックは縮退するのであってランを殺さない。** `_run_loop` の任意
+  経路 — sterile 検査、`record_run`、ノードレポート、lineage 判断フック —
+  は try/except して warn します。
+  **レジスタ執筆時点からの変更**: 元の項目は*すべての*任意経路が fail-open
+  であるとし、fail-closed は意図的な将来の逸脱として注記していました。その
+  逸脱はいま実装されています。KCA の保証機能が有効なとき、`assure_node`
+  ブリッジを持たない RQGM ランタイムは素通りせず `RuntimeError` を送出し、
+  フロンティア準入・Rule A・Rule B はいずれも保証ゲートの実行後まで
+  遅延されます。
+
+### 契約とフォーマット
+
+- **BX-7 チェックポイントの 3 点セット。** `tree.json`・`nodes_tree.json`・
+  `results.json` — その名前、キー順、`json.dumps(..., indent=2,
+  ensure_ascii=False)` のレイアウト — はダッシュボードと paper パイプライン
+  への契約であり、`Node.to_dict()` のキーも同様です。変更は加算のみ。
+  ノードごとの強制インクリメンタル保存が SIGTERM-resume の保証で、1.0 秒の
+  スロットル（`_INCR_DEFAULT_MIN_INTERVAL_S`）とそのロックは
+  `ari-core/tests/test_checkpoint_store.py` に固定されています。`force` が
+  スロットルを迂回すること、別インスタンスが別のスロットル状態を持つことも
+  含みます。
+- **BX-8 予約された `metrics` 名前空間。** `Node.metrics` 内のアンダースコア
+  始まりのキーはユーザーメトリクスではなく予約チャネルです — claim gate の
+  不変条件スキャンがまさにそのために読み飛ばします。当初の集合は
+  `_scientific_score`（合成値が 0 より大きいときだけ書かれる）・
+  `_axis_scores`・`_sterile`・`_comparison_found`・`_params_dict`・
+  `_measurements_dict` でしたが、その後 `_valid_for_frontier`（RQGM の選択的
+  消去）、`_pre_penalty_score` / `_validated_attack_penalty`（敵対スコアリング）、
+  `_utility_policy_hash` が加わりました。キーの追加は加算的です。改名や
+  用途変更はそうではありません — `_scientific_score` だけでも orchestrator・
+  evaluator・ラン ループ・pipeline・RQGM 層にまたがって読まれます。
+- **BX-9 ノードレポート。** `node_report.schema.json` は `schema_version` を
+  `const: 1` に固定し、`schema_version`・`node_id`・`depth`・`status`・
+  `files_changed`・`metrics`・`artifacts` を必須にします。
+  `build_node_report` と `write_node_report` は呼び出し側に例外を投げません。
+- **BX-10 paper パイプライン。** `run_pipeline` のシグネチャと戻り値の形、
+  `ari.pipeline` の monkeypatch 面、トポロジカルソートなしのファイル順ステージ
+  実行、`depends_on` / `skip_if_exists` のセマンティクス、ステージが
+  error のみの dict を返したらステージ失敗であること、claim gate のブロッキング
+  行列（draft フェーズのレポートは決してブロックせず、客観性の
+  `always_block_on` 層はどのモードでも final でブロックし、インフラ起因の
+  エラーでは fail open）、`% CLAIM` アンカーが write → refine → final を
+  生き延びること、2 組のミラー レジストリが同期し続けること
+  （`ari/pipeline/claim_gate/numeric.py` ↔ `ari-skill-transform/src/claims.py`、
+  `ari/pipeline/claim_gate/latex.py` ↔ `ari-skill-paper/src/claim_links.py`）、
+  `science_data.json` が下流で決して書き換えられないこと、そしてテキスト
+  レビュアー（`review_compiled_paper`）が図レビュアーから独立であること。
+- **BX-11 MCP の呼び出し面。** `MCPClient.call_tool` は今も
+  `{"result": str}` か `{"error": str}` のちょうど一方だけを返します。
+  クライアントはランごとに 1 つ共有、リトライはツールを再実行するので
+  ツールは冪等でなければならず、宣言フェーズがちょうど `["none"]` の
+  スキルは決して起動されず、スキル サブプロセスの PYTHONPATH／インタプリタ
+  順序は固定です。
+  **レジスタ執筆時点からの変更**: レガシーな 2 キー dict は、いまや
+  `MCPClient.call_tool_envelope` が返す正準の型付きエンベロープの射影
+  （`ari-core/ari/result.py` の `ResultEnvelopeV1.to_legacy`）です。また
+  レジスタにあった `_set_current_node` ブリッジ ツールと `_cow_lock` は
+  存在しません。アクティブ ノードは代わりに HMAC 署名された
+  `ToolCallContextV1` として各呼び出しの内側を運ばれます — 上の
+  *署名付き call context — メモリスキルとの同期維持* 節を参照。
+- **BX-12 エージェント ループのメッセージ規律。** OpenAI のメッセージ対応
+  規則が成立します: `tool_calls` を持つ assistant メッセージの直後には
+  対応する tool ブロックが連続していなければならないので、会話の途中に
+  差し込むものは deferred user-message パターンを使います。
+  `_PINNED_USER_MARKERS` は常在コンテキストを切り詰めから守ります。モデルが
+  自己終了できるのは **success** のときだけで、`"failed"` は LLM からの
+  正当な終端状態ではありません。そして force-finish を抑止する hold には
+  必ず有限の期限が要ります — force-finish のバックストップが確実にノードを
+  終わらせるためで、contract hold は `max_react_steps` の 10 ステップ手前で
+  期限切れになります。
+
+### 決定性・来歴・スコープ
+
+- **BX-13 決定的なコア（P2）。** BFTS のプロンプト ビルダー、軸の導出、
+  claim gate、`link_paper_claims`、`merge_reviews`、プロンプト／config
+  ローダーは LLM を使わず決定的なままです。壁時計・git SHA・ホスト同一性は
+  どのハッシュにも入りません。`hash12`
+  （`sha256(text)[:12]`、`ari-core/ari/prompts/_provenance.py`）が唯一の
+  プロンプト ハッシュ方式で、生テンプレートのハッシュにもレンダリング後の
+  ハッシュにも使われます。認められた唯一の緩和は
+  [哲学](PHILOSOPHY.md)の *メモリ (v0.6.0): P2 は 1 つの skill について緩和、
+  P5 はスコープ限定* に記載されています。
+- **BX-14 時間変動入力には耐久マーカー（P5）。** 既定のランは
+  `bfts_web_provenance.json` を残しません — 不在こそが既定です。壁時計や
+  ネットワークに依存する値には、同様の耐久マーカーか決定的な導出が必要です。
+  RQGM の状態層も同じ規則に従います — `rqgm_state.json` の不在は純粋な
+  `simple_bfts` ランを意味します。
+- **BX-15 すべてはチェックポイント スコープ。** `ARI_CHECKPOINT_DIR` が
+  唯一のラン ピンです。新規に `~/.ari` パスへ書いたり参照したりしては
+  なりません: `refactor-guards.yml` ワークフローは、許可リスト外の新しい
+  `~/.ari` 参照でも、テスト スイートが `$HOME/.ari` を作ってしまった場合でも
+  PR を落とします。チェックポイント直下の新しいファイル名は
+  `PathManager.META_FILES` / `_TRACE_FILES`（`ari-core/ari/paths.py`）と
+  ノードレポートのブロックリストに登録する必要があります。
+- **BX-16 メモリのスコープと import の漏斗。** 祖先スコープは維持されます —
+  `search_memory` は `ancestor_ids` でフィルタするので兄弟の想起はありません —
+  またノードは自分自身のメモリしか書けません。ブランチ間の漏れは名前だけに
+  留まります。core→skill の import 漏斗は `ari/memory/**` に閉じ込められ、
+  スキルは `ari.public.*` からしか import しません
+  （`ari-core/tests/test_public_api_boundary.py` が強制）。レジスタにあった
+  copy-on-write キーワード `cow_node_id` は、`ari-core/ari/protocols/mcp.py`
+  と RQGM のクライアント ラッパーにレガシー互換引数として残るのみで、実際の
+  機構は BX-11 の署名付きコンテキストです —
+  `ari-core/tests/test_mcp_cow_concurrency.py` がそれを直接表明しています。
+- **BX-17 ラン内でのスコア比較可能性。** `simple_bfts` では採点軸はラン開始
+  時に凍結されます。root アイデア選択は軸に触れない一回限りの判断だと明示
+  されており、「ノードのスコアがラン内で比較可能なまま」であるためです
+  （`ari-core/ari/orchestrator/root_idea_selector.py`）。Rule A・停滞検出・
+  フォールバック順位付けはいずれも `_scientific_score` をノード間で比較する
+  ので、これは効いてきます。
+  **レジスタ執筆時点からの変更**: 元の項目はエポック単位の再重み付けを、
+  決して黙って起きてはならない設計判断として記録していました。それは
+  `ari_rqgm` 向けにいま実装されており、黙ってはいません。効用ポリシーの変更は
+  統治されたレジストリ遷移であり、frontier-repair エンジンは影響を受けた各
+  ノードを、保存済みでポリシー非依存な `_axis_scores` から新しい合成関数と
+  重みで再採点し、そのノードの既存の検証済み攻撃ペナルティを再適用し、新しい
+  `_utility_policy_hash` を打ち直します — したがって 2 つのポリシー由来の
+  スコアが 1 つのフロンティアに並ぶことはありません。
+
+### アイデアと lineage 層
+
+- **BX-18 アイデアの契約。** `ideas[0]` がランの directive であること、pin
+  されたアイデアが先頭に留まること、一回限りのマーカー `_pinned`・
+  `_root_choice`・`_inherited_from` が書き換えを越えて保存されること、書き
+  換えが内容として可視であること（evaluator の軸リフレッシュが内容ハッシュ
+  keyed なため）、`idea.json` の単一書き手規律、各層が block ではなく degrade
+  すること、ベンダリングされた `ari-skill-idea/vendor/virsci` を決して編集
+  しないこと、スキルが MCP stdio 衛生を守り stdout に何も出さないこと、
+  `lineage_decisions.jsonl` が共有監査ログであり新ファイルより新しい
+  `trigger` 値が望ましいこと、directive と catalog の 2 経路分離、そして
+  自律的エスカレーションが子起動ゲート（再帰深さ、`parent_terminated`）・
+  `rate_limit_per_run`・`ARI_MAX_RECURSION_DEPTH` で有界であること。
+
+### テスト・CI・ドキュメントの面
+
+- **BX-19 破壊を可視にする面。** 契約スナップショットは 4 つの面 —
+  `ari.public.*` のシンボル表、Typer の CLI ツリー、MCP ツール カタログ、
+  ダッシュボードの REST インベントリ — で「再生成するか赤にするか」です。
+  ゴールデンは `ari-core/tests/fixtures/contracts/` にあり、pytest と CLI
+  チェックが同一のジェネレータを共有するので両者が食い違うことはありません。
+  （レジスタ執筆時点では 3 面でした。viz の REST インベントリが 4 つ目です。）
+  それ以外に: `ari.cli` の参照を遅延束縛に保つテスト モック性の間接化、
+  プロンプト スナップショットの層 — `ari-core/tests/test_prompt_extraction.py`
+  の手作業ハッシュ ピンに加えて `ari-core/tests/test_prompt_snapshots.py` の
+  自動発見された生／レンダリング後ゴールデン（再祝福されていない新規・削除
+  テンプレートで失敗する） — と `prompt-change-review.yml` のレビュー ゲート、
+  readme-sync の `## Contents` 行、3 言語ドキュメントの co-change と
+  `sources:` フロントマターのゲート、`DEPRECATION_REMOVAL.md` と
+  `ari-core/ari/_deprecation.py` を経由する非推奨化、そして環境変数や
+  チェックポイント ファイル名を `docs/reference/` に書いた時点で SemVer 上
+  凍結されるという規則。
 
 ---
 
@@ -870,3 +1435,27 @@ pipeline:
 ```
 
 `ari-core` の変更は不要です。
+
+---
+
+## 階層アーキテクチャ（v0.7+ リファクタリング）
+
+リファクタリング後の `ari-core/ari/` パッケージは、結合を最小化するために
+6 つの層 (0–5) に整理されています。階層を保つための設計規律は `CONTRIBUTING.md`
+を参照してください。
+
+| 層 | サブパッケージ | 担当 |
+|---|---|---|
+| 0 — プリミティブ | `paths`、`checkpoint`、`_deprecation`、`cost_tracker`、`pidfile`、`lineage`、`env_detect`、`schemas`、`configs`、`prompts`、`protocols` | パス解決、非推奨警告、コスト追跡、プロンプト／設定ローダ、構造的プロトコル。ARI 内部への依存なし。 |
+| 1 — ドメインモデル | `llm`、`mcp`、`memory`、`clone`、`publish`、`evaluator`、`orchestrator/node`、`orchestrator/node_selection` | データモデル + 上流ライブラリ（litellm、MCP、Letta）への薄いラッパ。 |
+| 2 — オーケストレータ | `orchestrator/{bfts, lineage_decision, node_report, root_idea_selector}` | BFTS 探索、lineage-decision の LLM フック、ノードごとのレポート。 |
+| 3 — エージェント | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env, metric_contract, shims}` | ReAct 実行 + 実験固有の WorkflowHints 注入。 |
+| 4 — パイプライン | `pipeline/{__init__, experiment_md, yaml_loader, stage_control, context_builder, stage_runner, orchestrator}` | YAML 駆動のステージランナー、論文パイプラインの接着層。 |
+| 5 — エントリポイント | `cli/{__init__, __main__, run, projects, commands, bfts_loop, lineage, migrate, paper_dispatch, doctor, harness, kca, manuscript, manuscript_repair_runtime}`、`cli_ear`、`viz/*`、`registry/*`、`public/*` | Typer CLI、viz HTTP サーバ、registry FastAPI、skill 向けの public 再エクスポート層。 |
+
+マイグレーションコード（`migrations/v05_to_v07/*`）は層の外側にあり、v1.0 で
+削除されます。skill は `ari.public.*` からのみ import できます —
+`ari-core/tests/test_public_api_boundary.py` の境界 CI が毎 PR で強制します。
+
+層をまたぐ共有 Protocol は `ari/protocols/` にあります（正準実装:
+`Evaluator`、`PromptLoader`、`ConfigLoader`）。

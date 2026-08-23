@@ -1,0 +1,51 @@
+{
+  "measurement_digest": "sha256:c048c8b2335f867605e83b060db7eda028df481308c4a5fb9490216812feaf07",
+  "measurement_semantics": {
+    "accelerator_seconds": "declared allocation multiplied by measured wall time",
+    "cpu_core_seconds": "declared allocation multiplied by measured wall time",
+    "memory_byte_seconds": "declared allocation multiplied by measured wall time",
+    "monetary_cost": "null until a digest-bound rate card or invoice exists",
+    "wall_time_seconds": "executor start/completion timestamps"
+  },
+  "node_id": "publication-candidate",
+  "records": [
+    {
+      "accelerator_seconds": 0.0,
+      "attestation_digest": "sha256:3ce4048337a7c11e8ba302c0a1e111e1421bdfd167c36e52315deea73cf55dc5",
+      "cpu_core_seconds": 106.527084,
+      "execution_attempt_id": "cad726528dce93a8f73ad6924b3a0810",
+      "execution_identity": "sha256:d272b842fc4f1612388deae099731574f11088338d299ba97a90969cbfbf6c23",
+      "execution_status": "completed",
+      "harness_id": "hpc/gemm-correctness",
+      "measurement_basis": "declared-allocation-x-executor-wall-time",
+      "memory_byte_seconds": 228765170959.12244,
+      "pricing_status": "unpriced",
+      "tier": "certify",
+      "wall_time_seconds": 53.263542
+    },
+    {
+      "accelerator_seconds": 0.0,
+      "attestation_digest": "sha256:072ff18c16e9906e7edef04673ed71a47c4141de5eecc21652e982fa928de099",
+      "cpu_core_seconds": 33.046164,
+      "execution_attempt_id": "625f51af42977d5fe0f7f25c5fc3db51",
+      "execution_identity": "sha256:0664cd8a235e01504b7adeb6f922b10acecd3c9bcc97e0e48cf6a4f4e5090d95",
+      "execution_status": "completed",
+      "harness_id": "hpc/gemm-correctness",
+      "measurement_basis": "declared-allocation-x-executor-wall-time",
+      "memory_byte_seconds": 70966096819.12627,
+      "pricing_status": "unpriced",
+      "tier": "screen",
+      "wall_time_seconds": 16.523082
+    }
+  ],
+  "run_id": "native-certify-publication-e2e",
+  "schema_version": "ari.authoritative-verification-cost/v1",
+  "totals": {
+    "accelerator_seconds": 0.0,
+    "cpu_core_seconds": 139.573248,
+    "memory_byte_seconds": 299731267778.2487,
+    "monetary_cost_usd": null,
+    "pricing_status": "unpriced",
+    "wall_time_seconds": 69.786624
+  }
+}

@@ -4,12 +4,38 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-07-03
+  - path: scripts/setup/setup_env.sh
+    role: config
+  - path: ari-core/ari/viz/auth.py
+    role: implementation
+  - path: ari-core/ari/viz/health.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
+  - path: ari-core/ari/rqgm/state.py
+    role: implementation
+  - path: ari-core/ari/assurance/executors.py
+    role: implementation
+  - path: ari-core/ari/harness_registry.py
+    role: implementation
+  - path: ari-core/ari/evaluator/deterministic_evaluator.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/cli/commands.py
+    role: implementation
+  - path: ari-core/ari/agent/loop.py
+    role: implementation
+  - path: ari-core/ari/orchestrator/bfts.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # Environment Variable Reference
 
-ARI honours roughly 90 environment variables, drawn together here for
+ARI honours over 160 environment variables, drawn together here for
 convenience.  Most have sensible defaults; the **Required?** column
 flags the ones a fresh checkout cannot operate without.
 
@@ -30,8 +56,30 @@ page is the alphabetical lookup.
 | `ARI_WORKSPACE` | Parent directory for new runs (used by orchestrator skill) | (none) | ✓ for `ari-skill-orchestrator` |
 | `ARI_WORK_DIR` | Per-node working directory root (`ari-skill-coding`) | `/tmp/ari_work` | – |
 | `ARI_LOG_DIR` | Application log directory | `$ARI_CHECKPOINT_DIR` | – |
-| `ARI_ROOT` | ARI source tree root (used in tests) | (auto-detect) | – |
+| `ARI_ROOT` | ARI source tree root — read in production by `ari.mcp.connection` (skill launch) and `ari.config` as well as by tests | (auto-detect from the package location) | – |
 | `ARI_SOURCE_FILE` | Override input experiment.md path | (none) | – |
+
+`ARI_CHECKPOINT_DIR` additionally carries a writer-side **convention** the table
+cannot show. Code that pins the current process to a run is expected to call
+`PathManager.set_checkpoint_dir_env` — which delegates to
+`RuntimePathResolver.set_checkpoint_dir_env`, the single function in
+`ari-core/ari/paths.py` that assigns `os.environ["ARI_CHECKPOINT_DIR"]` — rather
+than assigning the variable itself, so the run pin has one owner. Read that as a
+convention, not a guarantee:
+
+- **Nothing enforces it.** No test, lint rule or import-boundary check fails when
+  a writer assigns the variable directly. The helper is honoured by the pipeline
+  driver, the Letta client, `ari memory`, three `ari viz` modules and two CLI
+  entry points.
+- **One known in-tree bypass.** `ari-core/ari/agent/loop.py` assigns
+  `os.environ["ARI_CHECKPOINT_DIR"]` directly before building a node's tool
+  context, so the helper's docstring claim that going through it "keeps every
+  writer routed through PathManager" overstates what the code achieves. Treat
+  that sentence as intent, not fact.
+- **Child-process env dicts are outside the rule.** The GUI launch, orchestrator
+  and experiment paths set the key on a `proc_env` mapping handed to a
+  subprocess; they never mutate this process's environment, so they are not
+  bypasses.
 
 ### LLM model selection
 
@@ -41,16 +89,35 @@ page is the alphabetical lookup.
 | `ARI_LLM_API_BASE` | LiteLLM API base override | LiteLLM default |
 | `ARI_MODEL` | Cross-skill fallback model id | (falls through to `ARI_LLM_MODEL`) |
 | `ARI_MODEL_EVAL` | Model for the LLM evaluator | falls through to `ARI_MODEL` |
-| `ARI_MODEL_JUDGE` | Model for the BFTS judge | falls through to `ARI_MODEL` |
+| `ARI_MODEL_PAPER` | Model for paper writing and refinement | falls through to `ARI_LLM_MODEL` |
+| `ARI_MODEL_RUBRIC` | Model for independent rubric review and the fixed paper panel | falls through to `ARI_LLM_MODEL` |
+| `ARI_PANEL_SEED` | Requested seed recorded for each fixed-panel rubric completion | unset; sampling control is provider/backend dependent |
+| `ARI_MODEL_JUDGE` | Model for the PaperBench SimpleJudge (`grade_with_simplejudge`) | falls through to `ARI_LLM_MODEL`, then `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | Model for stagnation / lineage decisions (v0.7.0) | falls through to `ARI_MODEL` |
 | `ARI_MODEL_ROOT_SELECT` | Model that picks the seed idea | falls through to `ARI_MODEL` |
 | `ARI_MODEL_IDEA` | Model for `generate_ideas` | falls through to `ARI_MODEL` |
-| `ARI_MODEL_REPLICATE` | Model for replicator high-level reasoning (v0.7.0) | falls through to `ARI_MODEL` |
+| `ARI_MODEL_REPLICATE` | **Inert at runtime.** The name was renamed to `ARI_MODEL_REPLICATOR`; the only reader left is the legacy Settings card, where it seeds the displayed `ors.replicator_model` default. The replicator itself reads `ARI_MODEL_REPLICATOR` | (`claude-opus-4-7` as the Settings default) |
 | `ARI_MODEL_REPLICATOR` | Model used by `ari-skill-paper-re.build_reproduce_sh` | falls through |
 | `ARI_MODEL_RUBRIC_GEN` | Model for `ari-skill-replicate.generate_rubric` | falls through |
 | `ARI_MODEL_RUBRIC_AUDIT` | Model for `ari-skill-replicate.audit_rubric` | falls through |
 | `LLM_MODEL` | Cross-skill fallback (used by `ari-skill-transform`, `ari-skill-plot`) | (none) |
 | `LLM_API_BASE` | API base for `LLM_MODEL` | (none) |
+
+### Claude Code backend (`ARI_CLAUDE_CODE_*`)
+
+Only read when `ARI_BACKEND=claude_code` /
+`llm.backend: claude_code` — see
+[claude_code_provider.md](./claude_code_provider.md).
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_CLAUDE_CODE_MODE` | `strict_reproducibility` (fresh `claude -p` per call) or `low_overhead` (resident Agent SDK worker, fresh query per request) | `strict_reproducibility` |
+| `ARI_CLAUDE_CODE_MODEL` | Model override, applied only when the resolved backend is `claude_code` | `llm.model` |
+| `ARI_CLAUDE_CODE_MAX_TURNS` | `--max-turns` per call (>1 needs `allow_multi_turn`) | `1` |
+| `ARI_CLAUDE_CODE_TIMEOUT_SEC` | Per-call subprocess/SDK timeout | `300` |
+| `ARI_CLAUDE_CODE_RECORD_PROVENANCE` | Persist per-call artifacts under `{checkpoint}/claude_code/{call_id}/` (`1`/`0`) | `1` |
+| `ARI_CLAUDE_CODE_BIN` | Claude Code binary | `claude` |
+| `ANTHROPIC_AUTH_TOKEN` | Token auth alternative to `ANTHROPIC_API_KEY`; either enables the hermetic `--bare` profile | (none) |
 
 ### Idea skill — VirSci-live
 
@@ -77,14 +144,106 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_MAX_NODES` | Hard cap on BFTS nodes | (workflow-controlled) |
 | `ARI_MAX_DEPTH` | Hard cap on tree depth | (workflow-controlled) |
 | `ARI_MAX_REACT` | ReAct iteration cap per node | (workflow-controlled) |
-| `ARI_PARALLEL` | Concurrent node executors | `1` |
-| `ARI_TIMEOUT_NODE` | Per-node wall-time cap (seconds) | (none) |
+| `ARI_PARALLEL` | Concurrent node executors | `4` |
+| `ARI_TIMEOUT_NODE` | Per-node wall-time cap (seconds) | `7200` (2 h) |
 | `ARI_BFTS_ALLOW_WEB` | Opt-in: expose `web-skill` (web_search / fetch_url / arXiv / Semantic Scholar) to the BFTS node agent **during exploration**. Default-off keeps the search loop reproducible (P5); when on, ARI records a non-reproducible-trajectory marker (`bfts_web_provenance.json`). `idea-skill`'s `survey` already does a bounded literature lookup regardless. `1`/`true`/`yes`/`on` to enable | `false` |
 | `ARI_RECURSION_DEPTH` | Current depth in nested ARI runs (auto-set) | (auto) |
 | `ARI_MAX_RECURSION_DEPTH` | Cap for orchestrator recursion | `3` |
 | `ARI_PARENT_RUN_ID` | Parent run id during recursion (auto-set) | (auto) |
-| `ARI_DISABLED_TOOLS_FOR_CHILD` | Toolset trimmed for child runs | (none) |
+| `ARI_DISABLED_TOOLS_FOR_CHILD` | **Inert — reserved, no reader.** `ari/cli/lineage.py` sets it to the empty string for a lineage child and nothing in the tree reads it back, so it trims nothing. `disabled_tools` is populated from YAML only. Do not rely on it. | (none) |
 | `ARI_REACT_MEMORY_SEARCH_LIMIT` | `search_memory` `top_k` ceiling | (skill default) |
+| `ARI_NODE_EXEC_BUDGET_S` | Per-node wall-clock budget shared by all `run_bash` / `run_code` calls. A single call is capped by its own timeout, but nothing capped the sum, so one node could burn the whole per-node timeout on shell calls and be killed with no report at all. A call is refused once the budget is gone, and no single call is allowed to outlast what remains. `0` disables | `1800` |
+| `ARI_NODE_COMPUTE_BUDGET_NS` | Per-node budget for SCHEDULER work, in **node-seconds** (`nodes` × walltime) — the unit a scheduler allocates in. `ARI_NODE_EXEC_BUDGET_S` charges `run_bash`/`run_code`, which is time on one machine; a submission was charged nothing, so a node could be refused after half an hour of local shell while a thousand-node two-hour job cost it zero. Charged at **submission** against the reservation, not on completion against elapsed time: a budget that only learns the cost afterwards cannot refuse anything, and the scheduler holds the whole reservation regardless of when the work finishes. An over-budget submission is refused **before** it reaches the scheduler, since a queued reservation is held whatever happens next. Covers `slurm_submit`, `job_submit` and `container_submit` alike. Reservations are written to the cost trace with `resource_measurement_basis: declared-reservation` whether or not a budget is set, so "how much cluster did this search use" is answerable either way. Unset/`0` = no limit | (unset ⇒ unlimited) |
+| `ARI_V2_SUPPRESS_TOOLS` | Hide `describe_environment` / `run_code` / `emit_results` from the **search loop** (they stay available to every other phase and to other users of ARI). Each hidden call is a step returned to editing the kernel, which matters at a 20-step budget. Opt-in, because it is not a local trim: `system.md` gates *finishing* on `emit_results`, so enabling it also rewrites that sentence — otherwise the agent is left with a stop condition it cannot satisfy — and the evidence path a run is scored through changes with it. Paper-reproduction routes need exactly these tools, so nothing is hidden unless asked | (unset ⇒ every tool offered) |
+
+### Task + problem selection
+
+What a run is scored against. `ARI_PROBLEM` names a **pinned problem** and is the
+supported path; `ARI_TASK` reaches the older prototype harness registry and is
+consulted for scoring only when no problem is pinned.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_PROBLEM` | The pinned problem this run is measured against. When set, the evaluator measures through `assurance_measure` and each node's `work_dir` is seeded from the problem's declared `score_inputs` — so no untracked tree decides the number. Seeding never overwrites: a child's `work_dir` is a copy of its parent's, and the parent's candidate *is* the handoff | (unset ⇒ the `ARI_TASK` path) |
+| `ARI_TASK` | Task name for the prototype harness registry. A task that is **set but unknown** raises rather than falling back to `spmm`: scoring a different benchmark and reporting it as the requested one is exactly what the registry exists to prevent. Also supplies the task component of the handoff run-directory name, independently of `ARI_PROBLEM` | `spmm` (naming: `task`) |
+| `ARI_HARNESS` | Which harness serves the task when several do. The registry **refuses to choose** on its own, because binding whichever sorted first would make the score depend on a directory name and attribute it to the task rather than the harness. A harness registered under the workspace wins over a packaged one of the same name, and the choice is recorded in provenance | (none) |
+| `ARI_SEED` | Fixed sampling seed for reproducible local-model runs (`llm.seed`); a non-integer value is ignored rather than raising. Also the seed component of the handoff run-directory name, which is what de-collides same-second run ids across arms and seeds | (unset ⇒ backend default; naming: `0`) |
+
+### Parent→child handoff (`ARI_HANDOFF_*`)
+
+Applied by `apply_handoff_env_overrides` **after** profile overrides, so an
+explicit choice wins. `ARI_HANDOFF_MODE` rebuilds `HandoffConfig` so the
+mode→channel resolution runs; the individual switches below then override single
+channels for ablation. Config equivalents live under the `handoff:` block.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_HANDOFF_MODE` | Selects the arm, e.g. `disabled` / `code_only` / `summary_only` / `code_plus_summary` / `code_plus_full_log` / `evidence_only` / `evidence_plus_reflection`. Also names the run directory `<task>_<mode>_seed<seed>` from `ARI_TASK` / `ARI_SEED`, so the directory says what was inherited rather than repeating the goal slug across every arm. An unrecognised value is ignored **for arm selection only** — the naming branch fires on any non-empty value, so a typo'd mode runs the arm the config resolved under a directory named after the typo | (config) |
+| `ARI_HANDOFF_COPY_WORKDIR` | Whether the child inherits the parent's work_dir (the artifact/code channel) | (from mode) |
+| `ARI_HANDOFF_AGENT_BLOCK` | Inject the parent's operational summary into the child's agent prompt | (from mode) |
+| `ARI_HANDOFF_PLANNER_BLOCK` | Inject the parent's summary into the planner prompt. Read at two sites with different truthiness: the config override accepts `1`/`true`/`yes`/`on`, while the injection site treats any value other than `0`/`false`/`no`/`off` as on — so a value outside those spellings reads OFF in config and ON where the block is written. Use one of the four | (from mode) |
+| `ARI_HANDOFF_MEMORY_OFF` | Suppress the de-facto memory channel, so an arm receives no operational state beyond its explicit handoff channels. The shutdown backup skips on the literal `1` only; `true`/`yes`/`on` gate the channel but still leave a memory backup in the checkpoint | (from mode) |
+| `ARI_HANDOFF_LOG_MODE` | `none` / `full` / `truncated` / `masked` — how much of the parent's execution log is passed | (from mode) |
+| `ARI_HANDOFF_LOG_LIMIT` | Character cap on the injected parent log | `48000` |
+| `ARI_HANDOFF_SUMMARY_FORM` | `extractive` / `rolling` / `failure_only` / `evidence` / `evidence_reflection` | (from mode) |
+| `ARI_HANDOFF_SUMMARY_FIELDS` | Comma-separated allowlist of summary fields (field-drop ablation) | (all) |
+| `ARI_HANDOFF_PAIRED_MODES` | Comma-separated arms to run paired within one invocation | (none) |
+
+### Execution mode (RQGM)
+
+Two independent axes — exploration (`ARI_MODE`) and the paper phase
+(`ARI_PAPER_MODE`) — each sit behind a **two-key interlock**: the mode variable
+and its `*_ENABLED` companion must *both* select the governed path, or that axis
+falls back to its default (`simple_bfts` / `linear`). One key on its own
+activates nothing. `scripts/setup/setup_env.sh` appends every variable below to
+a generated `.env` as a commented-out template line — only when the key is not
+already present — and spells the interlock out in the comment ("both must agree
+or ARI falls back to `simple_bfts`" / "…or the paper phase falls back to
+`linear`").
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_MODE` | Execution-mode override: `simple_bfts` \| `ari_rqgm` (overrides `ari.mode` in workflow.yaml; invalid values warn and are ignored). RQGM activation additionally requires the `ARI_RQGM_ENABLED` interlock — any disagreement falls back to `simple_bfts`. `export_resolved_config_to_skill_env` `setdefault`s this to the *effective* mode for skill subprocesses (no skill reads it in v1). On `ari resume` the mode persisted in `rqgm_state.json` wins over this variable. See `docs/guides/execution_modes.md` | `simple_bfts` |
+| `ARI_RQGM_ENABLED` | RQGM master-interlock override: `0`/`1`/`true`/`false` (overrides `rqgm.enabled` in workflow.yaml). Both this AND `ARI_MODE=ari_rqgm` must agree for the governance runtime to be constructed | `false` |
+| `ARI_PAPER_MODE` | Paper-phase mode override: `linear` \| `rqgm_archive` (overrides `paper.mode` in workflow.yaml; invalid values warn and are ignored). Orthogonal to `ARI_MODE` — the exploration and paper axes are set independently. The archive additionally requires the `ARI_RQGM_PAPER_ENABLED` interlock; any disagreement falls back to `linear`. Applied by `apply_paper_env_overrides`, which the paper command must call **explicitly**: the paper entry's config loader applies no env overrides, so this variable cannot free-ride on the `ari run` / `ari resume` override block. See [The paper execution axis: `paper.mode`](../guides/execution_modes.md#the-paper-execution-axis-paper-mode) | `linear` |
+| `ARI_RQGM_PAPER_ENABLED` | Paper-archive interlock override: `0`/`1`/`true`/`false` (overrides `rqgm.paper.enabled` in workflow.yaml; invalid values warn and are ignored). Both this AND `ARI_PAPER_MODE=rqgm_archive` must agree for the draft archive to activate | `false` |
+| `ARI_PAPER_AGENT_AS_JUDGE` | Agent-as-judge draft-scoring override: `0`/`1`/`true`/`false` (overrides `rqgm.paper.reviewer.agent_as_judge.enabled`; invalid values warn and are ignored). Applied by `apply_paper_env_overrides` with the same validate-before-assign posture as `ARI_PAPER_MODE` / `ARI_RQGM_PAPER_ENABLED`. Off ⇒ the deterministic, LLM-free venue-rubric scorer, so no live LLM call sits on the draft-scoring path (P2). On ⇒ a real `LLMClient`-backed reviewer scores each archive draft over the *same* venue-rubric axes, weighted by the ACTIVE governed `paper_reviewer` prompt's emphasis, and can read axes no deterministic reader can (`novelty`, `significance`); it fails open to the deterministic rubric on an LLM error, an unparseable reply or one covering too little of the rubric's axis weight. Only meaningful under the effective `rqgm_archive` paper mode (`ARI_PAPER_MODE=rqgm_archive` + `ARI_RQGM_PAPER_ENABLED=1`) | (unset ⇒ off) |
+
+The four variables below are not switches: they are optional deployment
+declarations that make an RQGM epoch's execution identity specific.
+`capture_execution_identity` reads each one when an epoch opens, records an
+unset or blank value as the literal string `unresolved`, and leaves
+`execution_identity.complete` `false` unless all four resolve — ARI does not
+claim that a mutable provider alias is a fixed implementation. Nothing verifies
+that a supplied value is true; the pin is a declaration, not a measurement.
+`docs/reference/configuration.md` lists the same four against the identity each
+pins.
+
+| Variable | Identity it pins | Default |
+|---|---|---|
+| `ARI_MODEL_REVISION` | Exact provider/model revision | (unset ⇒ recorded as `unresolved`) |
+| `ARI_TOOL_BUNDLE_REVISION` | Immutable tool-bundle revision | (unset ⇒ recorded as `unresolved`) |
+| `ARI_ENVIRONMENT_DIGEST` | Container or environment digest | (unset ⇒ recorded as `unresolved`) |
+| `ARI_DATA_SNAPSHOT_DIGEST` | Immutable external-data snapshot digest | (unset ⇒ recorded as `unresolved`) |
+
+`ARI_HARNESS_CONTAINER_ROOT` is declared in the same `setup_env.sh` block but
+belongs to the Harness substrate rather than to mode selection:
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_HARNESS_CONTAINER_ROOT` | Absolute root under which a **logical** Harness container reference — `apptainer:<name>.sif` or `singularity:<name>.sif` — is resolved. Verified entries carry the logical form precisely so a published manifest holds no site path, which means the concrete directory can only come from the environment. Unset ⇒ a logical reference is refused with `HarnessSubstrateError`; a plain path reference is a compatibility input that passes through and never consults this variable. The root must be absolute, a real directory and not a symlink, and the resolved image must be a regular non-symlink file sitting directly in that root — anything resolving outside it is refused | (none — needed only for logical references) |
+
+### Manuscript Complete
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_MANUSCRIPT_MODE` | New-attempt posture: `off` \| `audit` \| `enforce`. It is independent of research and paper modes; resume cannot rewrite a persisted attempt binding. | `off` |
+| `ARI_MANUSCRIPT_REPAIR_POLICY` | Repair posture: `disabled` \| `explicit` \| `auto`. `auto` is invalid unless the effective manuscript mode is `enforce`. | `disabled` |
+
+The additional `ARI_MANUSCRIPT_*_PATH`, budget, topology, and effective-policy
+variables are private, scoped hand-offs installed by the paper dispatcher.
+Operators should configure them through `workflow.yaml`, not export them
+directly. See the [Manuscript Complete runbook](../guides/manuscript_complete_operations.md).
 
 ### Backend + executor
 
@@ -93,9 +252,9 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_BACKEND` | Backend selector for the agent runtime |
 | `ARI_EXECUTOR` | Executor backend (sync / async) |
 | `ARI_CONTAINER_IMAGE` | SIF / OCI image for sandboxed execution |
-| `ARI_CONTAINER_MODE` | `exec` / `shell` (singularity invocation style) |
+| `ARI_CONTAINER_MODE` | Container runtime: `auto` (default — probe, preferring Singularity/Apptainer inside a SLURM job) / `docker` / `singularity` / `apptainer` / `none`. An unsupported value raises rather than falling back to the host |
 | `ARI_CONTAINERS_DIR` | Container image cache root |
-| `ARI_MAX_CHILD_PROCS` | RLIMIT_NPROC cap inside the coding sandbox (default 1024) |
+| `ARI_MAX_CHILD_PROCS` | RLIMIT_NPROC cap inside the coding sandbox. Opt-in: unset ⇒ no extra cap. RLIMIT_NPROC counts every task of the real uid, not just descendants, so a fixed cap fired `fork` EAGAIN whenever the user already had that many threads anywhere |
 | `ARI_LOG_LEVEL` | Python `logging` level (`INFO` / `DEBUG` / ...) |
 
 ### Memory backend
@@ -104,10 +263,19 @@ LLM follows `ARI_MODEL_IDEA`.
 |---|---|
 | `ARI_MEMORY_BACKEND` | `letta` (default) or `in_memory` (no Letta required; ephemeral RAM-only backend for local smoke tests) |
 | `ARI_MEMORY_AUTO_RESTORE` | Auto-restore from `memory_backup.jsonl.gz` on resume |
-| `ARI_MEMORY_ACCESS_LOG` | Path to `memory_access.jsonl` |
+| `ARI_MEMORY_ACCESS_LOG` | `on` (default) / `off` — whether the memory server records `memory_access.jsonl`. The path itself is not configurable; `ARI_MEMORY_ACCESS_LOG_MAX_MB` (default `100`) sets its rotation size |
 | `ARI_MEMORY_CONSOLIDATE` | Typed-memory consolidation + artifact-grounded `verified_context.json` for paper claims. **Default ON**; set `0`/`false`/`no`/`off` to disable |
-| `ARI_CURRENT_NODE_ID` | Set by the agent loop; skills read it but never set it |
+| `ARI_CONTEXT_AUTHORITY_KEY` | Per-connection HMAC key core exports into each skill subprocess (`SkillConnection._server_params`); the memory server verifies the signed `ari_context` argument against it before touching the backend. Core-injected and redacted from results — never operator-set |
 | `ARI_LETTA_VENV` | Virtualenv path for the bundled Letta server |
+
+The current node id is **not** an environment variable, so a spoofed value in the
+environment cannot redirect a memory write. `AgentLoop._node_tool_context` builds one
+`ToolCallContextV1` per node, `SkillConnection.authorize_args` signs it into the
+`ari_context` tool argument, and the Copy-on-Write guard (`_require_self` in
+`ari-skill-memory/src/server.py`) compares the requested `node_id` against
+`node_context.node_id` from that signed context. See
+[Internal boundaries](internal_boundaries.md) and
+[Glossary → CoW](glossary.md).
 
 ### Reviewer rubrics + paper review
 
@@ -133,14 +301,14 @@ LLM follows `ARI_MODEL_IDEA`.
 |---|---|
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | Target leaf count for `generate_rubric` |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | LLM temperature override |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | Use the two-stage skeleton + subtree synthesis |
 | `ARI_PAPERBENCH_RUBRIC_DIR` | Override search root for venue-conditioned PaperBench rubric templates (unreleased — see `docs/reference/rubric_schema.md#venue-conditioned-templates`) |
 
 ### PaperBench reproducibility (v0.7.0)
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `ARI_PAPERBENCH_PATH` | Override the bundled `vendor/paperbench/` path | `vendor/paperbench/` |
+| `ARI_PAPERBENCH_PATH` | Override the reviewed vendored PaperBench project root. Admitted only when it is not a symlink and its Git identity matches an explicit `ARI_PAPERBENCH_COMMIT` claim — without that claim the override is refused | `ari-skill-paper-re/vendor/paperbench/project` |
+| `ARI_PAPERBENCH_COMMIT` | The commit an `ARI_PAPERBENCH_PATH` override claims; validated against the tree's real Git identity | (none — required with `ARI_PAPERBENCH_PATH`) |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | Wall-time cap for `run_reproduce` | `43200` (12 h) |
 | `ARI_REPLICATOR_ITERATIVE` | Use the iterative replicator agent | – |
 | `ARI_REPLICATOR_MAX_STEPS` | Iteration cap when iterative is on | – |
@@ -149,11 +317,10 @@ LLM follows `ARI_MODEL_IDEA`.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `ARI_ORCHESTRATOR_PORT` | MCP server port | `9890` |
-| `ARI_ORCHESTRATOR_LOGS` | Log directory | `$ARI_WORKSPACE/orchestrator_logs` |
-| `ARI_ORCHESTRATOR_DRY_RUN` | Skip real `ari run` (smoke testing) | – |
-| `ARI_ORCHESTRATOR_SSE_ONESHOT` | One-shot SSE response mode | – |
-| `ARI_ORCHESTRATOR_SSE_TIMEOUT` | SSE timeout (seconds) | – |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | MCP server port (`streamable-http` transport) | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_HOST` | MCP server bind host; may not be empty | `127.0.0.1` |
+| `ARI_ORCHESTRATOR_LOGS` | Log directory | `$ARI_WORKSPACE/logs` |
+| `ARI_ORCHESTRATOR_DRY_RUN` | Skip real `ari run` (smoke testing); `1` to enable | – |
 
 ### Transform skill
 
@@ -168,6 +335,17 @@ LLM follows `ARI_MODEL_IDEA`.
 |---|---|
 | `ARI_RETRIEVAL_BACKEND` | `semantic_scholar` / `arxiv` / `alphaxiv` |
 
+### Federated tool registry skill
+
+The Skill flag and the catalog are two independent gates: enabling
+`ari-skill-tool-registry` enables no leaf, because only sources present in the
+selected lock can execute.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_TOOL_REGISTRY_LOCK` | Reviewed `CATALOG.lock` the broker loads at process startup. ARI's own provider-catalog loader reads the same variable, so the two cannot disagree about which leaf a composite provision describes. A materialized catalog carries absolute local paths and therefore cannot live in the repository, which is why the override is the only way to reach one | the `CATALOG.lock` packaged beside the Skill — checked in empty by design, because it is the portable default and a populated catalog is machine-specific evidence |
+| `ARI_TOOL_REGISTRY_INDEX` | Derived catalog index matching that lock | `catalog.index.json` beside the resolved lock; rebuilt from the lock when that file is absent |
+
 ### Publish + registry + clone
 
 | Variable | Purpose |
@@ -181,7 +359,7 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_REGISTRIES_FILE` | Override `registries.yaml` location (else looked up under the active checkpoint) |
 | `ARI_LOCAL_TARBALL_OUT` | Output path for the `local-tarball` publish backend |
 | `ARI_GH_REPO` | GitHub repo target for the `gh` backend |
-| `ARI_GH_MODE` | `release` / `repo` mode for the `gh` backend |
+| `ARI_GH_MODE` | `commit` (default — push bundle/manifest/README into the repo) or `releases` (create a tagged release and attach the tarball) for the `gh` backend |
 | `ARI_CLONE_HTTP_TIMEOUT` | HTTP timeout for `ari clone` |
 
 ### SLURM defaults
@@ -189,22 +367,21 @@ LLM follows `ARI_MODEL_IDEA`.
 | Variable | Purpose |
 |---|---|
 | `ARI_SLURM_PARTITION` | Default partition |
+| `ARI_HPC_ALLOWED_NODES` | Site policy: the only nodes ARI may place work on, in SLURM hostlist syntax (`cn01,cn02`, `cn[01-04]`). Unset = no restriction, and requests pass through untouched. When set it is enforced at the scheduler boundary, so it covers `job_submit`, `container_submit` and `slurm_submit` alike: a request naming **no** nodes is confined to this set — without a nodelist the scheduler is free to pick any node in the partition, which is what the policy exists to prevent — and one naming anything outside it is refused before submission. Confinement is applied before the request digest, so where a job may run is part of its claim identity and a resumed run cannot inherit a claim made under a wider policy. A nodelist that cannot be expanded exactly is refused rather than admitted. Held in the environment, not a tracked file, because node names are site identity |
 | `ARI_SLURM_CPUS` | Default `--cpus-per-task` |
 | `ARI_SLURM_GPUS` | Default `--gres=gpu:N` |
 | `ARI_SLURM_MEM_GB` | Default memory request |
 | `ARI_SLURM_WALLTIME` | Default `--time` |
-| `ARI_SLURM_ALLOW_NO_GRES` | `1` ⇒ when the cluster has no GRES configured for GPUs, silently drop `--gres` / `--gpus-*` flags (legacy v0.7.2 behaviour). Default (unset) ⇒ raise `RuntimeError` with an actionable message so a GPU request never silently runs on CPU. |
+| `ARI_SLURM_ALLOW_NO_GRES` | **Inert — no code reads this name today.** It was the opt-in that silently dropped `--gres` / `--gpus-*` on a cluster with no GPU GRES configured; `scripts/setup/setup_env.sh` still pre-seeds it commented out. The no-GRES case is now decided in `ari/capability_binding/environment.py` instead: a device observed without GRES accounting is recorded as the feature `gpu-observed-on-slurm-node` with allocation mode `observation-only-no-gres` and is **not** a schedulable `gpu` resource unless GRES was observed or an exclusive-node-inventory pin matches, so the request fails to bind rather than falling back to CPU. Setting this variable changes nothing. |
 
 ### PaperBench reproduction phase (Stage 2)
 
 | Variable | Purpose |
 |---|---|
 | `ARI_PHASE1_SANDBOX` | `auto` / `local` / `docker` / `apptainer` / `singularity` / `slurm`. Forces the sandbox runner used by `server.run_reproduce` and `bridge.reproduce_submission`. |
-| `ARI_PHASE1_DOCKER_IMAGE` | Default docker image when `sandbox_kind=docker` and no explicit `container_image` is supplied. Defaults to `ubuntu:24.04`. |
+| `ARI_PHASE1_DOCKER_IMAGE` | Default docker image when `sandbox_kind=docker` and no explicit `container_image` is supplied. There is no built-in default: unset leaves the image empty and the run is refused rather than silently given one. |
 | `ARI_PHASE1_APPTAINER_IMAGE` | Default SIF / docker URI when `sandbox_kind=apptainer`/`singularity` and no explicit `container_image` is supplied. |
-| `ARI_PHASE1_SINGULARITY_IMAGE` | Legacy alias for `ARI_PHASE1_APPTAINER_IMAGE`. |
-| `ARI_PHASE1_ALLOW_FALLBACK` | `1` ⇒ when a requested sandbox tool is missing (docker daemon / apptainer / sbatch / partition), fall back to host-local execution with only a warning (legacy v0.7.2 behaviour). Default (unset) ⇒ raise `RuntimeError` so the user's isolation intent isn't silently bypassed. |
-| `ARI_PAPERBENCH_PATH` | Override the vendored PaperBench source tree path (default: `ari-skill-paper-re/vendor/paperbench/project/paperbench`). |
+| `ARI_PAPERBENCH_PATH` | Override the vendored PaperBench project root (default: `ari-skill-paper-re/vendor/paperbench/project`; a value naming the inner `project/paperbench` directory is normalised up to `project`). Requires `ARI_PAPERBENCH_COMMIT` — see above. |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | Default Stage 1 agent rollout time budget when the caller passes `0`. |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ default to IterativeAgent variant for Stage 1 rollouts. |
 | `ARI_REPLICATOR_MAX_STEPS` | Default Stage 1 step cap. |
@@ -214,36 +391,59 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_MODEL_JUDGE` | Default judge model id (LiteLLM-routed). |
 | `ARI_MODEL_REPLICATOR` | Default Stage 1 rollout model id. |
 
+### GUI server (`ARI_GUI_*`)
+
+Eight switches govern the `ari viz` dashboard shell, its network exposure and
+its operational surfaces. All eight are declared (commented out) by
+`scripts/setup/setup_env.sh`, and all are **rollback levers**: unsetting them
+gives the current default, setting them restores a documented earlier
+behaviour without a redeploy.
+
+| Variable | Default (unset) | Effect when set | Rollback semantics |
+|---|---|---|---|
+| `ARI_GUI_V2` | on (`1`) | `0` / `false` reverts to the legacy dashboard shell. | Kill-switch for the v2 shell; removal gate G6. |
+| `ARI_GUI_BIND` | loopback only (`127.0.0.1` + `::1`) | A bind address: `::` = legacy all-interfaces dual-stack, `0.0.0.0` = IPv4 wildcard, or a single address. | Restores the historical all-interfaces bind. Any non-loopback value switches the server into **remote mode** (see `ARI_GUI_TOKEN`). |
+| `ARI_GUI_CORS_ANY` | off — same-origin echo only | `1` restores the legacy `Access-Control-Allow-Origin: *` wildcard. | Needed only for cross-origin tunnel/portal topologies; the Vite dev proxy on `:5173` does **not** need it. |
+| `ARI_GUI_CHALLENGES` | on — challenges required | `0` disables the server-issued confirmation challenges on delete-checkpoint / stop / gpu-monitor-stop, restoring direct execution. | With it on, those endpoints answer `428` without a valid `challenge_id`; the issuing endpoint stays available either way. |
+| `ARI_GUI_CSP` | on — headers sent | `0` drops `Content-Security-Policy`, `X-Content-Type-Options` and `Referrer-Policy` from the GUI index/static responses. | Only needed if a proxy topology remaps the WebSocket port and the policy blocks it (the GUI then degrades to polling). |
+| `ARI_GUI_TOKEN` | unset | The bearer token remote mode requires: every request except the `/health*` prefix must send `Authorization: Bearer <token>`; SSE and WebSocket accept it as `?token=`. | Unset **while remote-bound** is fail-secure, not open: the server generates a random 32-hex token at startup and prints it once to stderr. Never required on the loopback default. |
+| `ARI_GUI_AUTH` | on (in remote mode) | `0` disables the remote token gate, restoring an unauthenticated remote bind. | The documented escape hatch for a trusted network that terminates its own auth (e.g. an authenticating reverse proxy). Loopback binds are unauthenticated either way. |
+| `ARI_GUI_HEALTH` | on | `0` disables the operational-visibility surfaces: `GET /health/live` and `/health/ready` fall back to the SPA response and `GET /api/v1/diagnostics` answers the typed 404. | Restores the exact pre-probe wire behaviour for probe-scraping topologies that must not see the new JSON. |
+
+See [REST API → Authentication](rest_api.md#authentication) for the full trust
+model and [REST API → Confirmation challenges](rest_api.md#confirmation-challenges)
+for the challenge protocol.
+
 ## SLURM (`SLURM_*`)
 
 | Variable | Purpose |
 |---|---|
 | `SLURM_MODE` | `local` (default) / `ssh` |
 | `SLURM_SSH_HOST` | SSH host for remote SLURM mode |
-| `SLURM_SSH_USER` | SSH user (defaults to current user) |
+| `SLURM_SSH_USER` | SSH user — **required** in remote mode; there is no fallback to the current user, and an empty value is refused |
 | `SLURM_SSH_PORT` | SSH port (default `22`) |
 | `SLURM_SSH_KEY` | Private key path |
 | `SLURM_SSH_PASSWORD` | Optional password (prefer key) |
 | `SLURM_DEFAULT_PARTITION` | Default partition for sub-jobs ARI launches |
-| `SLURM_PARTITION` | Per-job partition override |
-| `SLURM_VALID_PARTITIONS` | Comma-separated allow-list |
-| `SLURM_LOG_DIR` | Where to write `*.out` / `*.err` |
-| `SLURM_CLUSTER_NAME` | Display name shown in the dashboard |
+| `SLURM_PARTITION` | Partition fallback consulted after `ARI_SLURM_PARTITION` by the paper-re sandbox runner (`_resolve_partition`); nothing else reads it |
+| `SLURM_VALID_PARTITIONS` | **Inert — no reader.** `scripts/setup/setup_env.sh` pre-seeds it commented out and nothing in the tree reads it back. Node-level policy is `ARI_HPC_ALLOWED_NODES` |
+| `SLURM_LOG_DIR` | **Inert — no reader.** Pre-seeded by `setup_env.sh` and forwarded to skill subprocesses, but the sbatch script writes `--output` / `--error` into the job's artifact scope, not here |
+| `SLURM_CLUSTER_NAME` | Set by SLURM itself; ARI reads it only as an "am I on a cluster" presence probe (alongside `SLURM_JOB_ID`) |
 | `SLURM_JOB_ID` / `SLURM_JOB_NODELIST` / `SLURM_JOB_PARTITION` | Set by SLURM itself when ARI runs inside a job |
 
 ## Letta (`LETTA_*`)
 
 | Variable | Purpose |
 |---|---|
-| `LETTA_BASE_URL` | Letta API base (default `http://127.0.0.1:8283`) |
+| `LETTA_BASE_URL` | Letta API base (default `http://localhost:8283`) |
 | `LETTA_API_KEY` | API key when Letta requires auth |
-| `LETTA_EMBEDDING_CONFIG` | Path to embedding config JSON (required) |
+| `LETTA_EMBEDDING_CONFIG` | Embedding-model **handle** passed to Letta (e.g. `letta-default`) — a handle name, not a file path, and not required: unset resolves to `letta-default` |
 
 ## Ollama / OpenAI (`OLLAMA_*` / `OPENAI_*`)
 
 | Variable | Purpose |
 |---|---|
-| `OLLAMA_HOST` | Ollama listen address (default `127.0.0.1:11434`) |
+| `OLLAMA_HOST` | Ollama address; ARI reads it as the Ollama api_base when the backend is `ollama` (default `http://localhost:11434`) |
 | `OLLAMA_BASE_URL` | LiteLLM-side base URL |
 | `OPENAI_API_KEY` | OpenAI / OpenAI-compatible API key |
 
@@ -251,12 +451,13 @@ LLM follows `ARI_MODEL_IDEA`.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `VLM_MODEL` | Vision LLM for figure / table review | `openai/gpt-4o` |
+| `ARI_VLM_MODEL` | Vision LLM for figure / table review; wins over `VLM_MODEL` | (none) |
+| `VLM_MODEL` | Fallback vision-LLM id read when `ARI_VLM_MODEL` is unset. There is no built-in default: with neither set the visual review refuses rather than picking a model | (none) |
 
 ## See also
 
 - `docs/reference/configuration.md` — narrative tour of the same env vars,
   grouped by use case.
-- `ari-core/ari/config.py` — Pydantic settings model that consumes
+- `ari-core/ari/config/__init__.py` — Pydantic settings model that consumes
   most of the `ARI_*` group.
 - Each skill's `README.md` — env vars specific to that skill.

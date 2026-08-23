@@ -1,0 +1,66 @@
+{
+  "cluster": {
+    "gres_types": "gpu,mps",
+    "job_accounting": "accounting_storage/slurmdbd",
+    "process_tracking": "proctrack/cgroup",
+    "scheduler": "sched/backfill",
+    "select_type": "select/cons_tres",
+    "select_type_parameters": "CR_CORE",
+    "slurm_version": "24.05.8",
+    "task_plugins": [
+      "task/cgroup",
+      "task/affinity"
+    ]
+  },
+  "controller_clients": {
+    "sacct": {
+      "path": "/usr/bin/sacct",
+      "sha256": "sha256:fe0e3ef96df793c9078e0eea691b06d5522d8ec9e614ebd94030a5f08bd78617",
+      "size_bytes": 92344
+    },
+    "sbatch": {
+      "path": "/usr/bin/sbatch",
+      "sha256": "sha256:647b15202ce3584fbc3152a7cbd02893c594af902bc5214cd53f55f33ad93002",
+      "size_bytes": 74408
+    },
+    "scancel": {
+      "path": "/usr/bin/scancel",
+      "sha256": "sha256:0f81bc4d280ac745e96b36deaa17541365675166ad3ed93a227ff6feae7ef35b",
+      "size_bytes": 50416
+    },
+    "scontrol": {
+      "path": "/usr/bin/scontrol",
+      "sha256": "sha256:4074201eaa4a284347e844611f24f47d4e4030e95eeda2bcc1e947bc48063ef6",
+      "size_bytes": 145872
+    },
+    "sinfo": {
+      "path": "/usr/bin/sinfo",
+      "sha256": "sha256:6f02259b33012636b6874d379ac22a650a1ec6d32aa88a57e9dda83df5e34eb4",
+      "size_bytes": 88528
+    },
+    "srun": {
+      "path": "/usr/bin/srun",
+      "sha256": "sha256:fbf881f7cb571d87eb29daeb31cfa4ce454edf1e61ff2cebb2ac7b6632eb4ced",
+      "size_bytes": 165416
+    }
+  },
+  "node": {
+    "architecture": "x86_64",
+    "cpu_cores": 192,
+    "gpu_authority": false,
+    "gres": null,
+    "operating_system": "Linux",
+    "sockets": 4,
+    "threads_per_core": 2
+  },
+  "partition": {
+    "accounts": "ALL",
+    "max_time": "1-00:00:00",
+    "node_count": 1,
+    "oversubscribe": "EXCLUSIVE",
+    "qos": "ALL",
+    "state": "UP"
+  },
+  "schema_version": "ari.openroad-scheduler-snapshot/v1",
+  "site_identity_digest": "sha256:de280f6b0489481d07f61773365a8ce87a11917267b2a736635b093c63842ad2"
+}

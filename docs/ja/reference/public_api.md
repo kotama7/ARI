@@ -4,7 +4,27 @@ sources:
     role: implementation
   - path: ari-core/tests/test_public_api_boundary.py
     role: test
-last_verified: 2026-06-10
+  - path: ari-core/ari/result.py
+    role: implementation
+  - path: ari-core/ari/call_context.py
+    role: implementation
+  - path: ari-core/ari/skill_lock.py
+    role: implementation
+  - path: ari-core/ari/skill_manifest.py
+    role: implementation
+  - path: ari-core/ari/container.py
+    role: implementation
+  - path: ari-core/ari/cost_tracker.py
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/ari/llm/client.py
+    role: implementation
+  - path: ari-core/ari/mcp/client.py
+    role: implementation
+  - path: ari-core/ari/async_tools.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # `ari.public` — スキル向け安定 API
@@ -14,18 +34,46 @@ last_verified: 2026-06-10
 このパッケージはコアが自由にリファクタリングできるよう、対応する
 `ari.<module>` プライベート実装への薄い再エクスポート層として機能し、
 スキル向けのコントラクトを維持します。v0.7.1（v0.7+ リファクタの Phase 4）で
-導入され、`ari-core/tests/test_public_api_boundary.py` によって強制されています。
+導入され、`ari-core/tests/test_public_api_boundary.py` によって強制されています —
+ただしこのテストが失敗するのは*新規*の `from ari.<internal>` インポートに対してで、
+既存のものはファイルと行番号で固定された waiver リストとして grandfather されています。
+つまり「`ari.public` のみ」は、テストが今後に向けて守るルールであって、現在のツリーが
+すでに満たしている性質ではありません。
 
 ## サブモジュール
 
 | サブモジュール | 再エクスポートする内容 | 使用しているスキル |
 |---|---|---|
+| `ari.public.analysis` | versioned な summary、statistical test、run comparison、analysis result の契約 | analysis provider と科学的 consumer |
+| `ari.public.assurance` | Verification Contract、Harness catalog/lock、fixed verification、Attestation、digest 束縛の external parity report | read-only な Harness/Assurance サーフェス |
+| `ari.public.capability_binding` | Capability ontology、決定論的な binding/lock、validation、Provider substitution の診断 | ガバナンス下の Provider dispatch と診断 |
+| `ari.public.clone` | digest 検証付き EAR bundle の取得と安全な展開（`clone`、`CloneResult`、`CloneError`） | reproduction / bundle consumer Skill |
 | `ari.public.config_schema` | Pydantic 設定モデル（`ARIConfig`、`LLMConfig` など） | 型付き設定が必要な呼び出し元 |
 | `ari.public.container` | コンテナランタイムヘルパー（`ContainerConfig`、`run_in_container` など） | `ari-skill-coding`（テスト） |
+| `ari.public.execution` | 閉じた workspace、bounded execution/result、完全 log artifact、`MeasurementSetV1` | 実行 producer と測定 consumer Skill |
+| `ari.public.evaluation` | immutable metric admission、`GateReportV1`、semantic review、保守的migration reader | idea、transform、evaluator、paper、offline reader |
+| `ari.public.figures` | digest 束縛の figure spec、render manifest、batch、feedback lineage | plot、VLM、paper |
+| `ari.public.latex_claims` | LaTeX の claim anchor、数値、citation、図参照を字句解析する canonical parser | evaluator と paper |
+| `ari.public.knowledge` | 実行不可能な Knowledge Skill の import、catalog、admission、composition、provenance | Knowledge の read/request サーフェス |
+| `ari.public.memory` | content-addressed な memory record、retrieval、event、backup 契約 | memory と verified-context の consumer |
+| `ari.public.manuscript` | immutable な Manuscript Complete V1 read 契約、決定論的な compiler/evaluator ヘルパー、publication decision builder | paper、evaluation、read-only な統合 |
+| `ari.public.paper` | `PaperBuildV1`、revision/model-call/compile/review record、parser、canonical digest | paper と publication の consumer |
+| `ari.public.science_data` | native な raw/derived/interpreted science-data 契約と明示的な migration reader | transform、evaluator、plot、paper |
+| `ari.public.research_contract` | immutable な survey、idea、metric、retrieval、evidence hand-off 契約 | idea、evaluator、paper |
+| `ari.public.visual_review` | criteria profile と、artifact 束縛で失敗を保存する visual review batch | VLM、plot、paper |
 | `ari.public.cost_tracker` | LLM コスト記録（`bootstrap_skill`、`record` など） | `ari-skill-plot`（LLM 呼び出しコスト） |
 | `ari.public.llm` | `LLMClient`（コスト統合付き LiteLLM ラッパー） | ARI のラッパーを使いたい呼び出し元 |
 | `ari.public.paths` | `PathManager`（チェックポイントパスリゾルバ） | スコープ付きパスが必要な呼び出し元 |
-| `ari.public.claim_gate` | 決定論的な主張-証拠ハードゲート（`run_hard_gate`）＋ 概念→不変条件レジストリ（`classify_concept`、`scan_science_data`、`CONCEPT_INVARIANTS`） | `ari-skill-evaluator`、`ari-skill-transform` |
+| `ari.public.node_selection` | 決定論的な downstream node/source 選択 | `ari-skill-transform` |
+| `ari.public.lineage` | read-only な ancestor checkpoint / idea pool の走査 | `ari-skill-idea` |
+| `ari.public.publish` | staged EAR publish/promote 契約 | `ari-skill-transform` |
+| `ari.public.providers` | Capability Provider の用語、immutable な identity、catalog、既存の Provider lock facade | Provider の read/診断サーフェス |
+| `ari.public.run_env` | run 環境の capture と shell export ヘルパー | sandbox / executor Skill |
+| `ari.public.call_context` | `RunContextV1`、`NodeContextV1`、署名付き tool-context 検証ヘルパー | control plane と context-aware Skill |
+| `ari.public.result` | `ResultEnvelopeV1`、content-addressed artifact reference、型付き error、呼び出し provenance | Skill adapter と federated dispatch 呼び出し元 |
+| `ari.public.skill_lock` | `SkillsLockV1`、ロック済み provider/tool record、atomic create-or-verify | run launcher、federation adapter、replay tool |
+| `ari.public.skill_manifest` | versioned Skill manifest model、loader、digest、safe entrypoint resolver | 組み込み / federated MCP Skill |
+| `ari.public.claim_gate` | 決定論的gate entry point、evaluation contract、概念→不変条件registry | `ari-skill-evaluator`、`ari-skill-transform` |
 | `ari.public.verified_context` | 検証済みコンテキストヘルパー（`render_grounded_block`、`write_verified_context`、`build_verified_context`） | `ari-skill-paper` |
 
 ## `ari.public.config_schema`
@@ -46,7 +94,7 @@ from ari.public.config_schema import (
 cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 ```
 
-エクスポートされる名前は `ari/config.py` のシンボルと 1 対 1 対応しています。
+エクスポートされる名前は `ari/config/__init__.py` のシンボルと 1 対 1 対応しています。
 現在のフィールド形式はそのファイルを参照してください。ソース:
 `ari-core/ari/public/config_schema.py`。
 
@@ -56,16 +104,53 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 
 | シンボル | 用途 |
 |---|---|
-| `ContainerConfig` | データクラス: `mode`、`image`、`bind_paths`、`gpu` など |
-| `detect_runtime()` | `which` の検索結果に基づいて `"singularity"` / `"apptainer"` / `"docker"` / `"none"` を返す |
-| `config_from_env()` | `ARI_CONTAINER_*` 環境変数から `ContainerConfig` を構築（未設定の場合は `None`） |
-| `pull_image(cfg)` | `cfg` が参照するイメージを取得 / ビルド |
-| `run_in_container(cfg, cmd, ...)` | コンテナ内でプロセスを実行し、終了コード + キャプチャストリームを返す |
-| `run_shell_in_container(cfg, script, ...)` | 同上。ただし bash スクリプト文字列を受け付ける |
+| `ContainerConfig` | データクラス: `image`、`mode`（`auto`/`docker`/`singularity`/`apptainer`/`none`）、`pull`（`always`/`on_start`/`never`）、`extra_args` |
+| `detect_runtime()` | `"docker"` / `"apptainer"` / `"singularity"` / `"none"` を返す。候補は `PATH` にあるだけでなく probe（`docker info`、`<rt> --version`）にも応答する必要があり、`SLURM_JOB_ID` がある場合は Apptainer/Singularity が Docker より優先される |
+| `config_from_env()` | `ARI_CONTAINER_IMAGE` と `ARI_CONTAINER_MODE`（既定 `auto`）から `ContainerConfig` を構築。image が未設定なら `None` を返す。`pull` と `extra_args` は環境変数からは読ま*ない* |
+| `pull_image(cfg)` | `cfg` が参照するイメージを取得（`docker pull` / `<rt> pull`）。成功時に `True` を返す |
+| `run_in_container(cfg, cmd, ...)` | コンテナ内（image 未指定 / `mode: none` の場合は直接）で `cmd` を起動し、`subprocess.Popen` ハンドルを返す |
+| `run_shell_in_container(cfg, script, ...)` | shell コマンド文字列を受け取るブロッキング版。`subprocess.CompletedProcess` を返し、timeout 時はプロセスグループごと kill する |
 | `list_images()` | アクティブなランタイムで利用可能なイメージの一覧 |
-| `get_container_info()` | ランタイム + イメージのヘルスを含む診断辞書 |
+| `get_container_info()` | GUI 向け診断辞書: `runtime`、`version`、`available` |
 
 ソース: `ari-core/ari/container.py` → `ari-core/ari/public/container.py`。
+
+## `ari.public.execution`
+
+このモジュールは、閉じた workspace の path 処理、正確な execution identity、
+プロセスグループ単位の timeout/cancel、最小 environment、kernel limit の
+強制状況の report、完全な content-addressed log、型付き measurement record を
+所有します。migration parser は canonical document を検証し、旧来の flat file は
+read-only な migration 入力として扱います。
+規範的な挙動と schema 一覧は[実行・測定契約](execution_contract.md)を参照して
+ください。
+
+## `ari.public.analysis`
+
+このモジュールは provider 非依存の `AnalysisRequestV1`、
+`StatisticalTestRequestV1`、`RunComparisonRequestV1`、`AnalysisResultV1` の
+境界を固定します。これらの契約は、unit の明示、pairing/missing/multiplicity の
+policy、immutable な source と environment の digest、effect size、
+confidence interval、assumption diagnostics、library version を要求します。
+規範的な挙動と schema 一覧は[決定論的解析契約](analysis_contract.md)を
+参照してください。
+
+## 科学出版の契約
+
+`ari.public.science_data`、`ari.public.figures`、`ari.public.visual_review`、
+`ari.public.latex_claims`、`ari.public.paper` は、transform → 図 → レビュー →
+出版という安定した境界を形成します。producer と consumer は schema のない
+辞書ではなく、厳密で digest に束縛されたモデルをやり取りします。規範なのは
+[Science data と EAR の完全性](science_data_contract.md)、
+[科学図と視覚レビューの契約](figure_visual_contract.md)、
+[Paper build契約](paper_build_contract.md) です。
+
+`ari.public.manuscript` は探索から執筆への完全性レイヤーを追加します:
+profile、snapshot、context、omission、readiness、brief、binding、repair plan、
+publication decision/lock、label 付き program の evaluation です。可変な state と
+coordinator の内部は private のままです。
+[Manuscript Complete V1 契約](manuscript_complete_contracts.md)を参照して
+ください。
 
 ## `ari.public.cost_tracker`
 
@@ -73,11 +158,11 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 
 | シンボル | 用途 |
 |---|---|
-| `CostTracker` | `cost_log.jsonl` に書き込むアグリゲータインスタンス |
-| `CallRecord` | 呼び出しごとのデータクラス（`model`、`prompt_tokens`、`completion_tokens`、`cost_usd`、`metadata`） |
+| `CostTracker` | `cost_trace.jsonl` に書き込むアグリゲータインスタンス |
+| `CallRecord` | 呼び出しごとのデータクラス（`model`、`prompt_tokens`、`completion_tokens`、`estimated_cost_usd`、加えて skill/phase/node タグと execution identity のフィールド） |
 | `init(log_dir)` | `log_dir` をルートにグローバルトラッカーを初期化 |
 | `init_from_env()` | `ARI_CHECKPOINT_DIR` を使って自動的に初期化（ほとんどの呼び出し元はこちらを使用） |
-| `bootstrap_skill(skill_name, phase=None)` | スキル向けの便利なラッパー — 初期化して各レコードにタグ付け |
+| `bootstrap_skill(skill, phase=None)` | スキル向けの便利なラッパー — 初期化して各レコードにタグ付け |
 | `record(**kwargs)` | 手動で `CallRecord` を追加（LiteLLM コールバック経由でない場合に使用） |
 | `set_default_metadata(**kwargs)` | 後続のすべてのレコードに追加メタデータをタグ付け |
 | `get()` | 現在のトラッカーを取得（なければ `None`） |
@@ -88,13 +173,15 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 
 ## `ari.public.llm`
 
-`ari.llm.client` から `LLMClient` を再エクスポートします:
+`ari.llm.client` から `LLMClient` を再エクスポートします。コンストラクタは
+`LLMConfig` を取り、`complete()` は同期メソッドです:
 
 ```python
+from ari.public.config_schema import LLMConfig
 from ari.public.llm import LLMClient
 
-client = LLMClient(model="ollama/qwen3:32b")
-resp = await client.complete([{"role": "user", "content": "..."}])
+client = LLMClient(LLMConfig(model="ollama/qwen3:32b"))
+resp = client.complete([{"role": "user", "content": "..."}])
 ```
 
 LiteLLM を直接呼び出すのではなく、こちらを使用してください — `LLMClient` は
@@ -109,21 +196,114 @@ ARI のコストトラッカーとメタデータタグ付けを透過的に処�
 from ari.public.paths import PathManager
 
 paths = PathManager.from_env()        # honours ARI_CHECKPOINT_DIR
-nodes_json = paths.checkpoint / "nodes_tree.json"
+run_id = PathManager.checkpoint_dir_from_env().name
+nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 ```
 
 `PathManager` は中央リゾルバです — スキルから `ARI_CHECKPOINT_DIR` を
 直接読み取らないでください。ソース: `ari-core/ari/paths.py` →
 `ari-core/ari/public/paths.py`。
 
-## `ari.public.claim_gate`
+## `ari.public.skill_manifest`
 
+`skill.yaml` は canonical package contract です。consumer は YAML を直接 parse
+したり `server.py` を scrape したりせず、public API から読み込みます:
+
+```python
+from ari.public.skill_manifest import load_skill_manifest, manifest_digest
+
+manifest = load_skill_manifest("ari-skill-coding/skill.yaml")
+tool = manifest.tool("run_code")
+identity = manifest_digest(manifest)
+```
+
+`SkillManifestV1` は package identity、package-relative Python stdio entrypoint、
+網羅的な通常環境宣言、重複しない credential scope、一意な tool 名、
+capability reference、phase、side effect、determinism、timeout class、permission、
+result schema を検証します。
+`TimeoutBudgetV1` は caller が制御する timeout 引数を明示し、上限を固定します。
+`AsyncLifecycleV1` は `timeout_class=async` の tool の semantic な lifecycle
+capability を宣言します — `status` は必須、`result` と `cancel` は任意です。
+manifest validation が検査するのは、このブロックが `timeout_class=async` のときに
+限って存在することだけで、宣言された各 capability が解決できるかどうかは後段の
+dispatch で決まります。lifecycle の `capability_ref` がその Skill の runtime tool
+ちょうど 1 個以外に一致した場合、async handle の代わりに `protocol` error envelope が
+返るため、曖昧な lifecycle は manifest 読み込みを通過して submit 時に失敗します。
+
+組み込み production Skill では
+`environment_policy=complete` が必須です。解決済みの各 tool は
+`context_requirement` を `none` / `run` / `node` で宣言し、構造化コンテキストが
+なければ dispatch は fail closed します。公開 runtime loader は未versionedの
+legacy manifestを常に拒否します。オフライン移行では内部のread-only
+`ari.migrations.skill_manifest.load_legacy_skill_manifest()`を利用できますが、
+変換結果はdefault-offであり、暗黙にadmissionされません。
+
+## `ari.public.call_context` と `ari.public.result`
+
+新しい dispatch コードは型付き result contract を使います。従来の辞書 API は
+情報を失わない compatibility projection として残ります:
+
+```python
+from ari.public.call_context import ToolCallContextV1
+
+tool = client.list_tools()[0]
+envelope = client.call_tool_envelope(
+    tool["tool_ref"],
+    {"query": "example"},
+    context=ToolCallContextV1.for_node(
+        run_id="run-1",
+        node_id="node-1",
+        parent_node_id="root",
+        ancestor_node_ids=["root"],
+        phase="bfts",
+    ),
+)
+```
+
+`RunContextV1` は logical run を `run_scope_digest` に、`NodeContextV1` は
+self、parent、root から parent までの順序付き chain を `lineage_digest` に
+束縛します。`MCPClient` はこれを tool-bound、per-connection HMAC capability に
+変換し、Skill は `verify_tool_context` で検証します。署名鍵は transport が
+所有し、public data contract には入りません。規範 schema は
+`ari-core/ari/schemas/call_context_v1.schema.json` です。
+
+`ResultEnvelopeV1` は status、structured content、型付き error、不変の
+`tool_ref`、run/node/phase context、selection reason、timing、SHA-256 response digest を
+記録します。credential は値ではなく scope ID だけを記録します。
+4,000 文字を超える raw content は content address の artifact に退避され、
+`materialize_content(store)` が digest と byte size を検証して復元します。
+
+非同期 submit は、review 済み manifest capability から解決した immutable
+`tool_ref` endpoint を持つ `AsyncToolHandleV1` を追加します。bare name を再検索せず
+`MCPClient.get_async_status()`、`get_async_result()`、`cancel_async()`、
+`wait_for_async()` に serialize 済み handle を渡せます。規範 schema は
+`ari-core/ari/schemas/async_tool_handle_v1.schema.json` です。
+
+## `ari.public.skill_lock`
+
+`SKILLS.lock` は live MCP handshake 後に作成される決定論的な checkpoint-level
+snapshot です。`SkillsLockV1` は canonical manifest を正確な live input/output
+schema と phase ごとの admitted `tool_ref` 集合に束縛します。
+`write_or_verify_skills_lock()` は最初の snapshot を atomic に作成し、以後は
+byte-equivalent な semantics を要求します。drift と corruption は
+`SkillLockMismatchError` / `SkillLockCorruptError` として区別されます。
+`LockedCredentialScopeV1` には scope identity と宣言/存在する環境名だけが
+記録され、credential 値は含まれません。
+
+## `ari.public.evaluation` と `ari.public.claim_gate`
+
+`ari.public.evaluation` は canonical な `MetricGateContractV1`、
+`MetricContractProposalV1`、`MetricAdmissionDecisionV1`、`GateReportV1`、
+`SemanticReviewV1` モデルと、それらの digest を検証する parser、および保守的な
+pre-v1 reader を公開します。`ari.public.claim_gate` はこれに加えて、
 `ari.pipeline.claim_gate` から決定論的な主張-証拠ハードゲートと、その
 概念→不変条件レジストリを再エクスポートします:
 
 | シンボル | 用途 |
 |---|---|
 | `run_hard_gate` | ゲートのエントリポイント — 証拠が決定論的チェックに合格しない主張をブロックする |
+| `parse_gate_report` | canonical な gate report とその payload digest を検証する |
+| `migrate_legacy_gate_report` | 欠けている provenance を捏造せずに pre-v1 の report を読む |
 | `classify_concept` | 概念をその普遍的不変条件のファミリにマッピングする |
 | `scan_science_data` | 登録された不変条件に照らしてサイエンスデータをスキャンする |
 | `CONCEPT_INVARIANTS` | ドメイン一般の概念→不変条件レジストリ（単一の信頼できる情報源） |
@@ -166,6 +346,7 @@ from ari.public.verified_context import render_grounded_block
 
 ```python
 from ari.public import cost_tracker
+from ari.public.config_schema import LLMConfig
 from ari.public.paths import PathManager
 from ari.public.llm import LLMClient
 
@@ -174,11 +355,12 @@ cost_tracker.bootstrap_skill("ari-skill-example", phase="bfts")
 
 # 2. パスは PathManager 経由で解決 — ARI_CHECKPOINT_DIR を直接読まない。
 paths = PathManager.from_env()
-nodes_json = paths.checkpoint / "nodes_tree.json"
+run_id = PathManager.checkpoint_dir_from_env().name
+nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 
 # 3. LLM 呼び出しは ARI のラッパー経由なので、コストは自動的に記録される。
-client = LLMClient(model="ollama/qwen3:32b")
-resp = await client.complete([{"role": "user", "content": "Summarise: ..."}])
+client = LLMClient(LLMConfig(model="ollama/qwen3:32b"))
+resp = client.complete([{"role": "user", "content": "Summarise: ..."}])
 ```
 
 呼び出しのトークン数と USD コストは、スキル名とフェーズのタグ付きで
@@ -198,10 +380,11 @@ resp = await client.complete([{"role": "user", "content": "Summarise: ..."}])
 
 ## 関連ドキュメント
 
-- `ari-core/ari/public/__init__.py` — 標準的なサブモジュール一覧を含む
-  モジュールレベルの docstring。
+- `ari-core/ari/public/__init__.py` — サブモジュール一覧と各々の採用理由を含む
+  モジュールレベルの docstring。ただし現時点で `ari.public.latex_claims` と
+  `ari.public.paper` はこの docstring に載っていません（実体は
+  `ari-core/ari/public/` に存在します）。
 - `docs/guides/extension_guide.md` — `ari.public` のみに依存する新しいスキルの
   書き方。
 - `CONTRIBUTING.md::Software-engineering discipline §3` — パブリック API
   ルール（スキルは `ari.public.*` のみを参照可能）。
-- `docs/_archive/refactor_audit.md`（§4）— 過去の Phase 4 インベントリ。

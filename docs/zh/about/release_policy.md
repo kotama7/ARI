@@ -4,9 +4,17 @@ sources:
     role: doc
   - path: CONTRIBUTING.md
     role: doc
+  - path: DEPRECATION_REMOVAL.md
+    role: doc
   - path: ari-core/pyproject.toml
     role: config
-last_verified: 2026-06-04
+  - path: .github/workflows/refactor-guards.yml
+    role: config
+  - path: .github/workflows/docs-sync.yml
+    role: config
+  - path: scripts/docs
+    role: implementation
+last_verified: 2026-08-17
 ---
 
 # 发布与版本策略
@@ -61,8 +69,11 @@ ARI 遵循 [语义化版本 2.0](https://semver.org/spec/v2.0.0.html)。
 2. **警告** —— 运行时至少在一个 minor 版本中发出 `DeprecationWarning`。
 3. **移除** —— 下一个 MAJOR 版本去掉警告并删除相关代码。
 
-目前正在进行中的示例（完整计划见
-`CONTRIBUTING.md::Deprecation process`）：
+权威台账是仓库根目录的 `DEPRECATION_REMOVAL.md`（分层、DR1–DR5 各阶段，以及
+获得认可的**五**个 Tier-B `~/.ari/` 回退点 —— 下表中的两个，加上
+`~/.ari/publish.yaml`、`~/.ari/letta-venv/` 以及第二个 `registries.yaml` 读取方）；
+`CONTRIBUTING.md::Deprecation process` 则是给作者看的简短操作说明。
+目前正在进行中的示例：
 
 | 条目 | 公告时间 | 警告起始版本 | 计划移除版本 |
 |---|---|---|---|
@@ -72,6 +83,9 @@ ARI 遵循 [语义化版本 2.0](https://semver.org/spec/v2.0.0.html)。
 | `~/.ari/memory.json` 默认参数 | v0.7.0 | v0.7.1（已移除） | v1.0 |
 | `ari/migrations/v05_to_v07/` 兼容层 | v0.7.0 | v0.7.0 | v1.0 |
 
+全部五个 Tier-B 回退、`ari.migrations.v05_to_v07` 包以及 `legacy_reconstruct`
+兼容层将在 DR5 / v1.0 一并移除，届时 `ARI_LETTA_VENV` 成为必填项。
+
 ## 发布检查清单
 
 发布新版本时：
@@ -79,25 +93,84 @@ ARI 遵循 [语义化版本 2.0](https://semver.org/spec/v2.0.0.html)。
 1. 更新 `CHANGELOG.md`，添加新的版本章节。将条目分组归类至
    **Added** / **Changed** / **Fixed** / **Deprecated** /
    **Removed** / **Security**。
-2. 更新 `ari-core/pyproject.toml` 和各
-   `ari-skill-*/pyproject.toml` 中的版本号。
+2. 更新 `ari-core/pyproject.toml` 中的版本号。这是**软件包版本**，
+   由它派生的取值会自动跟随（`scripts/snapshot_contracts.py` 中的
+   `_read_ari_core_version()` 会把它写入四份 contract golden 的
+   `_meta.ari_core_version`）。
+
+   **不要让 `ari-skill-*` 跟着一起升。** 它们是独立 versioning 的，目前从
+   `0.1.0` 一直散到 `2.0.0` —— 参见
+   [兼容性 → Skill 与 core](compatibility.md#skill-与-core)。技能的版本号不是装饰：
+   `LockedSkillV1` 会把它连同 manifest 与 provider 的 digest 一起记入每次运行的
+   skills lock，而 `write_or_verify_skills_lock` 在该 lock 已存在时要求完全相等。
+   因此挪动一个技能的版本号，就是在**断言这个技能变了**。把十七个技能设成同一个
+   数字，等于用同一个值的十七份副本替换掉十七个有意义的值 —— 重放时再也无法从
+   lock 里读出究竟是哪个技能动了。`scripts/check_skill_manifests.py` 会因
+   manifest↔pyproject 的 `version-drift` 而失败，所以这个断言还会原样传播进
+   `skill.yaml`。
+
+   只有当技能**自身**的表面发生变化时才升它的版本；只有当它确实需要更新的核心时，
+   才抬高它的 `ari-core>=` 下限。耦合关系已经由这些下限承担，并且是有意不齐的
+   （`harness` 与 `knowledge` 为 `>=0.8.0`，另外七个为 `>=0.9.1`，其余未声明）；
+   齐步升级会迫使一个真正能在 `0.8.0` 上工作的技能声称自己不能。真正把一组版本
+   绑在一起的是**协调发布** —— 也就是 git tag —— 而不是数字一致。
+
+   随后，需要明确决定本次发布是否同时移动**对外版本 pin** —— 即项目
+   对读者宣称的版本号。它是另一个独立的寄存器，拥有自己的唯一来源
+   （`docs/version.json`，由 `docs/i18n/version.js` 在页面加载时拉取），
+   并由另外六个文件复述，这些文件必须在同一次提交中一起移动：
+
+   - `README.md`、`README.ja.md`、`README.zh.md` —— shields.io 的
+     `version-vX.Y.Z` 徽章。
+   - `report/en/main.tex`、`report/ja/main.tex`、`report/zh/main.tex` ——
+     `\date{vX.Y.Z, ...}` 行。
+
+   移动 pin 还意味着重新构建三个 `report/<lang>/main.pdf` 并重新运行
+   `scripts/docs/sync_report_pdf.sh`（它会同时写入 `docs/assets/report/`
+   与 `docs/public/report/` **两个**目标）。PDF 是生成物：只改 `\date`
+   而不重新构建 LaTeX，会让所有已发布的 PDF 仍显示旧版本号。
+
+   移动 pin 还意味着在三个 README 中为新版本号新增一节发布说明
+   （`## What's new in vX.Y.Z`，在 `README.ja.md` / `README.zh.md`
+   中为对应译名）—— v0.8.1 与 v0.9.0 都是这样发布的。
+   `check_readme_parity.py` 比较标题结构，因此会强制三种语言同时新增，
+   但**没有任何门控**检查这一节是否存在，所以这份清单是该要求唯一的
+   落脚处。徽章宣称一个 README 并未记录的版本，本身就是一个缺陷。
+
+   **允许只提升软件包版本**而保持 pin 不动：一次保持 contract 不变、
+   对用户不可见的发布没有可宣称的内容。v0.9.1（2026-07-05）正是这种情况
+   （见 `CHANGELOG.md` 中对应条目），因此在 `ari-core` 为 `0.9.1` 时
+   pin 仍为 `v0.9.0`。也就是说，pin 可以**落后于**软件包版本，但绝不可
+   **领先于**它——那等于宣称一个从未打包过的版本。
+   `python scripts/docs/check_site_i18n.py` 会同时检查这两点：上述七个
+   文件彼此一致，且 pin 没有超过 `ari-core/pyproject.toml`。
 3. 运行完整测试套件 + `refactor-guards`、`docs-sync`、`docs-change-coupling`
    CI 工作流。
-4. 运行文档检查门控：
-   - `grep -rn '~/\.ari/' docs/`（排除 `refactor_audit.md`）返回零结果。
+4. 运行文档检查门控。CI（`docs-sync.yml`、`refactor-guards.yml`）实际阻断的是：
+   - `refactor-guards.yml` 会在 `ari-core/ari/**.py` 中出现**新增**的、且不在其
+     allow-list 内的 `~/.ari/` 行时失败（allow-list 包含弃用辅助模块、
+     `migrations/`，以及那些先发出警告再回退的兼容点），也会在 pytest 运行创建了
+     `$HOME/.ari/` 目录时失败。并不存在对 `docs/` 的仓库级 `grep`：文档中许多
+     `~/.ari/` 的提及是合理的（vendored PaperBench 的 `agent.env` 查找、`start.sh`
+     的 PID 文件、以及这些 Tier-B 回退本身）。
    - 每个已记录的环境变量都映射到真实的源码引用。
    - 每个已记录的 MCP 工具都存在于 skill 的 `mcp.json` 中。
-   - `python scripts/docs/check_doc_sources.py --require-all` 退出码为 0
-     （每个 live doc 声明的 `sources:` 路径都存在）。
-   - `python scripts/docs/check_doc_links.py` 退出码为 0
-     （docs 内链接 / HTML href 没有失效）。
-   - `python scripts/docs/check_translation_freshness.py --strict` 退出码为 0
-     （没有 `ja`/`zh` 翻译的 `last_verified` 早于其英文源 —— 参见[源可追溯性](../../README.md#source-traceability)）。
+   - `python scripts/docs/check_doc_sources.py` 退出码为 0
+     （每个声明的 `sources:` 路径都存在）。更严格的 `--require-all`
+     ——它还要求*每个* live doc 都声明 `sources:`——属于分阶段推进，**今天并不通过**：
+     各目录下的 `README.md` 都没有 front matter。
+   - `python scripts/docs/check_doc_links.py --html-only` 退出码为 0。完整的
+     Markdown 链接检查（不带参数的 `check_doc_links.py`）在 CI 中仅作参考、不阻断。
    - `python scripts/docs/check_i18n_js.py` 退出码为 0
-     （三个 `docs/i18n/*.js` 的键集一致）。
+     （landing 面的 `docs/i18n/landing.{en,ja,zh}.js` 声明完全一致的键集；文档站
+     迁移到 VitePress 时，旧的 `docs.{en,ja,zh}.js` 查看器词典已被删除）。
    - `python scripts/docs/check_readme_parity.py` 退出码为 0
      （根 `README.{md,ja,zh}` 的标题结构一致）。
-     不加 `--strict` 时为仅警告的非阻塞报告。
+   - `python scripts/docs/check_site_i18n.py`，以及 report 的三语结构对齐／
+     report-PDF 同步等步骤退出码为 0。
+   - 仅作参考（非阻断）：`python scripts/docs/check_translation_freshness.py`
+     （没有 `ja`/`zh` 翻译的 `last_verified` 早于其英文源 —— 参见[源可追溯性](../../README.md#source-traceability)）。
+     加 `--strict` 会变为阻断；在只更新了英文文档之后，它必然失败。
 5. 打标签：`git tag v0.X.Y && git push origin v0.X.Y`。
 6. 在 GitHub 上发布 release，附上 changelog 摘录。
 7. 发布 bundle：`ari ear publish`（针对需要随版本发布的制品）。
@@ -108,8 +181,11 @@ ARI 遵循 [语义化版本 2.0](https://semver.org/spec/v2.0.0.html)。
   必须在新的 minor 版本上继续可用。
 - **MAJOR** 版本可能需要一次性迁移步骤。迁移步骤记录于
   `docs/guides/migration.md`，通过 `ari migrate ...` 执行。
-- Skill 独立版本控制。处于 `0.7.x` 的 skill 应能与任意 `0.7.y` 的
-  `ari-core` 兼容（同一 minor 内兼容）。跨 minor 版本时，需协调发布。
+- Skill 独立版本控制，且其编号**不**跟随 `ari-core`：面对 `ari-core` 0.9.1，
+  随附的各 skill 版本从 `0.1.0`（`ari-skill-harness`、`ari-skill-knowledge`）
+  到 `2.0.0`（`ari-skill-orchestrator`）不等。代码中没有任何地方强制
+  skill↔core 的版本配对，因此某个 skill 的版本说明的是它自身 API 的状态，
+  而不是它需要哪个 core。请按协调发布来搭配，而不是按数字对齐。
 
 ## 参见
 

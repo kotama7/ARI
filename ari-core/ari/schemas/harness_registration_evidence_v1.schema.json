@@ -1,0 +1,134 @@
+{
+  "$id": "https://ari.dev/schemas/harness-registration-evidence-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Exact evidence bundle reviewed before one Harness promotion.",
+  "properties": {
+    "attestation_digests": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Attestation Digests",
+      "type": "array"
+    },
+    "clean_control_verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "not_available"
+      ],
+      "title": "Clean Control Verdict",
+      "type": "string"
+    },
+    "environment_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Environment Digest",
+      "type": "string"
+    },
+    "evidence_artifact_digests": {
+      "additionalProperties": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "minProperties": 1,
+      "title": "Evidence Artifact Digests",
+      "type": "object"
+    },
+    "evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Digest",
+      "type": "string"
+    },
+    "harness_id": {
+      "title": "Harness Id",
+      "type": "string"
+    },
+    "harness_version": {
+      "title": "Harness Version",
+      "type": "string"
+    },
+    "manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Manifest Digest",
+      "type": "string"
+    },
+    "negative_control_verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "not_available"
+      ],
+      "title": "Negative Control Verdict",
+      "type": "string"
+    },
+    "network_isolation": {
+      "enum": [
+        "proved",
+        "not_proved"
+      ],
+      "title": "Network Isolation",
+      "type": "string"
+    },
+    "official_runner_parity": {
+      "title": "Official Runner Parity",
+      "type": "boolean"
+    },
+    "oracle_visibility": {
+      "enum": [
+        "denied",
+        "not_proved"
+      ],
+      "title": "Oracle Visibility",
+      "type": "string"
+    },
+    "result_schema_conformant": {
+      "title": "Result Schema Conformant",
+      "type": "boolean"
+    },
+    "run_count": {
+      "minimum": 1,
+      "title": "Run Count",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "ari.harness-registration-evidence/v1",
+      "default": "ari.harness-registration-evidence/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_full_commit_sha": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Source Full Commit Sha",
+      "type": "string"
+    },
+    "target_write_isolation": {
+      "enum": [
+        "proved",
+        "not_proved"
+      ],
+      "title": "Target Write Isolation",
+      "type": "string"
+    }
+  },
+  "required": [
+    "harness_id",
+    "harness_version",
+    "manifest_digest",
+    "source_full_commit_sha",
+    "environment_digest",
+    "evidence_artifact_digests",
+    "attestation_digests",
+    "clean_control_verdict",
+    "negative_control_verdict",
+    "official_runner_parity",
+    "result_schema_conformant",
+    "network_isolation",
+    "target_write_isolation",
+    "oracle_visibility",
+    "run_count",
+    "evidence_digest"
+  ],
+  "title": "ARI Harness Registration Evidence v1",
+  "type": "object"
+}

@@ -1,0 +1,404 @@
+{
+  "authoring_verdict": "ready",
+  "context_digest": "sha256:182f31075caea1f370adc9d783b38104638ee9125fe9357f3f76a4db5eb5ab3b",
+  "counts": {
+    "missing": 0,
+    "not_applicable": 5,
+    "satisfied": 17,
+    "unavailable": 0
+  },
+  "evaluator_version": "manuscript-evaluator-v1",
+  "profile_digest": "sha256:6639e048128d9e78b5b7a0f67e3b149c826a51073f6f9c5c1f7f82244c217ba4",
+  "publication_verdict": "ready",
+  "readiness_digest": "sha256:f34b7f95d17f85ed0f9888d093d455670fbcfb66356a9ea202af9cb9ad378f03",
+  "requirement_results": [
+    {
+      "applicability_trace": [
+        "rule:always"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "research-question"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-RQ-001",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.hypothesis_testing=true"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "research-question"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-RQ-002",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "rule:always"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "research-plan",
+        "node-method:publication-candidate"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-ME-001",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.empirical=true"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "reproducibility"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-ME-002",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.empirical=true"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "research-plan"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-ME-003",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.result_claim=true"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "node-evidence:publication-candidate"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-RS-001",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.stochastic_claim=false"
+      ],
+      "applicable": false,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "applicability_rule_false",
+      "repair_request_id": null,
+      "requirement_id": "MC-RS-002",
+      "resolver_kind": null,
+      "status": "not_applicable"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.comparative_claim=false"
+      ],
+      "applicable": false,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "applicability_rule_false",
+      "repair_request_id": null,
+      "requirement_id": "MC-CP-001",
+      "resolver_kind": null,
+      "status": "not_applicable"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.comparator_exists=false"
+      ],
+      "applicable": false,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "applicability_rule_false",
+      "repair_request_id": null,
+      "requirement_id": "MC-CP-002",
+      "resolver_kind": null,
+      "status": "not_applicable"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.multi_component_claim=false"
+      ],
+      "applicable": false,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "applicability_rule_false",
+      "repair_request_id": null,
+      "requirement_id": "MC-AB-001",
+      "resolver_kind": null,
+      "status": "not_applicable"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.result_claim=true"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "node-evidence:publication-candidate"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-CL-001",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.numeric_result=true"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "node-evidence:publication-candidate"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-CL-002",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "rule:always"
+      ],
+      "applicable": true,
+      "authoring_blocking": false,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-NG-001",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.multiple_candidates=false"
+      ],
+      "applicable": false,
+      "authoring_blocking": false,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "applicability_rule_false",
+      "repair_request_id": null,
+      "requirement_id": "MC-SL-001",
+      "resolver_kind": null,
+      "status": "not_applicable"
+    },
+    {
+      "applicability_trace": [
+        "rule:always"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "ari-assurance-design"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-RW-001",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.novelty_claim=true"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "related-work",
+        "research-question"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-RW-002",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "rule:always"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "limitations"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-LM-001",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.empirical=true"
+      ],
+      "applicable": true,
+      "authoring_blocking": false,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "threats-to-validity"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-LM-002",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.empirical=true"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "ear-manifest"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-RP-001",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.reproducibility_claim=true"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "reproduction-lock"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-RP-002",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.assurance_enforce=true"
+      ],
+      "applicable": true,
+      "authoring_blocking": false,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "artifact-c1623a9476ea66fb0bc4b624"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "evidence_present",
+      "repair_request_id": null,
+      "requirement_id": "MC-AS-001",
+      "resolver_kind": null,
+      "status": "satisfied"
+    },
+    {
+      "applicability_trace": [
+        "claim_characteristics.manuscript_enabled=true"
+      ],
+      "applicable": true,
+      "authoring_blocking": true,
+      "evaluator_version": "manuscript-evaluator-v1",
+      "evidence_refs": [
+        "sha256:831c33cb6488e1145bdfb3030f6108c8bcbc0ed017c2c5938b5cfd59a53bc116"
+      ],
+      "explanation": "",
+      "publication_blocking": true,
+      "reason_code": "inventory_conserved",
+      "repair_request_id": null,
+      "requirement_id": "MC-OM-001",
+      "resolver_kind": null,
+      "status": "satisfied"
+    }
+  ],
+  "run_id": "native-certify-publication-e2e",
+  "schema_version": "ari.manuscript-readiness/v1"
+}

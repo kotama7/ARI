@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/rqgm_replay_pool.schema.json",
+  "title": "ARI-RQGM AdversarialReplayPool snapshot",
+  "description": "The derived byte-fixed rollup at {ckpt}/rqgm/adversarial_replay_pool.json (docs/reference/rqgm_schemas.md, \"rqgm_replay_pool.schema.json\" under \"Adversarial-loop schemas (Task 06)\"; owned by Task 06); rqgm_adversarial_cases.jsonl stays the source of truth. Each AdversarialReplayCase splits into replay_view (full materials — ReplayBoard/AnchorBoard/ReplayCaseSelector only; DENIED to role clean_room_generator, enforced by the kernel's clean-room contamination check) and abstract_view (the FailureSummary — no raw attack text, no defense text, no retired prompt text; the only view Task 08's CleanRoomPromptGenerator may read). Eviction is logical-only: status flips to evicted, nothing is removed from the JSONL history. Additive-only evolution.",
+  "type": "object",
+  "required": ["schema_version", "case_seq", "cases"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "case_seq": {"type": "integer", "minimum": 0},
+    "cases": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/replay_case"}
+    }
+  },
+  "$defs": {
+    "replay_case": {
+      "type": "object",
+      "required": [
+        "case_id",
+        "case_type",
+        "validated_attack_id",
+        "severity",
+        "admitted_epoch",
+        "last_confirmed_epoch",
+        "status",
+        "replay_view",
+        "abstract_view"
+      ],
+      "properties": {
+        "record_type": {"const": "adversarial_replay_case"},
+        "schema_version": {"const": 1},
+        "case_id": {"type": "string", "pattern": "^adv_case_[0-9]{5,}$"},
+        "case_type": {
+          "type": "string",
+          "enum": [
+            "overclaim",
+            "metric_gaming",
+            "prior_art",
+            "reproducibility",
+            "evidence_gap",
+            "cost_explosion",
+            "prompt_injection"
+          ]
+        },
+        "validated_attack_id": {"type": "string"},
+        "source_node_id": {"type": "string"},
+        "severity": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "admitted_epoch": {"type": "string"},
+        "last_confirmed_epoch": {"type": "string"},
+        "status": {"type": "string", "enum": ["active", "evicted"]},
+        "replay_view": {
+          "type": "object",
+          "properties": {
+            "artifact_refs": {"type": "array"},
+            "raw_attack_id": {"type": "string"},
+            "defense_id": {"type": "string"},
+            "judgment_id": {"type": "string"},
+            "expected_behavior": {"type": "object"}
+          }
+        },
+        "abstract_view": {
+          "type": "object",
+          "required": ["failure_pattern"],
+          "properties": {
+            "case_type": {"type": "string"},
+            "failure_pattern": {"type": "string"},
+            "violated_expectation": {"type": "string"},
+            "affected_roles": {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          },
+          "additionalProperties": false
+        },
+        "target_artifact_hash": {"type": "string"}
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "nodes": [
+    {
+      "has_real_data": true,
+      "id": "n_real",
+      "metrics": {
+        "GBs": 42.0
+      },
+      "status": "SUCCESS"
+    }
+  ]
+}

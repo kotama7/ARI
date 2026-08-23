@@ -4,14 +4,28 @@ sources:
     role: implementation
   - path: ari-skill-replicate
     role: implementation
-last_verified: 2026-05-25
+  - path: ari-skill-hpc/ari_skill_hpc/scheduler.py
+    role: implementation
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+  - path: ari-core/ari/viz/api_paperbench_worker.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/PaperBench/PaperBenchWizard.tsx
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: report/scripts/paperbench_report.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # PaperBench troubleshooting
 
 Common failure modes and their fixes. The audit run pipeline is
-`rubric_path → build_reproduce_sh → run_reproduce → grade_with_simplejudge`;
-issues usually fall into one of those four stages.
+`generate_rubric → audit_rubric → build_reproduce_sh → run_reproduce →
+grade_with_simplejudge`; issues usually fall into one of those stages.
+`audit_rubric` is non-fatal — a failing audit is logged and the run
+continues.
 
 ## Rubric generation
 
@@ -50,19 +64,30 @@ The rubric's `execution_profile.kind` was probably empty. Verify with:
 jq '.reproduce_contract.execution_profile' rubric.json
 ```
 
-If empty, regenerate the rubric (the v0.7.2 `skeleton.md` prompt now
-instructs the LLM to populate `execution_profile` from the paper's
-experimental-setup section).
+Regenerating will not necessarily fill it in: `skeleton.md` tells the
+generator to **omit `execution_profile` entirely** unless the paper
+explicitly states parallel/distributed execution properties ("we
+evaluated at N MPI ranks", "we trained on M GPUs with data
+parallelism", ...). An absent profile is the intended outcome for a
+single-machine paper — including single-GPU ones — because
+`_format_hpc_appendix` emits no HPC guidance at all when the profile is
+empty. If the paper really does specify a GPU/parallel setup and the
+generator missed it, regenerate; otherwise set the profile explicitly in
+the rubric (`kind` is one of `cpu_single`, `gpu_single`, `gpu_multi`,
+`mpi`, `mpi_gpu`).
 
 ### Q. Agent did not use `srun` for an MPI paper.
 
 Check the user message that landed in `agent.log` for the
 `COMPUTE-NODE EXECUTION CONVENTIONS` block. If missing, the call site
-didn't pass `execution_profile`. Verify the wiring with:
+didn't pass `execution_profile`. Verify the wiring with the following —
+the skill ships flat top-level modules (`_replicator_agent`, `server`,
+...) rather than an `ari_skill_paper_re` package, so the import needs
+`ari-skill-paper-re/src` on `PYTHONPATH`:
 
 ```bash
-python -c "
-from ari_skill_paper_re._replicator_agent import _format_hpc_appendix
+PYTHONPATH=ari-skill-paper-re/src python -c "
+from _replicator_agent import _format_hpc_appendix
 print(_format_hpc_appendix(
     expected_artifacts=['results.csv'],
     execution_profile={'kind': 'mpi_gpu', 'metric_columns': ['x']},
@@ -76,10 +101,9 @@ The output must contain `srun -n $SLURM_NTASKS`.
 
 ### Q. `sbatch: error: Invalid GRES gpu:v100:1`.
 
-The cluster has no GRES configured. v0.7.2 auto-drops the flag via
-`_slurm_has_gres()` — if you still see the error you are on an older
-build, or `sinfo` is not on PATH. Workaround: leave `gpu_type` empty
-in the wizard's *Execution profile override*.
+The selected partition cannot satisfy the typed GPU request. Check
+`sinfo -o '%P %G'`, select a compatible partition, or correct the site's GRES
+configuration. ARI intentionally does not drop the request or run on CPU.
 
 ### Q. sbatch went through but `reproduce.sh` ran on a single node.
 
@@ -97,7 +121,7 @@ If missing, append it manually or regenerate with a stronger model.
 
 OpenMPI is not loaded in the compute node's environment. Either:
 - Add `"openmpi/4.1"` (or your cluster's name) to the rubric's
-  `module_loads`.
+  `reproduce_contract.execution_profile.module_loads`.
 - Switch the script to `srun` (PMI-integrated; works without an
   explicit OpenMPI module on most SLURM sites).
 
@@ -115,20 +139,30 @@ wizard's Step 3 (`memory_gb_per_node = <your limit>`), or edit
 
 ## Grading (`grade_with_simplejudge`)
 
-### Q. `ors_score` is exactly `0.0`.
+### Q. There is no `ors_score` in the grade response at all.
 
-The grader could not locate `reproduce.sh` or any expected artefacts.
-Check:
+`ors_score` / `raw_score` / `score_stddev` are only present when the
+grade report's status is not `failed`. A grader that could not reach a
+verified reproduction publishes no number: it returns
+`grade_status: "failed"` with `error` / `errors` and the stored report
+carries `ors_score: null`. `grade_with_simplejudge` refuses unless it
+resolves a `ReproductionRunV1` whose `status` is `succeeded`; the common
+`errors` values are `no verified ReproductionRunV1 is available`,
+`reproduction status is <state>; only succeeded runs are gradable`, and
+`judge returned invalid scores for leaves: ...`.
+
+The reproduction record lives under the reproduction workspace, not in a
+flat result file:
 
 ```bash
-ls repro_sandbox/                  # reproduce.sh present?
-jq '.executed, .exit_code' repro_result.json   # ran cleanly?
-jq '.missing' repro_result.json    # missing expected_artifacts?
+ls repro_sandbox/                                  # reproduce.sh present?
+jq . repro_sandbox/.ari-reproduction/latest.json   # pointer: status, run path, executed workspace
+jq '.attempts[-1].status, .attempts[-1].exit_code, .attempts[-1].expected_missing' \
+   repro_sandbox/.ari-reproduction/<plan_digest>/run.json
 ```
 
-A common cause: the agent wrote `submission/reproduce.sh` instead of
-the workspace root. v0.7+ auto-promotes that path; if you are on an
-older build, copy it up manually.
+The grade report itself is written to `grade-report.json` under the
+grade root that `grade_report_path` names.
 
 ### Q. Negative control did not pass (boilerplate scored > 5%).
 
@@ -141,27 +175,46 @@ output or artefact contents.
 
 ### Q. The wizard shows "No papers registered yet" forever.
 
-Check `~/.ari/paper_registry/manifest.jsonl` exists and is non-empty.
-If you set `ARI_PAPER_REGISTRY_DIR`, the path moves accordingly.
+Check `<workspace_root>/paper_registry/manifest.jsonl` exists and is
+non-empty. The registry is workspace-rooted — resolved through
+`PathManager.paper_registry_root` — not a per-user directory under
+`~/.ari`; ARI has kept no global per-user data directory since v0.5.
+`ARI_PAPER_REGISTRY_DIR` overrides the location when set.
 
 ### Q. Launch button stays disabled.
 
-Step 1 (Papers) requires at least one paper selected. The button stays
-disabled until `selected_count >= 1`.
+Step 1 (Papers) requires at least one paper selected. The Launch button
+and the Next button on the paper step are both guarded by
+`selectedIds.size === 0`.
 
 ### Q. Cost estimate is `$0`.
 
-You haven't set a `time_limit_sec` in Step 3 (Reproduce). The
-default is 12 h; a 0 means the estimate's reproduction wall-time term
-collapses.
+No paper is selected. The wizard shows
+`llm_cost_usd × selectedIds.size`, so an empty selection renders
+`$0.00` however Step 3 is configured.
+
+`time_limit_sec` is not the cause: the server-side estimate reads
+`time_limit_sec or 12*3600`, so a `0` falls back to the 12 h default, and
+in any case the LLM-cost term is a fixed per-paper constant
+(rubric `$0.45` + reproduce `$2.00` + judge `$0.10 × n_runs`) that does
+not depend on the time limit — only `wall_time_sec` does. The other way
+to get no number is a rejected estimate request: an unrecognised
+`rubric_config` key makes `POST /api/paperbench/cost-estimate` answer
+`{"error": "unknown rubric_config fields: ..."}` with no cost fields at
+all.
 
 ## Report generation
 
-### Q. `latexmk: command not found`.
+### Q. The audit report came out as `.tex` with no PDF.
 
-XeLaTeX is required for the audit report PDF target. Install
-`texlive-xetex` (Debian/Ubuntu) or `mactex` (macOS), or skip PDF and
-emit `.tex` sources only:
+You will not see a `latexmk: command not found` error — the PDF step is
+guarded by `shutil.which("latexmk")` and is skipped silently when the
+tool is absent, so the command exits `ok` with only `.tex` sources
+written. (Even when `latexmk` *is* present it runs with `check=False`, so
+a LaTeX failure simply leaves no `main.pdf` behind and never raises.)
+XeLaTeX is
+required for the PDF target: install `texlive-xetex` (Debian/Ubuntu) or
+`mactex` (macOS). To ask for `.tex` only on purpose:
 
 ```bash
 python -m report.scripts.paperbench_report paper \
@@ -178,53 +231,65 @@ The ja/zh mirrors require XeLaTeX + Noto CJK fonts. Run
 
 ## Reproduction sandbox / GPU errors (v0.8.0)
 
-### Q. `RuntimeError: sandbox_kind=docker requested but docker daemon is not reachable`
+### Q. `"error": "sandbox runtime is unavailable: docker"`, `failure_kind: "sandbox-unavailable"`
 
-The bridge / `run_reproduce` refuses to silently fall back to
-host-local execution when the user explicitly picks a sandbox kind.
-Either start the docker daemon, switch to `sandbox_kind=local` /
-`apptainer` / `slurm`, or opt back into the legacy silent-fallback:
+`run_reproduce` refuses to silently fall back to host-local execution
+when the caller explicitly picks a sandbox kind. It does not raise: the
+refusal is recorded as an immutable failed attempt and returned as a
+dict carrying `executed: false`, `error` and `failure_kind`
+(`sandbox-unavailable`, or `scheduler-failure` for the SLURM path). Do
+not go looking for a `RuntimeError` in the caller.
 
-```bash
-export ARI_PHASE1_ALLOW_FALLBACK=1
-```
+The check is `shutil.which(<runtime>)` at launch — the docker *daemon*
+is never probed for an explicit `sandbox_kind=docker`, only for `auto`
+resolution — so "runtime unavailable" means the binary is not on `PATH`.
+The same fail-closed rule applies to `apptainer` / `singularity`
+(binary missing) and `slurm` (sbatch missing OR partition not resolved).
 
-Same fix applies to `sandbox_kind=apptainer` (binary missing) and
-`sandbox_kind=slurm` (sbatch missing OR partition not resolved).
+### Q. `"error": "reproduction plan rejected: ..."`
 
-### Q. `RuntimeError: GPU resources requested ... but cluster has no GRES configured`
+The plan was refused before any attempt existed, so nothing ran. The
+three common causes:
 
-The cluster's SLURM doesn't have GRES configured for GPUs, but the
-caller passed `gpus_per_task` / `gpu_type`. The bridge refuses
-because a 36 h queue wait followed by all-CPU execution is the worst
-possible failure mode for a GPU-tagged run. Either:
+1. `sandbox_kind=<container> requires an immutable container image` — no
+   `container_image` and no `ARI_PHASE1_DOCKER_IMAGE` /
+   `ARI_PHASE1_APPTAINER_IMAGE`.
+2. A mutable image reference. Docker must be a full `sha256:<image-id>`
+   or `name@sha256:<digest>`; a remote Apptainer ref must carry
+   `@sha256:<digest>`; a local SIF must be a regular non-symlink file.
+3. `sandbox_kind=... cannot prove network denial` — `network_policy`
+   defaults to `deny`, and `local` / `slurm` are not container
+   namespaces. Pass `network_policy="inherit"` explicitly, supply the
+   administrator attestation via `network_isolation_attested=True`, or
+   run in a container.
 
-1. Fix the SLURM GRES configuration on the cluster, or
-2. Pick a partition where GRES is configured (`sinfo -o '%P %G'` to
-   see which partitions advertise gpu GRES), or
-3. Opt back into silent drop:
+### Q. A GPU request came back without GPUs
 
-```bash
-export ARI_SLURM_ALLOW_NO_GRES=1
-```
+There is intentionally no silent downgrade: ARI submits the typed
+request exactly as given. `gpus_per_task` is emitted as
+`#SBATCH --gpus-per-task=[<type>:]<n>` and `gpus_per_node` as
+`#SBATCH --gres=gpu:[<type>:]<n>` — the two are mutually exclusive
+branches, and requesting both is rejected before submission with
+"mutually exclusive". If the scheduler rejects the GRES, fix the site's
+GRES configuration or pick a partition that advertises the resource
+(`sinfo -o '%P %G'`).
 
 ### Q. `sbatch: error: --gpus-per-task ... used without either --gpus or -n/--ntasks is not allowed`
 
-This message shouldn't surface in v0.8.0 — the bridge auto-pairs
+This message should not surface through the typed scheduler — it always pairs
 `--gpus-per-task` with `--ntasks 1` when the caller didn't supply
 `ntasks` or `--gpus`. If you see it, the request is being routed
 through a non-bridge path or an older `server.py`.
 
 ### Q. `sbatch: error: Invalid GRES specification (with and without type identification)`
 
-Same era as above — caused by emitting both `--gres=gpu:TYPE:N` AND
-`--gpus-per-task N`. Modern SLURM rejects the mixed form. v0.8.0
-canonicalises to typed-only when `gpu_type` is set (untyped
-`--gpus-per-task` / `--gpus-per-node` are dropped). If you still see
-it on a fresh checkout, re-run the affected paper-re tests:
+This is caused by mixing typed and untyped GPU requests. The common scheduler
+emits one typed directive and rejects simultaneous per-task/per-node shapes.
+If you see it on a fresh checkout, re-run the affected tests:
 
 ```bash
-pytest ari-skill-paper-re/tests/test_run_reproduce_slurm.py -k gpu_type
+pytest ari-skill-paper-re/tests/test_run_reproduce_slurm.py \
+    -k contradictory_or_nonportable
 ```
 
 ### Q. Stage 1 agent had no web search
@@ -303,32 +368,41 @@ Two distinct causes (v0.8.0 addresses both):
 1. **No `reproduce.log` in submission** — Stage 2 was skipped, so the
    vendor SimpleJudge safeguard "`reproduce.sh` failed to modify or
    create any files. All result analysis tasks will be graded as 0"
-   fires. v0.8.0 auto-enables `code_only=True` on the judge call in
-   this case (rubric is pruned to Code Development leaves only via
-   vendor `paperbench/rubric/tasks.py:338`).
+   would fire in upstream. ARI instead rejects the missing reproduction
+   record without publishing a score. Run Stage 2, or explicitly choose a
+   code-only study and still create a verified Stage 2 record.
 2. **`paper_audit_mode` accidentally on** — paper-audit mode flips
    the judge's prompt to grade the paper itself rather than a
    submission. Mutually exclusive with `code_only`; the bridge
    raises `ValueError` if both are True.
 
-## Salvage retries + executed-submission tarballs (v0.8.0)
+## Retries + executed-submission tarballs
 
 ### Q. Reproduce.sh fails fast on missing Python 3.11 / missing venv
 
-`bridge.reproduce_submission` accepts `salvage_retries: int = 0`
-(default off). When set, an early-failure attempt (exit non-zero AND
-`elapsed_sec < retry_threshold_sec`) is retried under a salvage
-wrapper that creates a Python 3.11 venv before running the original
-script. Mirrors vendor `reproduce.py:252
-reproduce_on_computer_with_salvaging`. Total wall-clock budget is
-honoured across attempts (retry-time exclusion).
+There is no salvage wrapper. `salvage_retries` and
+`retry_threshold_sec` are **not** parameters of
+`bridge.reproduce_submission` — the vendor's
+`reproduce_on_computer_with_salvaging` path, which rewrites the
+submission's environment and re-runs, has no ARI equivalent, and
+`test_reproduce_submission_signature_includes_tarball_not_unsafe_salvage`
+asserts those parameters stay absent. Fix the environment inside
+`reproduce.sh` itself (or in the container image), then call
+`reproduce_submission` again with the same plan: `run_reproduce` appends
+an immutable linked attempt rather than mutating your script.
 
 ### Q. Where is the executed submission tarball?
 
-Default behaviour writes `submission_executed_<UTC>.tar.gz` alongside
-`submission_dir` after every reproduce call. The returned dict's
-`executed_tarball` key is the absolute path. Override the destination
-with `tarball_dir=...` or disable via `capture_tarball=False`.
+Default behaviour writes `submission_executed_<UTC>.tar.gz` after every
+reproduce call, next to the *executed* submission — that is, inside the
+private attempt tree under `.ari-reproduction`, not next to the
+`submission_dir` you passed in. The returned dict's `executed_tarball`
+key is the absolute path, with `executed_tarball_digest` and
+`executed_tarball_size_bytes` alongside it. Override the destination
+with `tarball_dir=...` or disable via `capture_tarball=False`. A capture
+failure never fails the run: it is logged and appended to the result's
+`warnings` list, so an absent `executed_tarball` key with a `warnings`
+entry is the signature to look for.
 
 ## See also
 

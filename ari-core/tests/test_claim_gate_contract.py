@@ -217,7 +217,7 @@ def test_gate_blocks_claim_evidence_missing_in_warn_at_final(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=sd, policy={"mode": "warn"},
                         phase="final", write=False)
     assert rep["should_block"] is True
-    assert any(e["type"] == "claim_evidence_missing" for e in rep["errors"])
+    assert any(e["type"] == "claim_evidence_missing" for e in rep["blocking_findings"])
 
 
 # ── check_emission: point-of-emission producer feedback ─────────────────────────
@@ -356,7 +356,7 @@ def test_gate_blocks_ceiling_unmeasured_in_warn_at_final(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=sd, policy={"mode": "warn"},
                         phase="final", write=False)
     assert rep["should_block"] is True
-    assert any(e["type"] == "ceiling_unmeasured" for e in rep["errors"])
+    assert any(e["type"] == "ceiling_unmeasured" for e in rep["blocking_findings"])
 
 
 def test_gate_blocks_contract_violation_in_warn_at_final(tmp_path):

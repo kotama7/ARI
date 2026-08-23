@@ -255,6 +255,9 @@ _env_append_if_absent "# SEMANTIC_SCHOLAR_API_KEY="
 # rollout_submission(agent_env_path=...) and by paperbench Stage 2
 # reproduce.sh scripts that pip-install gated weights.
 _prompt_secret "HF_TOKEN"                "Hugging Face Hub token (optional; needed for gated papers)"
+# Optional IBM Quantum credential. It is documented but not prompted so a
+# default local/Aer installation remains non-interactive and credential-free.
+_env_append_if_absent "# QISKIT_IBM_TOKEN="
 # Default path the bridge auto-loads when rollout_submission's
 # ``agent_env_path=None``. Leave blank to use the bundled default
 # (``$HOME/.ari/agent.env``); set explicitly to override.
@@ -271,33 +274,84 @@ _env_append_if_absent "# LLM_API_BASE="
 _env_append_if_absent "# OLLAMA_HOST=http://localhost:11434"
 _env_append_if_absent "# OLLAMA_BASE_URL=http://localhost:11434"
 
+# Optional credentials for model providers supported by LiteLLM. They remain
+# commented and are forwarded only to a manifest-declared credential scope.
+_env_append_if_absent "# AZURE_API_BASE="
+_env_append_if_absent "# AZURE_API_KEY="
+_env_append_if_absent "# AZURE_API_VERSION="
+_env_append_if_absent "# AZURE_OPENAI_API_KEY="
+_env_append_if_absent "# AWS_ACCESS_KEY_ID="
+_env_append_if_absent "# AWS_SECRET_ACCESS_KEY="
+_env_append_if_absent "# AWS_SESSION_TOKEN="
+_env_append_if_absent "# AWS_DEFAULT_REGION="
+_env_append_if_absent "# AWS_REGION="
+_env_append_if_absent "# COHERE_API_KEY="
+_env_append_if_absent "# DATABRICKS_API_TOKEN="
+_env_append_if_absent "# DEEPINFRA_API_KEY="
+_env_append_if_absent "# DEEPSEEK_API_KEY="
+_env_append_if_absent "# GEMINI_API_KEY="
+_env_append_if_absent "# GOOGLE_APPLICATION_CREDENTIALS="
+_env_append_if_absent "# GROQ_API_KEY="
+_env_append_if_absent "# MISTRAL_API_KEY="
+_env_append_if_absent "# OPENROUTER_API_KEY="
+_env_append_if_absent "# REPLICATE_API_TOKEN="
+_env_append_if_absent "# TOGETHERAI_API_KEY="
+_env_append_if_absent "# VERTEXAI_CREDENTIALS="
+_env_append_if_absent "# VERTEXAI_LOCATION="
+_env_append_if_absent "# VERTEXAI_PROJECT="
+_env_append_if_absent "# WATSONX_APIKEY="
+_env_append_if_absent "# XAI_API_KEY="
+
 # --- 2b) Per-phase LLM model overrides --------------------------------------
 # These win over ARI_MODEL/ARI_LLM_MODEL within their phase. Leave blank to
 # use the global model. The GUI Settings page writes these automatically.
 _env_append_if_absent "# ARI_MODEL_IDEA="
+_env_append_if_absent "# ARI_MODEL_IDEA_REVISION="
 _env_append_if_absent "# ARI_MODEL_CODING="
 _env_append_if_absent "# ARI_MODEL_EVAL="
+_env_append_if_absent "# ARI_MODEL_TRANSFORM="
+_env_append_if_absent "# ARI_MODEL_TRANSFORM_REVISION="
+_env_append_if_absent "# ARI_MODEL_PLOT="
+_env_append_if_absent "# ARI_MODEL_PLOT_REVISION="
+_env_append_if_absent "# ARI_MODEL_METRIC_PROPOSAL="
+_env_append_if_absent "# ARI_MODEL_SEMANTIC_REVIEW="
+_env_append_if_absent "# ARI_SEMANTIC_REVIEW_MODEL_REVISION="
 _env_append_if_absent "# ARI_MODEL_PAPER="
+_env_append_if_absent "# ARI_MODEL_RUBRIC="
+_env_append_if_absent "# ARI_MODEL_PAPER_PROVIDER="
+_env_append_if_absent "# ARI_MODEL_PAPER_REVISION="
+_env_append_if_absent "# ARI_MODEL_VLM_PROVIDER="
+_env_append_if_absent "# ARI_MODEL_VLM_REVISION="
 _env_append_if_absent "# ARI_MODEL_BFTS="
+_env_append_if_absent "# ARI_PANEL_SEED="
 # v0.6.0 §4.1 split the legacy ARI_MODEL_PAPER into rubric / replicator / judge
 # so the reproducibility pipeline can target a different model per stage.
 _env_append_if_absent "# ARI_MODEL_RUBRIC_GEN="
+_env_append_if_absent "# ARI_MODEL_RUBRIC_GEN_PROVIDER="
+_env_append_if_absent "# ARI_MODEL_RUBRIC_GEN_REVISION="
 _env_append_if_absent "# ARI_MODEL_RUBRIC_AUDIT="
+_env_append_if_absent "# ARI_MODEL_RUBRIC_AUDIT_PROVIDER="
+_env_append_if_absent "# ARI_MODEL_RUBRIC_AUDIT_REVISION="
 _env_append_if_absent "# ARI_MODEL_REPLICATE="
 _env_append_if_absent "# ARI_MODEL_REPLICATOR="
 _env_append_if_absent "# ARI_MODEL_JUDGE="
+_env_append_if_absent "# ARI_RUN_STRICT_EXIT=       # set to 1 so \`ari run\` exits non-zero when the paper pipeline raised or run_integrity has concerns (default: best-effort rc=0)"
 # VirSci-live ideation knobs (ari-skill-idea, used only when the real
 # vendor-wrap path is enabled). MAX_TEAMS caps the number of co-author
 # teams formed; SPECTER2_MODEL overrides the retrieval embedding model
 # (default allenai/specter2_base).
 _env_append_if_absent "# ARI_IDEA_VIRSCI_MAX_TEAMS="
 _env_append_if_absent "# ARI_IDEA_VIRSCI_SPECTER2_MODEL="
+_env_append_if_absent "# ARI_IDEA_VIRSCI_SPECTER2_REVISION=3447645e1def9117997203454fa4495937bfbd83"
+_env_append_if_absent "# ARI_IDEA_N_IDEAS="
+_env_append_if_absent "# ARI_IDEA_LLM_TIMEOUT_S=120"
+_env_append_if_absent "# ARI_IDEA_N_AGENTS="
+_env_append_if_absent "# ARI_IDEA_DISCUSSION_ROUNDS="
 # Rubric generator knobs (consumed by ari-skill-replicate). All three fall
 # back to defaults baked into the generator when unset; the GUI wizard can
 # write these per-run.
 _env_append_if_absent "# ARI_RUBRIC_GEN_TARGET_LEAVES="
 _env_append_if_absent "# ARI_RUBRIC_GEN_TEMPERATURE="
-_env_append_if_absent "# ARI_RUBRIC_GEN_TWO_STAGE="
 # v0.7.2 paper-audit knobs. _DIR overrides the search root for
 # venue-conditioned PaperBench rubric templates (default: ari-core/config/
 # paperbench_rubrics/). _PAPER toggles the multimodal markdown image
@@ -331,8 +385,8 @@ _env_append_if_absent "# ARI_RECURSION_DEPTH="
 
 # --- 2c) Story2Proposal contract gate / verified context --------------------
 # ARI_CLAIM_GATE_MODE overrides claim_gate_policy.mode for the deterministic
-# claim_evidence_hard_gate: off (never block) | warn (MVP, report-only) |
-# strict (evaluation; blocks the final gate on blocking errors).
+# claim_evidence_hard_gate: off (never block) | warn (final objective-integrity
+# findings only) | strict (all configured final blocking findings).
 _env_append_if_absent "# ARI_CLAIM_GATE_MODE=warn"
 # Typed-memory consolidation + the artifact-grounded verified_context.json build
 # that write_paper consumes are ON BY DEFAULT (v0.8.x). Set
@@ -348,6 +402,7 @@ _env_append_if_absent "# ARI_COMPARISON_SCOPE=any"
 
 # --- 3) VLM review ----------------------------------------------------------
 _env_section "VLM review"
+_env_append_if_absent "# ARI_VLM_MODEL="
 _env_append_if_absent "# VLM_MODEL=openai/gpt-4o"
 _env_append_if_absent "# VLM_REVIEW_ENABLED=true"
 _env_append_if_absent "# VLM_REVIEW_THRESHOLD=0.7"
@@ -359,6 +414,14 @@ _env_append_if_absent "# ARI_ROOT=${ARI_ROOT}"
 _env_append_if_absent "# ARI_WORK_DIR=/tmp/ari_work"
 _env_append_if_absent "# ARI_WORKSPACE="
 _env_append_if_absent "# ARI_CHECKPOINT_DIR="
+_env_append_if_absent "# ARI_KNOWLEDGE_CATALOG="
+_env_append_if_absent "# ARI_HARNESS_CATALOG="
+_env_append_if_absent "# ARI_KCA_ENV_FEATURES="
+# Default-off federated MCP registry. These paths are read once at registry
+# startup; source synchronization remains an explicit operator command.
+_env_append_if_absent "# ARI_TOOL_REGISTRY_LOCK="
+_env_append_if_absent "# ARI_TOOL_REGISTRY_INDEX="
+_env_append_if_absent "# ARI_TOOL_REGISTRY_CASSETTES="
 _env_append_if_absent "# ARI_LOG_DIR="
 _env_append_if_absent "# ARI_LOG_LEVEL=INFO"
 _env_append_if_absent "# ARI_SOURCE_FILE="
@@ -410,14 +473,25 @@ _env_append_if_absent "# ARI_MEMORY_BACKEND=letta  # letta | in_memory — use i
 _env_append_if_absent "# ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true"
 _env_append_if_absent "# ARI_MEMORY_ACCESS_LOG=on"
 _env_append_if_absent "# ARI_MEMORY_AUTO_RESTORE=true"
-_env_append_if_absent "# ARI_CURRENT_NODE_ID=  # runtime-only; set per-node by ari-core"
 _env_append_if_absent "# ARI_LETTA_VENV=  # override pip-mode venv path"
 
 # --- 5) ARI limits / scheduling --------------------------------------------
 _env_section "ARI limits"
 _env_append_if_absent "# ARI_MAX_DEPTH=5"
 _env_append_if_absent "# ARI_MAX_NODES=50"
-_env_append_if_absent "# ARI_MAX_REACT=80"
+_env_append_if_absent "# ARI_MAX_REACT=20"
+# v2 search-loop switches. ARI_V2_SUPPRESS_TOOLS is opt-in (default: every
+# tool offered); ARI_FRONTLOAD_CONTEXT defaults on.
+_env_append_if_absent "# ARI_V2_SUPPRESS_TOOLS=  # 1 = hide describe_environment/run_code/emit_results from the search loop (also rewrites the prompt finish condition)"
+_env_append_if_absent "# ARI_FRONTLOAD_CONTEXT=1"
+_env_append_if_absent "# ARI_NODE_EXEC_BUDGET_S=1800"
+# Per-node SCHEDULER budget in NODE-SECONDS (nodes x walltime), the unit a
+# scheduler allocates in. Charged at submission against the reservation, so
+# an over-budget job is refused before it is queued. Unset/0 = no limit;
+# ARI_NODE_EXEC_BUDGET_S above only covers run_bash/run_code on one machine.
+_env_append_if_absent "# ARI_NODE_COMPUTE_BUDGET_NS="
+_env_append_if_absent "# ARI_PROBE_CACHE=1"
+_env_append_if_absent "# ARI_PROBE_CC="
 _env_append_if_absent "# ARI_MAX_RECURSION_DEPTH="
 _env_append_if_absent "# ARI_TIMEOUT_NODE=7200"
 _env_append_if_absent "# ARI_PARALLEL=4"
@@ -425,14 +499,11 @@ _env_append_if_absent "# ARI_PARENT_RUN_ID="
 _env_append_if_absent "# ARI_RETRIEVAL_BACKEND=semantic_scholar"
 _env_append_if_absent "# ARI_EXECUTOR="
 _env_append_if_absent "# ARI_MAX_CHILD_PROCS="
-# ARI_ENV_FILE points to the .env that ari-skill-hpc re-sources on the
-# compute node after sbatch --export=NONE strips the submitter env.
-# Defaults to $ARI_ROOT/.env when unset.
-_env_append_if_absent "# ARI_ENV_FILE="
 
 # --- 6) Container -----------------------------------------------------------
 _env_section "Container"
 _env_append_if_absent "# ARI_CONTAINER_IMAGE="
+_env_append_if_absent "# ARI_CONTAINER_DIGEST="
 _env_append_if_absent "# ARI_CONTAINER_MODE=auto"
 _env_append_if_absent "# ARI_CONTAINERS_DIR="
 _env_append_if_absent "# APPTAINER_CACHEDIR="
@@ -440,21 +511,14 @@ _env_append_if_absent "# SINGULARITY_CACHEDIR="
 
 # --- 6b) ari-skill-paper-re sandbox / PaperBench ---------------------------
 # ARI_PHASE1_SANDBOX selects the sandbox runtime for run_reproduce
-# (apptainer | docker | local). The image vars override the default
-# ubuntu:24.04 / .sif used by run_reproduce.
+# (apptainer | docker | local). Container images must be immutable digest
+# references (Docker) or reviewed SIF files (Apptainer/Singularity).
 _env_append_if_absent "# ARI_PHASE1_SANDBOX=local"
 _env_append_if_absent "# ARI_PHASE1_APPTAINER_IMAGE="
-_env_append_if_absent "# ARI_PHASE1_SINGULARITY_IMAGE="
-_env_append_if_absent "# ARI_PHASE1_DOCKER_IMAGE=ubuntu:24.04"
-# ARI_PHASE1_ALLOW_FALLBACK=1 opts into the legacy silent-fallback-to-
-# local-host behaviour when sandbox_kind=docker/apptainer/slurm is
-# requested but the corresponding tool (docker daemon / apptainer / sbatch)
-# is missing. Default: fail loud (the user explicitly picked a sandbox;
-# silently running on the host defeats the isolation intent).
-_env_append_if_absent "# ARI_PHASE1_ALLOW_FALLBACK="
-# Override path to the vendored PaperBench source tree if the default
-# (ari-skill-paper-re/vendor/paperbench) is unavailable.
+_env_append_if_absent "# ARI_PHASE1_DOCKER_IMAGE="
+# Overrides are admitted only at the exact reviewed PaperBench commit.
 _env_append_if_absent "# ARI_PAPERBENCH_PATH="
+_env_append_if_absent "# ARI_PAPERBENCH_COMMIT=51052cede8cc608f95bb00346635e03759013e5a"
 
 # --- 7) SLURM ---------------------------------------------------------------
 _env_section "SLURM"
@@ -464,6 +528,10 @@ _env_append_if_absent "# SLURM_SSH_USER="
 _env_append_if_absent "# SLURM_SSH_PORT=22"
 _env_append_if_absent "# SLURM_SSH_KEY="
 _env_append_if_absent "# SLURM_SSH_PASSWORD="
+_env_append_if_absent "# SLURM_SSH_KNOWN_HOSTS=  # required absolute path in remote mode"
+_env_append_if_absent "# SLURM_SSH_CONNECT_TIMEOUT=15"
+_env_append_if_absent "# SLURM_COMMAND_TIMEOUT=30"
+_env_append_if_absent "# SLURM_SHARED_FILESYSTEM=true"
 _env_append_if_absent "# SLURM_LOG_DIR="
 _env_append_if_absent "# SLURM_DEFAULT_PARTITION="
 _env_append_if_absent "# SLURM_VALID_PARTITIONS="
@@ -477,6 +545,13 @@ _env_append_if_absent "# ARI_SLURM_MEM_GB="
 _env_append_if_absent "# ARI_SLURM_GPUS="
 _env_append_if_absent "# ARI_SLURM_WALLTIME=04:00:00"
 _env_append_if_absent "# ARI_SLURM_PARTITION="
+# Site policy: the ONLY nodes ARI may place work on. SLURM hostlist syntax
+# (cn01,cn02 or cn[01-04]). Unset = no restriction. When set, a job that names
+# no nodes is confined to this set rather than left to the scheduler's choice,
+# and a job naming anything outside it is refused before submission.
+_env_append_if_absent "# ARI_HPC_ALLOWED_NODES="
+_env_append_if_absent "# ARI_HPC_LEDGER_PATH=  # durable idempotency ledger"
+_env_append_if_absent "# ARI_SCHEDULER_PATH=/usr/local/bin:/usr/bin:/bin"
 # Comma-separated tool names the compute-node capability probe checks for
 # (default: perf,numactl,papi_avail,likwid-perfctr,valgrind). Lets claims
 # avoid evidence that depends on tooling the target partition lacks.
@@ -486,20 +561,18 @@ _env_append_if_absent "# ARI_PROBE_TOOLS="
 # (silently downgrading a GPU request to CPU after a long queue wait is
 # the worst possible failure mode; surface the contradiction at submit).
 _env_append_if_absent "# ARI_SLURM_ALLOW_NO_GRES="
-# ARI_SBATCH_EXPORT_MODE overrides the sbatch --export argument used by
-# ari-skill-hpc when submitting jobs. Default NONE keeps the submitter's
-# (possibly venv-poisoned) PATH from leaking onto compute nodes; the job
-# script re-sources $ARI_ENV_FILE for API keys. Set to ALL only when you
-# explicitly want the legacy "inherit submitter env" behaviour.
-_env_append_if_absent "# ARI_SBATCH_EXPORT_MODE="
-
 # --- 8) Orchestrator / viz --------------------------------------------------
 _env_section "Orchestrator"
-_env_append_if_absent "# ARI_ORCHESTRATOR_PORT="
+_env_append_if_absent "# ARI_ORCHESTRATOR_HTTP_HOST=127.0.0.1"
+_env_append_if_absent "# ARI_ORCHESTRATOR_HTTP_PORT=8765"
+_env_append_if_absent "# ARI_ORCHESTRATOR_HTTP_TOKENS_FILE="
+_env_append_if_absent "# ARI_ORCHESTRATOR_OAUTH_ISSUER_URL="
+_env_append_if_absent "# ARI_ORCHESTRATOR_OAUTH_RESOURCE_URL="
+_env_append_if_absent "# ARI_ORCHESTRATOR_PRINCIPAL_ID=local"
+_env_append_if_absent "# ARI_ORCHESTRATOR_PRINCIPAL_ROLES=operator"
+_env_append_if_absent "# ARI_ORCHESTRATOR_CANCEL_GRACE_SECONDS=5"
 _env_append_if_absent "# ARI_ORCHESTRATOR_LOGS="
 _env_append_if_absent "# ARI_ORCHESTRATOR_DRY_RUN="
-_env_append_if_absent "# ARI_ORCHESTRATOR_SSE_ONESHOT="
-_env_append_if_absent "# ARI_ORCHESTRATOR_SSE_TIMEOUT="
 # ARI_FORCE_PAPER=1 bypasses the post-BFTS sanity gate that aborts the
 # paper / review stages when no node produced real experimental data.
 # Useful for resuming partial runs intentionally; otherwise leave unset.
@@ -514,6 +587,12 @@ _env_append_if_absent "# BIBTEX_PATH=bibtex"
 _env_section "ari-skill-paper"
 _env_append_if_absent "# ARI_RUBRIC="
 _env_append_if_absent "# ARI_RUBRIC_DIR="
+# ARI_FEWSHOT_MODE selects the reviewer's few-shot source: static (default,
+# bundled examples) or dynamic. Also set by `ari paper --fewshot-mode` and the
+# GUI. Dynamic OpenReview retrieval is still a placeholder that returns the
+# static examples, so reviews are unchanged — but it is what makes
+# ARI_STRICT_DYNAMIC below reachable.
+_env_append_if_absent "# ARI_FEWSHOT_MODE="
 _env_append_if_absent "# ARI_STRICT_DYNAMIC="
 _env_append_if_absent "# ARI_NUM_REVIEWS_ENSEMBLE="
 _env_append_if_absent "# ARI_NUM_REFLECTIONS="
@@ -535,6 +614,14 @@ _env_append_if_absent "# ARI_ALPHAXIV_ENDPOINT=https://api.alphaxiv.org/mcp/v1"
 _env_section "ari-skill-paper-re / PaperBench"
 _env_append_if_absent "# ARI_PAPER_REGISTRY_DIR=\$HOME/.ari/paper_registry  # override paper registry root (default: ~/.ari/paper_registry)"
 _env_append_if_absent "# ARI_PAPERBENCH_WORKER_DISABLED=  # set to 1 to suppress the GUI wizard's background pipeline spawn (tests / CI / dry-run debugging)"
+_env_append_if_absent "# ARI_GUI_V2=                    # dashboard v2 shell kill-switch: 0|false reverts to the legacy shell (default 1 = on; gui_refresh Wave 1, removal gate G6)"
+_env_append_if_absent "# ARI_GUI_BIND=                  # GUI bind address (MN-4/RR-P0-3): default loopback only (127.0.0.1 + ::1); set '::' for the legacy all-interfaces dual-stack bind, '0.0.0.0' for IPv4 wildcard, or a single address"
+_env_append_if_absent "# ARI_GUI_CORS_ANY=              # set 1 to restore the legacy Access-Control-Allow-Origin:* wildcard (MN-4/RR-P0-3 kill-switch; default off = same-origin echo only; not needed for the Vite dev proxy)"
+_env_append_if_absent "# ARI_GUI_CHALLENGES=            # set 0 to disable the server-issued confirmation challenges on delete-checkpoint/stop/gpu-monitor-stop (MN-6/RR-P0-6/RR-P0-9 kill-switch; default on = the endpoints require a challenge_id and answer 428 without one)"
+_env_append_if_absent "# ARI_GUI_CSP=                   # set 0 to drop the MN-7/RR-P0-10 browser security headers (Content-Security-Policy + nosniff + Referrer-Policy) from GUI index/static responses (default on; only needed if a proxy topology remaps the WebSocket port)"
+_env_append_if_absent "# ARI_GUI_TOKEN=                 # GUI remote-mode bearer token (MN-8/ADR-13/RR-P0-3): when ARI_GUI_BIND is non-loopback, every request except /health/* must send 'Authorization: Bearer <token>' (SSE/WebSocket: '?token='); unset => the server generates a 32-hex token at startup and prints it once to stderr; never required on the loopback default"
+_env_append_if_absent "# ARI_GUI_AUTH=                  # set 0 to disable the MN-8 remote token gate (kill-switch; restores the pre-MN-8 unauthenticated remote bind, e.g. behind an authenticating reverse proxy; loopback binds are always unauthenticated)"
+_env_append_if_absent "# ARI_GUI_HEALTH=                # set 0 to disable the MN-9 operational-visibility surfaces (kill-switch; GET /health/live + /health/ready fall back to the pre-MN-9 SPA response and GET /api/v1/diagnostics answers the typed 404; default on)"
 _env_append_if_absent "# SLURM_JOB_NUM_NODES=  # auto-populated by sbatch; surfaced in agent prompt CLUSTER SHAPE"
 _env_append_if_absent "# SLURM_NTASKS=         # auto-populated by sbatch; surfaced in agent prompt CLUSTER SHAPE"
 _env_append_if_absent "# SLURM_PROCID=         # auto-populated by srun; read by mpi_aggregate_skel.py fallback"
@@ -589,6 +676,47 @@ _env_append_if_absent "# ARI_AXIS_MODE=                 # evaluator axis-set sou
 _env_append_if_absent "# ARI_FRONTIER_SCORE=            # BFTS frontier_score override: scientific_plus_diversity|scientific_only|depth_penalized|ucb_like"
 _env_append_if_absent "# ARI_BFTS_ALLOW_WEB=            # opt-in web search during BFTS exploration: 1|true|yes|on (env wins over workflow.yaml; default off)"
 
+# --- RQGM execution mode ----------------------------------------------------
+# (docs/reference/environment_variables.md, "Execution mode (RQGM)")
+_env_append_if_absent "# ARI_MODE=                      # execution mode override: simple_bfts|ari_rqgm (RQGM also needs ARI_RQGM_ENABLED=1; default simple_bfts)"
+_env_append_if_absent "# ARI_RQGM_ENABLED=              # RQGM master interlock override: 0|1|true|false (both must agree or ARI falls back to simple_bfts)"
+_env_append_if_absent "# ARI_MODEL_REVISION=            # exact provider/model revision for the RQGM execution fingerprint; unset is recorded as unresolved"
+_env_append_if_absent "# ARI_TOOL_BUNDLE_REVISION=      # immutable tool-bundle revision for the RQGM execution fingerprint"
+_env_append_if_absent "# ARI_ENVIRONMENT_DIGEST=        # container or environment digest for the RQGM execution fingerprint"
+_env_append_if_absent "# ARI_DATA_SNAPSHOT_DIGEST=      # immutable external-data snapshot digest for the RQGM execution fingerprint"
+_env_append_if_absent "# ARI_HARNESS_CONTAINER_ROOT=    # absolute root used to resolve admitted logical Harness container references"
+
+# --- Manuscript Complete (independent opt-in posture) -----------------------
+_env_append_if_absent "# ARI_MANUSCRIPT_MODE=off          # off|audit|enforce; independent of ARI_MODE and ARI_PAPER_MODE"
+_env_append_if_absent "# ARI_MANUSCRIPT_PROFILE=generic_empirical_v1"
+_env_append_if_absent "# ARI_MANUSCRIPT_REPAIR_POLICY=disabled  # disabled|explicit|auto; auto requires enforce"
+_env_append_if_absent "# ARI_MANUSCRIPT_BRIEF_CHARACTER_BUDGET=24000"
+_env_append_if_absent "# ARI_MANUSCRIPT_MAX_ROUNDS=0"
+_env_append_if_absent "# ARI_MANUSCRIPT_MAX_NEW_NODES=0"
+_env_append_if_absent "# ARI_MANUSCRIPT_MAX_EXPERIMENT_RUNS=0"
+_env_append_if_absent "# ARI_MANUSCRIPT_MAX_LLM_CALLS=0"
+_env_append_if_absent "# ARI_MANUSCRIPT_MAX_RESOURCE_UNITS=  # optional finite non-negative aggregate resource cap"
+# The following values are normally set and cleared by the fixed coordinator;
+# they are listed so environment audits are exhaustive, not as user overrides.
+_env_append_if_absent "# ARI_MANUSCRIPT_RUNTIME_MODE=off"
+_env_append_if_absent "# ARI_MANUSCRIPT_REPAIR_POLICY_EFFECTIVE=disabled"
+_env_append_if_absent "# ARI_MANUSCRIPT_ASSURANCE_MODE=off"
+_env_append_if_absent "# ARI_MANUSCRIPT_KNOWLEDGE_MODE=off"
+_env_append_if_absent "# ARI_MANUSCRIPT_CAPABILITY_MODE=legacy"
+_env_append_if_absent "# ARI_MANUSCRIPT_EXPLORATION_MODE=simple_bfts"
+_env_append_if_absent "# ARI_MANUSCRIPT_PAPER_MODE=linear"
+_env_append_if_absent "# ARI_MANUSCRIPT_PROFILE_PATH="
+_env_append_if_absent "# ARI_MANUSCRIPT_CONTEXT_PATH="
+_env_append_if_absent "# ARI_MANUSCRIPT_READINESS_PATH="
+_env_append_if_absent "# ARI_MANUSCRIPT_BRIEFS_PATH="
+_env_append_if_absent "# ARI_MANUSCRIPT_BINDING_PATH="
+
+# --- Paper-archive execution mode -------------------------------------------
+# (docs/reference/environment_variables.md, "Execution mode (RQGM)")
+_env_append_if_absent "# ARI_PAPER_MODE=                # paper-phase mode override: linear|rqgm_archive (archive also needs ARI_RQGM_PAPER_ENABLED=1; default linear)"
+_env_append_if_absent "# ARI_RQGM_PAPER_ENABLED=        # paper-archive interlock override: 0|1|true|false (both must agree or the paper phase falls back to linear)"
+_env_append_if_absent "# ARI_PAPER_AGENT_AS_JUDGE=      # agent-as-judge draft scoring: 0|1|true|false (default 0 = deterministic LLM-free rubric; 1 puts live LLM calls on the paper draft path)"
+
 # --- PaperBench classifier / agent toggles (v0.8.0) -------------------------
 _env_append_if_absent "# ARI_PB_DISABLE_PAPER_KIND_HINT=  # set to 1 to suppress the paper-kind / native-stack hint injected by the classifier (dogfood leak guard)"
 _env_append_if_absent "# ARI_PB_DISABLE_WEB_SEARCH=       # set to 1 to disable the rollout agent's web_search_preview tool"
@@ -604,6 +732,75 @@ _env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_BIN=claude  # path / name of the Cl
 _env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_BARE=       # set to 1 to call \`claude\` without the agent harness"
 _env_append_if_absent "# ARI_CLI_SHIM_CLAUDE_AGENT_PERMISSION=  # agent-permission override forwarded to \`claude\`"
 _env_append_if_absent "# ARI_CLI_SHIM_CODEX_BIN=codex    # path / name of the Codex CLI binary"
+_env_append_if_absent "# ARI_CLI_SHIM_CODEX_REASONING=   # codex reasoning effort forwarded as \`-c model_reasoning_effort=<x>\` (minimal|low|medium|high); empty = keep the codex default (ARI drives many calls per run, so 'low' is often what makes a full pipeline tractable)"
 
 # --- HPC module-path (R-CCS / system Env Modules) ---------------------------
 _env_append_if_absent "# MODULEPATH=                     # colon-separated module-search path; auto-populated by Env Modules on HPC"
+
+_env_section "handoff study / harness / claude_code (merged from bfts_compare)"
+# --- Handoff-study ablation switches ----------------------------------------
+# Select what a parent node passes to its children. Config equivalents live
+# under the `handoff:` block (see ari.config.HandoffConfig).
+_env_append_if_absent "# ARI_HANDOFF_MODE=               # handoff arm: none|code_only|summary_only|full"
+_env_append_if_absent "# ARI_HANDOFF_MEMORY_OFF=         # 1 = suppress the de-facto memory channel"
+_env_append_if_absent "# ARI_HANDOFF_LOG_LIMIT=          # max chars of parent execution log injected"
+_env_append_if_absent "# ARI_HANDOFF_PAIRED_MODES=       # comma-separated arms to run paired"
+# Per-channel ablation switches, applied by apply_handoff_env_overrides AFTER
+# the mode resolves its channels, so a single channel can be varied on its own.
+_env_append_if_absent "# ARI_HANDOFF_COPY_WORKDIR=       # child inherits the parent work_dir (code channel)"
+_env_append_if_absent "# ARI_HANDOFF_AGENT_BLOCK=        # inject parent summary into the agent prompt"
+_env_append_if_absent "# ARI_HANDOFF_PLANNER_BLOCK=      # inject parent summary into the planner prompt"
+_env_append_if_absent "# ARI_HANDOFF_LOG_MODE=           # none|full|truncated|masked"
+_env_append_if_absent "# ARI_HANDOFF_SUMMARY_FORM=       # extractive|rolling|failure_only|evidence|evidence_reflection"
+_env_append_if_absent "# ARI_HANDOFF_SUMMARY_FIELDS=     # comma-separated summary-field allowlist (field-drop ablation)"
+_env_append_if_absent "# ARI_HANDOFF_LOG_SCRUB_EMIT=     # also strip the parent's own emit_results from the injected log"
+_env_append_if_absent "# ARI_SEED=                       # fixed sampling seed (GPU inference is still not bit-exact)"
+_env_append_if_absent "# ARI_TASK=                       # LEGACY task id (prototype harness registry). Prefer ARI_PROBLEM"
+_env_append_if_absent "# ARI_HARNESS=                    # LEGACY registered harness id (see ari.harness_registry)"
+_env_append_if_absent "# ARI_FREEZE_CONTRACT=            # 1 = refuse to run if the metric contract changed"
+
+# --- Pinned problem: WHICH QUESTION a scored run measures --------------------
+# A problem is one digest-addressed directory holding the scaffolding, the goal
+# text, the case set and the entry point. There is NO default: an unset task id
+# used to fall through to a different benchmark and report it under the
+# requested name, so naming the question is required rather than assumed.
+_env_append_if_absent "# ARI_PROBLEM=                    # pinned problem revision, e.g. gemm-dense-fp64/v1@2026q3"
+_env_append_if_absent "# ARI_PERF_TIER=                  # screen|validate|certify — repetitions per case (default validate)"
+_env_append_if_absent "# ARI_HARNESS_PROBLEMS=           # override the problem directory (default config/harnesses/problems)"
+_env_append_if_absent "# ARI_HARNESS_CASE_SETS=          # override the case-set directory (default config/harnesses/case_sets)"
+_env_append_if_absent "# ARI_TARGET_ABI_REGISTRY=        # override the candidate ABI identity directory (default config/harnesses/target_abis)"
+
+# --- Measurement instrument --------------------------------------------------
+# These belong to the INSTRUMENT, not to any problem: a problem definition has
+# no field for them, which is what lets a problem be pinned without being
+# approved. Set them only to describe the machine, never to tune a score.
+_env_append_if_absent "# ARI_PERF_CC=                    # default compiler for the measurement (default: cc)"
+_env_append_if_absent "# ARI_PERF_THREADS=               # thread budget override; default is the cpuset width"
+_env_append_if_absent "# ARI_REGION_COUNTERS=            # prebuilt region_counters binary (profiler only; source digest then describes the tree, not what ran)"
+# Set by the harness itself before each timed launch and RECORDED with the
+# result; listed here so a reader knows they are not free variables of a run.
+_env_append_if_absent "# OMP_PROC_BIND=                  # set by the measurement (spread); recorded in the placement record"
+_env_append_if_absent "# OMP_PLACES=                     # set by the measurement (cores); recorded in the placement record"
+_env_append_if_absent "# OMP_DYNAMIC=                    # set by the measurement (FALSE); recorded in the placement record"
+
+# --- Search-loop determinism ------------------------------------------------
+_env_append_if_absent "# ARI_BFTS_DETERMINISTIC=         # 1 = deterministic node ordering"
+_env_append_if_absent "# ARI_BFTS_MAX_EXPANSIONS=        # hard cap on node expansions"
+
+# --- LLM context / retries --------------------------------------------------
+_env_append_if_absent "# ARI_LLM_NUM_CTX=32768           # model context limit used to size the per-call char budget"
+_env_append_if_absent "# ARI_LLM_NUM_RETRIES=            # per-call retry count"
+
+# --- Environment probing ----------------------------------------------------
+# Left blank on purpose: site-specific scheduler names must not be baked in.
+_env_append_if_absent "# ARI_PROBE_PARTITIONS=           # partitions to probe (site-specific; leave unset)"
+_env_append_if_absent "# ARI_PROBE_TIMEOUT_S=            # per-probe timeout in seconds"
+
+# --- claude_code backend ----------------------------------------------------
+_env_append_if_absent "# ARI_CLAUDE_CODE_MODE=strict_reproducibility"
+_env_append_if_absent "# ARI_CLAUDE_CODE_MODEL="
+_env_append_if_absent "# ARI_CLAUDE_CODE_MAX_TURNS=1"
+_env_append_if_absent "# ARI_CLAUDE_CODE_TIMEOUT_SEC=300"
+_env_append_if_absent "# ARI_CLAUDE_CODE_RECORD_PROVENANCE=1"
+_env_append_if_absent "# ARI_CLAUDE_CODE_BIN=claude"
+_env_append_if_absent "# ANTHROPIC_AUTH_TOKEN=           # token auth alternative to ANTHROPIC_API_KEY"

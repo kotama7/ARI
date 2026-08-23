@@ -4,21 +4,30 @@ import asyncio
 import json
 import os
 import re
-import subprocess
 from pathlib import Path
 
 import logging
 import litellm
 from mcp.server.fastmcp import FastMCP
 
+from ari.public.research_contract import load_survey_snapshot_ref
+
 # Wire cost tracking for LLM calls made inside this skill subprocess.
 # ari-core is injected onto PYTHONPATH by ari.mcp.client, so this import
 # succeeds under ARI; optional for standalone skill testing.
 try:
-    try:
-        from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
-    except ImportError:
-        from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    from src.authoring import (  # type: ignore
+        AuthoringRecorder,
+        artifact_from_payload,
+        json_bytes as _paper_json_bytes,
+        load_authoring_inputs,
+        model_usage_from_response,
+        routed_provider,
+    )
+    from src.compiler import compile_project  # type: ignore
+    from src.finalize import finalize_build  # type: ignore
+    from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
+
     _ari_cost_tracker.bootstrap_skill("paper")
 except Exception:
     pass
@@ -26,31 +35,95 @@ except Exception:
 try:
     from src.review_engine import (  # type: ignore
         build_user_prompt,
-        fewshot_block,
+        build_system_prompt,
         load_dynamic_fewshot,
         load_static_fewshot,
-        normalize_review,
         resolve_rubric,
         run_ensemble,
         run_meta_review,
-        run_single_review,
     )
-    from src.rubric import RubricError, list_available_rubrics, load_rubric  # type: ignore
+    from src.rubric import list_available_rubrics, load_rubric  # type: ignore
 except ImportError:  # running from within src/
+    from authoring import (  # type: ignore
+        AuthoringRecorder,
+        artifact_from_payload,
+        json_bytes as _paper_json_bytes,
+        load_authoring_inputs,
+        model_usage_from_response,
+        routed_provider,
+    )
+    from compiler import compile_project  # type: ignore
+    from finalize import finalize_build  # type: ignore
     from review_engine import (  # type: ignore
         build_user_prompt,
-        fewshot_block,
+        build_system_prompt,
         load_dynamic_fewshot,
         load_static_fewshot,
-        normalize_review,
         resolve_rubric,
         run_ensemble,
         run_meta_review,
-        run_single_review,
     )
-    from rubric import RubricError, list_available_rubrics, load_rubric  # type: ignore
+    from rubric import list_available_rubrics, load_rubric  # type: ignore
 
 log = logging.getLogger(__name__)
+
+
+def _resolve_retrieval_refs(refs_json, *, checkpoint: str | None = None):
+    """Resolve a recorded retrieval result to its verified compact snapshot."""
+
+    if not refs_json:
+        return {}
+    data = json.loads(refs_json) if isinstance(refs_json, str) else refs_json
+    if not isinstance(data, dict):
+        raise ValueError("reference input must be a JSON object")
+    if data.get("schema_version") == "ari.paper-references/v1":
+        return data
+    snapshot_ref = str(data.get("snapshot_ref") or "").strip()
+    if not snapshot_ref:
+        if data.get("schema_version") == "ari.retrieval-result/v1":
+            raise ValueError(
+                "paper generation requires a recorded retrieval snapshot_ref"
+            )
+        return data
+    checkpoint = (checkpoint or os.environ.get("ARI_CHECKPOINT_DIR", "")).strip()
+    if not checkpoint:
+        raise ValueError("snapshot_ref requires ARI_CHECKPOINT_DIR")
+    snapshot = load_survey_snapshot_ref(checkpoint, snapshot_ref)
+    advertised = data.get("survey_snapshot_digest")
+    if advertised is not None and advertised != snapshot.snapshot_digest:
+        raise ValueError("advertised survey snapshot digest does not match reference")
+    papers = []
+    for record in snapshot.records:
+        arxiv_id = next(
+            (
+                alias.removeprefix("arxiv:")
+                for alias in (record.canonical_id, *record.aliases)
+                if alias.startswith("arxiv:")
+            ),
+            "",
+        )
+        papers.append(
+            {
+                "title": record.title,
+                "authors": list(record.authors),
+                "year": str(record.year or ""),
+                "published": str(record.year or ""),
+                "abstract": record.abstract,
+                "url": record.source_url or "",
+                "arxivId": arxiv_id,
+                "canonical_id": record.canonical_id,
+                "payload_digest": record.payload_digest,
+            }
+        )
+    return {
+        "schema_version": "ari.paper-references/v1",
+        "snapshot_ref": snapshot_ref,
+        "survey_snapshot_digest": snapshot.snapshot_digest,
+        "provider": snapshot.provider,
+        "query": snapshot.query,
+        "papers": papers,
+    }
+
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
@@ -58,14 +131,19 @@ VENUES = [
     {"id": "neurips", "name": "NeurIPS", "deadline": "May 2025", "pages": 9},
     {"id": "icpp", "name": "ICPP", "deadline": "March 2025", "pages": 10},
     {"id": "sc", "name": "SuperComputing", "deadline": "April 2025", "pages": 12},
-    {"id": "isc", "name": "ISC High Performance", "deadline": "February 2025", "pages": 12},
+    {
+        "id": "isc",
+        "name": "ISC High Performance",
+        "deadline": "February 2025",
+        "pages": 12,
+    },
     {"id": "arxiv", "name": "arXiv", "deadline": "N/A", "pages": 0},
     {"id": "acm", "name": "ACM (general)", "deadline": "Varies", "pages": 10},
 ]
 
 
 # ── skill-local prompt loader (subtask 041) ──────────────────────────────────
-# The paper-generation system prompts are stored as byte-identical ``.md``
+# Static paper-generation instructions are stored as byte-identical ``.md``
 # templates under ``src/prompts/`` and loaded here through a tiny mirror of
 # ari-core's ``FilesystemPromptLoader`` ``load_versioned`` contract. The helper
 # is COPIED (not imported from ari-core) to preserve the one-way
@@ -74,8 +152,7 @@ VENUES = [
 # cost_tracker`` fallback stays on its pinned line (test_public_api_boundary).
 # New stdlib import (``hashlib``) is function-local, matching this module's
 # style. Most templates are loaded RAW (no ``str.format``) because they embed
-# literal LaTeX/JSON braces; ``academic_reviewer`` is the one ``str.format``
-# template (single ``{venue_upper}`` placeholder, no other braces). The dynamic
+# literal LaTeX/JSON braces. The dynamic
 # per-call fragments (``_paper_language_directive()``, the verified-context
 # grounded block, the venue prefix) stay in Python — only static bytes move.
 # Deterministic (P2): a package-relative file read — no LLM, no network.
@@ -103,90 +180,22 @@ def _load_prompt_versioned(key: str) -> tuple[str, str]:
     pins the same value. Deterministic; no LLM, no network.
     """
     import hashlib
+
     raw = _prompt_path(key).read_text(encoding="utf-8")
     return _load_prompt(key), hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
-
-
-SECTION_PROMPTS = {
-    "introduction": (
-        "Write a LaTeX introduction section for an academic paper. "
-        "Motivate the problem, state contributions, and outline the paper structure. "
-        "Cite 2-3 related papers using \\cite{authorYYYYkeyword} — use ONLY keys from the provided refs_json. NEVER use \\cite{key} literally."
-    ),
-    "related_work": (
-        "Write a LaTeX related work section for an academic paper. "
-        "Categorize and discuss prior work, highlighting gaps this paper addresses. "
-        "CRITICAL for citations: you will receive a list of references with EXACT cite keys. "
-        "Use ONLY the exact cite keys from refs_json in \\cite{...} commands. NEVER invent cite keys or use \\cite{key} as a placeholder. "
-        "Do NOT invent, modify, or reformat cite keys. "
-        "Do NOT cite papers not in the provided list."
-    ),
-    "method": (
-        "Write a LaTeX method/approach section for an academic paper. "
-        "Describe the proposed approach with technical detail. "
-        "Cite relevant prior methods using ONLY exact keys from refs_json. NEVER use \\cite{key} as a placeholder."
-    ),
-    "experiment": (
-        "Write a LaTeX experiments section for an academic paper. "
-        "Present experimental setup, results, and analysis. "
-        "REPRODUCIBILITY RULE: Every numeric claim MUST state "
-        "the EXACT parameters used to produce it in the same sentence or paragraph. "
-        "A reader must be able to reproduce the number from the text alone without guessing which configuration was used. "
-        "Do not omit or summarize any information provided in the context — use all of it as-is. "
-        "CRITICAL for figures: the context provides available figures with filenames and captions. "
-        "You MUST embed each figure at the most relevant location in the text using: "
-        "\\begin{figure}[H]\\centering\\includegraphics[width=0.85\\linewidth]{FILENAME}"
-        "\\caption{CAPTION}\\label{fig:N}\\end{figure}"
-        " — do NOT place all figures at the end. Place each figure right after "  
-        "the paragraph that first discusses its content. "
-        "Cite relevant papers using ONLY exact keys from refs_json. NEVER invent cite keys or use \\cite{key} as a placeholder."
-    ),
-    "conclusion": (
-        "Write a LaTeX conclusion section for an academic paper. "
-        "Summarize contributions, discuss limitations, and suggest future work. "
-        "Cite 1-2 papers for future work using ONLY exact keys from refs_json. NEVER use \\cite{key} as a placeholder."
-    ),
-    "abstract": (
-        "Write a concise 150-250 word LaTeX abstract for an academic paper. "
-        "Cover: problem statement, proposed method, key experimental result (with numbers), "
-        "and main contribution. Focus ONLY on the experiment and its results. "
-        "When citing a numeric result, include the key parameters that produced it "
-        "so the claim is self-contained and reproducible. "
-        "Do NOT mention any automation framework, search system, or tool used to discover these results. "
-        "Output raw LaTeX text only (no \begin{abstract} tags, no section header)."
-    ),
-    "title": (
-        "Generate a concise, specific academic paper title (8-14 words). "
-        "The title should reflect the optimization technique and benchmark, with quantitative result if space allows. "
-        "CRITICAL: Output ONLY the plain title text. "
-        "Do NOT output any LaTeX commands (no \\section, no \\begin, no \\textbf, no \\title). "
-        "Do NOT output quotes, newlines, or any other text beyond the title itself. "
-        "Example good output: Compiler Flag Optimization for Stencil Benchmarks on a 64-Core CPU"
-    ),
-}
-
-
-# Generic instruction for all section-writing system prompts
-_FORBIDDEN_NOTICE = (
-    "IMPORTANT: Write only information that enables independent reproduction of the results. "
-    "Reproducible information (USE these): hardware specifications, software versions, "
-    "build configuration, and experimental parameters. "
-    "Non-reproducible information (DO NOT USE): cluster names, institution names, "
-    "organization names, node IDs, job IDs, file paths, or any identifier specific "
-    "to one computing environment. "
-    "Write as the authors who directly conducted the experiments (first-person plural). "
-    "Do NOT mention any automated system, AI framework, or search tool used to find results. "
-    "Hardware description must be derivable from the experiment context only — "
-    "do NOT infer or add details not explicitly provided. "
-)
 
 
 # Map ARI_PAPER_LANGUAGE → human-readable name + LaTeX babel/preamble hint.
 # The wizard sends ISO-639-1 codes (en/ja/zh); aliases handle stray full names.
 _LANGUAGE_NAMES = {
-    "en": "English", "english": "English",
-    "ja": "Japanese", "japanese": "Japanese", "jp": "Japanese",
-    "zh": "Chinese", "chinese": "Chinese", "zh-cn": "Chinese",
+    "en": "English",
+    "english": "English",
+    "ja": "Japanese",
+    "japanese": "Japanese",
+    "jp": "Japanese",
+    "zh": "Chinese",
+    "chinese": "Chinese",
+    "zh-cn": "Chinese",
 }
 
 
@@ -223,6 +232,7 @@ def _paper_language_directive() -> str:
         f"══ END LANGUAGE ══\n"
     )
 
+
 mcp = FastMCP("paper-writing-skill")
 
 
@@ -252,199 +262,12 @@ async def get_template(venue: str) -> dict:
     return {"files": files}
 
 
-def _search_nodes_tree(nodes_json_path: str, queries: list[str]) -> str:
-    """Extract scientific experiment evidence from nodes_tree.json.
-
-    Returns ONLY performance metrics and configurations.
-    Does NOT expose internal identifiers (node IDs, checkpoint names, etc.).
-    """
-    import json as _json
-    from pathlib import Path as _Path
-    if not nodes_json_path:
-        return ""
-    try:
-        data = _json.loads(_Path(nodes_json_path).read_text())
-        nodes = data.get("nodes", [])
-        matched = []
-        for n in nodes:
-            text = _json.dumps(n, ensure_ascii=False).lower()
-            score = sum(1 for q in queries if q.lower() in text)
-            if score > 0:
-                matched.append((score, n))
-        matched.sort(key=lambda x: -x[0])
-        lines = []
-        # NOTE: eval_summary is intentionally excluded — it may contain
-        # cluster/hardware names written by the evaluator LLM.
-        # Only metrics (numeric values) are safe to pass to the paper LLM.
-        _SKIP_KEYS = {"path", "dir", "checkpoint", "id", "node", "label", "uuid", "hash"}
-        for _, n in matched[:8]:
-            metrics = n.get("metrics", {})
-            config = n.get("config", n.get("hypothesis", {}))
-            line_parts = []
-            if isinstance(config, dict):
-                cfg_clean = {k: v for k, v in config.items()
-                             if not any(s in k.lower() for s in _SKIP_KEYS)}
-                if cfg_clean:
-                    line_parts.append("config=" + str(cfg_clean))
-            if metrics:
-                line_parts.append("metrics=" + str(metrics))
-            if line_parts:
-                lines.append("- " + ", ".join(line_parts))
-        return "\n".join(lines)
-    except Exception:
-        return ""
-
-
 @mcp.tool()
-async def generate_section(
-    section: str,
-    context: str,
-    venue: str = "arxiv",
-    nodes_json_path: str = "",
-    refs_json: str = "",
+async def compile_paper(
+    tex_dir: str,
+    main_file: str = "main.tex",
+    figures_manifest_path: str = "",
 ) -> dict:
-    """Generate a LaTeX section using an LLM, searching the experiment tree while writing.
-
-    Args:
-        section: Section type (introduction, related_work, method, experiment, conclusion)
-        context: Experiment content / results summary to base the section on
-        venue: Target venue identifier
-        nodes_json_path: Path to nodes_tree.json (optional). When provided, the LLM
-            can query all experiment nodes for richer evidence.
-    """
-    if section not in SECTION_PROMPTS:
-        raise ValueError(
-            f"Unknown section '{section}'. Valid: {list(SECTION_PROMPTS.keys())}"
-        )
-
-    venue_info = next((v for v in VENUES if v["id"] == venue), None)
-    if venue_info is None:
-        valid = [v["id"] for v in VENUES]
-        raise ValueError(f"Unknown venue '{venue}'. Valid venues: {valid}")
-
-    # Search the node tree for section-relevant additional information
-    section_keywords = {
-        "experiment":   ["metric", "metrics", "result", "measure", "compare", "ablat"],
-        "method":       ["algorithm", "approach", "method", "implement", "optim"],
-        "conclusion":   ["best", "metric", "result", "future", "summary"],
-        "introduction": ["performance", "contribution", "motivation", "challenge"],
-        "related_work": ["survey", "prior", "baseline", "comparison", "related"],
-    }
-    queries = section_keywords.get(section, [])
-    tree_evidence = _search_nodes_tree(nodes_json_path, queries) if nodes_json_path else ""
-
-    enriched_context = context
-    if tree_evidence:
-        enriched_context = (
-            context
-            + "\n\n--- Experiment Evidence ---\n"
-            + tree_evidence
-        )
-
-    if section == "title":
-        # Title must be plain text — no LaTeX code instruction to avoid confusion
-        system_prompt = (
-            SECTION_PROMPTS["title"] + " " + _FORBIDDEN_NOTICE
-        )
-    elif section == "abstract":
-        system_prompt = (
-            SECTION_PROMPTS["abstract"] + " " + _FORBIDDEN_NOTICE +
-            "Output ONLY the abstract text (no \\begin{{abstract}} tags)."
-        )
-    else:
-        # Build cite key list hint for the LLM
-        _cite_hint = ""
-        if refs_json:
-            try:
-                import json as _jref
-                _rdata = _jref.loads(refs_json) if isinstance(refs_json, str) else refs_json
-                _papers = _rdata.get("papers", []) if isinstance(_rdata, dict) else []
-                if _papers:
-                    _keys = []
-                    for _p in _papers[:15]:
-                        _k = _p.get("cite_key") or _p.get("arxivId","").replace("/","").replace(".","")
-                        _t = _p.get("title","")[:60]
-                        if _k:
-                            _keys.append("  " + r"\cite{" + _k + "}  % " + _t)
-                    if _keys:
-                        _cite_hint = (
-                            "\n\n══ CITATION RULES (STRICT) ══\n"
-                            "The following is the COMPLETE list of available cite keys.\n"
-                            "RULES:\n"
-                            "1. Use ONLY these exact keys in \\cite{{}} commands.\n"
-                            "2. NEVER invent, guess, or modify a cite key.\n"
-                            "3. NEVER write \\cite{{key}}, \\cite{{author2024}}, or any key not in this list.\n"
-                            "4. If you cannot find a matching key for a claim, omit the citation entirely.\n"
-                            "AVAILABLE KEYS:\n"
-                            + "\n".join(_keys)
-                            + "\n══ END CITATION RULES ══"
-                        )
-            except Exception:
-                pass
-        # Venue-conditioned author guidance — mirrors the peer-review
-        # system_hint injection in review_engine.py:80 but for the author
-        # side. Loads the venue's reviewer_rubrics YAML and injects
-        # ``prompt_overrides.author_hint`` so paper drafting is conditioned
-        # with the same strength as peer review. Falls back to no-op when
-        # the venue has no rubric yaml (arxiv / icpp / acm / isc currently).
-        author_hint_block = ""
-        try:
-            _r = load_rubric(venue)
-            _ah = (_r.author_hint or "").strip()
-            if _ah:
-                author_hint_block = (
-                    "\n══ VENUE-SPECIFIC AUTHOR GUIDANCE ══\n"
-                    f"You are drafting for submission to {_r.venue}. "
-                    f"Score dimensions a reviewer will apply: "
-                    f"{', '.join(_r.dimension_names())}.\n\n"
-                    f"{_ah}\n"
-                    "══ END VENUE GUIDANCE ══\n\n"
-                )
-        except (RubricError, FileNotFoundError):
-            pass
-
-        system_prompt = (
-            f"{SECTION_PROMPTS[section]} "
-            f"Target venue: {venue_info['name']}. "
-            f"Page limit: {venue_info['pages']} pages. "
-            + author_hint_block
-            + _FORBIDDEN_NOTICE
-            + _cite_hint +
-            "\nUse the provided experiment data. "
-            "Output ONLY raw LaTeX code for the section body (no preamble, no \\begin{{document}}). "
-            "For arXiv submissions: no strict page limit, focus on clarity and completeness. "
-            "For conference venues: strictly follow the page limit and formatting style."
-        )
-
-    import os, re
-    _model = _get_model()
-    _api_base = _get_api_base()
-    kwargs = {"model": _model, "messages": [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": enriched_context},
-    ]}
-    if _api_base:
-        kwargs["api_base"] = _api_base
-
-    response = await litellm.acompletion(**kwargs)
-
-    raw = response.choices[0].message.content or ""
-    # strip <think> tags from reasoning models
-    # Strip <think> tags (reasoning model output)
-    if "</think>" in raw:
-        raw = raw.split("</think>")[-1]
-    raw = raw.strip()
-    # strip markdown fences if present
-    if raw.startswith("```"):
-        raw = "\n".join(raw.split("\n")[1:])
-    if raw.endswith("```"):
-        raw = "\n".join(raw.split("\n")[:-1])
-    latex = _escape_text_underscores(raw.strip())
-    return {"latex": latex, "tree_nodes_used": len(tree_evidence.split("\n")) if tree_evidence else 0}
-
-
-@mcp.tool()
-async def compile_paper(tex_dir: str, main_file: str = "main.tex") -> dict:
     """Compile a LaTeX project to PDF.
 
     Args:
@@ -453,46 +276,110 @@ async def compile_paper(tex_dir: str, main_file: str = "main.tex") -> dict:
     """
     tex_path = Path(tex_dir).resolve()
     if not tex_path.is_dir():
-        return {"success": False, "pdf_path": "", "log": f"Directory not found: {tex_dir}"}
+        return {
+            "success": False,
+            "pdf_path": "",
+            "log": f"Directory not found: {tex_dir}",
+        }
 
     main = tex_path / main_file
     if not main.is_file():
         return {"success": False, "pdf_path": "", "log": f"File not found: {main}"}
 
-    try:
-        # pdflatex -> bibtex -> pdflatex -> pdflatex (standard 4-pass sequence)
-        result = await asyncio.to_thread(
-            subprocess.run,
-            ["pdflatex", "-interaction=nonstopmode", main_file],
-            cwd=str(tex_path), capture_output=True, text=True, timeout=120,
-        )
-        await asyncio.to_thread(
-            subprocess.run,
-            ["bibtex", main_file.replace(".tex", "")],
-            cwd=str(tex_path), capture_output=True, text=True, timeout=60,
-        )
-        for _ in range(2):
-            result = await asyncio.to_thread(
-                subprocess.run,
-                ["pdflatex", "-interaction=nonstopmode", main_file],
-                cwd=str(tex_path), capture_output=True, text=True, timeout=120,
+    from ari.public.execution import WorkspaceRefV1
+
+    workspace = WorkspaceRefV1(root=str(tex_path))
+    bib_file = "refs.bib" if (tex_path / "refs.bib").is_file() else None
+    figures = None
+    if figures_manifest_path:
+        from ari.public.figures import parse_figure_batch
+
+        try:
+            manifest_path = workspace.resolve(
+                figures_manifest_path,
+                require_file=True,
             )
-
-        pdf_name = main_file.replace(".tex", ".pdf")
-        pdf_path = tex_path / pdf_name
-        # Consider success if PDF exists with content (>1KB), even if returncode != 0 (warnings are OK)
-        pdf_ok = pdf_path.is_file() and pdf_path.stat().st_size > 1024
-        log_output = result.stdout[-3000:] if len(result.stdout) > 3000 else result.stdout
-
+            figures = parse_figure_batch(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return {
+                "success": False,
+                "pdf_path": "",
+                "log": f"invalid FigureBatchV1: {exc}",
+                "compile": None,
+            }
+    try:
+        outcome = await asyncio.to_thread(
+            compile_project,
+            workspace=workspace,
+            main_file=main_file,
+            bib_file=bib_file,
+            figures=figures,
+        )
+    except ValueError as exc:
         return {
-            "success": pdf_ok,
-            "pdf_path": str(pdf_path) if pdf_ok else "",
-            "log": log_output,
+            "success": False,
+            "pdf_path": "",
+            "log": str(exc),
+            "compile": None,
         }
-    except subprocess.TimeoutExpired:
-        return {"success": False, "pdf_path": "", "log": "Compilation timed out"}
-    except FileNotFoundError:
-        return {"success": False, "pdf_path": "", "log": "pdflatex not found. Please install a LaTeX distribution."}
+    workspace.atomic_write_bytes(
+        ".ari-paper/compile/final.json",
+        _paper_json_bytes(outcome.record.model_dump(mode="json")),
+    )
+    return {
+        "success": outcome.record.status == "completed",
+        "pdf_path": (
+            str(tex_path / outcome.pdf_path) if outcome.pdf_path is not None else ""
+        ),
+        "log": "\n".join(outcome.diagnostics),
+        "compile": outcome.record.model_dump(mode="json"),
+    }
+
+
+@mcp.tool()
+async def finalize_paper_build(
+    workspace_root: str,
+    draft_build_path: str,
+    tex_path: str,
+    bib_path: str,
+    pdf_path: str,
+    compile_record_path: str,
+    figures_manifest_path: str,
+    claim_links_path: str,
+    hard_gate_path: str,
+    text_review_path: str,
+    visual_review_path: str,
+    semantic_review_path: str,
+    refinement_call_path: str = "",
+    visual_passing_score: float = 0.7,
+    output_path: str = "paper_build.json",
+) -> dict:
+    """Lock exact paper evidence, reviews, compile, claims, and final artifacts."""
+
+    build = await asyncio.to_thread(
+        finalize_build,
+        workspace_root=workspace_root,
+        draft_build_path=draft_build_path,
+        tex_path=tex_path,
+        bib_path=bib_path,
+        pdf_path=pdf_path,
+        compile_record_path=compile_record_path,
+        figures_manifest_path=figures_manifest_path,
+        claim_links_path=claim_links_path,
+        hard_gate_path=hard_gate_path,
+        text_review_path=text_review_path,
+        visual_review_path=visual_review_path,
+        semantic_review_path=semantic_review_path,
+        refinement_call_path=refinement_call_path,
+        visual_passing_score=visual_passing_score,
+        output_path=output_path,
+    )
+    if build.status != "finalized":
+        raise ValueError(
+            "paper finalization blocked; see the persisted PaperBuildV1: "
+            + "; ".join(build.blocking_reasons)
+        )
+    return build.model_dump(mode="json")
 
 
 @mcp.tool()
@@ -522,8 +409,14 @@ async def check_format(venue: str, pdf_path: str) -> dict:
         issues.append("PDF file seems too small; may be corrupted")
 
     page_count = _count_pdf_pages(pdf)
-    if page_count is not None and venue_info["pages"] > 0:
-        if page_count > venue_info["pages"]:
+    if venue_info["pages"] > 0:
+        if page_count is None:
+            # Undeterminable != within limit. Skipping made a 47-page paper
+            # pass a 9-page limit with ok:true — record it so ok is False.
+            issues.append(
+                f"Page count could not be determined for {pdf.name}; the "
+                f"{venue_info['pages']}-page venue limit was NOT verified")
+        elif page_count > venue_info["pages"]:
             issues.append(
                 f"Page count ({page_count}) exceeds venue limit ({venue_info['pages']})"
             )
@@ -532,24 +425,57 @@ async def check_format(venue: str, pdf_path: str) -> dict:
 
 
 def _count_pdf_pages(pdf_path: Path) -> int | None:
-    """Count pages in a PDF by scanning for /Type /Page entries."""
+    """Count pages in a PDF. Returns None ONLY when the count is genuinely
+    undeterminable — the caller then records an explicit issue rather than
+    skipping the page-limit check.
+
+    The old byte-regex for ``/Type /Page`` missed pages stored in compressed
+    object streams (``/ObjStm``) — 59 of 79 PDFs in this repo, including ARI's
+    own compile_paper output, hit zero and silently skipped the limit check, so
+    a 47-page paper passed a 9-page venue limit. Prefer a real parser.
+    """
     try:
-        content = pdf_path.read_bytes()
-        pages = re.findall(rb"/Type\s*/Page(?!s)", content)
-        return len(pages) if pages else None
+        import pypdf
+        with open(pdf_path, "rb") as fh:
+            return len(pypdf.PdfReader(fh, strict=False).pages)
     except Exception:
-        return None
+        pass
+    try:  # poppler, if the pure-Python parser is unavailable
+        import subprocess
+        r = subprocess.run(["pdfinfo", str(pdf_path)],
+                           capture_output=True, text=True, timeout=20)
+        for line in r.stdout.splitlines():
+            if line.startswith("Pages:"):
+                return int(line.split(":", 1)[1].strip())
+    except Exception:
+        pass
+    try:  # last resort: the old regex, which only sees UNcompressed page objects
+        pages = re.findall(rb"/Type\s*/Page(?!s)", pdf_path.read_bytes())
+        if pages:
+            return len(pages)
+    except Exception:
+        pass
+    return None  # genuinely undeterminable — caller must not skip the check
 
 
-import os as _os
+def _get_model(purpose: str = "paper") -> str:
+    """Resolve the paper writer or independent rubric-review model.
 
-def _get_model() -> str:
-    # Check ARI_LLM_MODEL first, then LLM_MODEL, then default to qwen3:32b
-    return (_os.environ.get("ARI_LLM_MODEL")
-            or _os.environ.get("LLM_MODEL")
+    Phase-specific values precede the shared skill fallback so evaluation can
+    assign Claude Code and Codex to different roles without starting two paper
+    skill servers. Unknown purposes use the writer posture.
+    """
+    phase_model = (
+        os.environ.get("ARI_MODEL_RUBRIC")
+        if str(purpose) == "rubric"
+        else os.environ.get("ARI_MODEL_PAPER")
+    )
+    return (phase_model
+            or os.environ.get("ARI_LLM_MODEL")
+            or os.environ.get("LLM_MODEL")
             or "ollama_chat/qwen3:32b")
 
-def _get_api_base() -> str | None:
+def _get_api_base(purpose: str = "paper") -> str | None:
     """Return LLM API base URL, or None to use provider default (e.g. OpenAI).
 
     Priority:
@@ -558,153 +484,22 @@ def _get_api_base() -> str | None:
     3. LLM_API_BASE (global setting, e.g. Ollama)
     4. Default: None (litellm provider default)
     """
-    ari_base = _os.environ.get("ARI_LLM_API_BASE")
-    if ari_base is not None:          # explicitly set (even to "")
-        return ari_base or None       # "" → None = use OpenAI
-    if (_os.environ.get("OPENAI_API_KEY") and "ollama" not in _get_model()):
+    ari_base = os.environ.get("ARI_LLM_API_BASE")
+    if ari_base is not None:  # explicitly set (even to "")
+        return ari_base or None  # "" → None = use OpenAI
+    if os.environ.get("OPENAI_API_KEY") and "ollama" not in _get_model(purpose):
         return None
-    return _os.environ.get("LLM_API_BASE") or None
-
-
-
-@mcp.tool()
-async def review_section(latex: str, context: str, venue: str = "arxiv") -> dict:
-    """Review a LaTeX paper section and return structured feedback.
-
-    Args:
-        latex: LaTeX content to review
-        context: Experiment context / goal for reference
-        venue: Target venue (e.g. neurips, sc, isc, arxiv)
-    Returns:
-        dict with: overall (str), strengths (list[str]), weaknesses (list[str]),
-                   suggestions (list[str]), accept_recommendation (str)
-    """
-    import json, re
-
-    model_name = _get_model()
-    system_prompt = _load_prompt("academic_reviewer").format(venue_upper=venue.upper())
-    user_prompt = (
-        f"Venue: {venue}\nContext: {context[:500]}\n\nLaTeX to review:\n{latex[:3000]}"
-    )
-
-    kwargs = {
-        "model": model_name,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
-    api_base = _get_api_base()
-    if api_base:
-        kwargs["api_base"] = api_base
-
-    response = await litellm.acompletion(**kwargs)
-    raw = response.choices[0].message.content or ""
-    if "</think>" in raw:
-        raw = raw.split("</think>")[-1]
-    raw = raw.strip()
-    m = re.search(r"\{.*\}", raw, re.DOTALL)
-    if m:
-        raw = m.group(0)
-
-    try:
-        return json.loads(raw)
-    except Exception:
-        return {
-            "overall": raw[:500],
-            "strengths": [],
-            "weaknesses": [],
-            "suggestions": [],
-            "accept_recommendation": "unknown",
-        }
-
-
-
-@mcp.tool()
-async def revise_section(
-    section: str,
-    latex: str,
-    feedback: str,
-    context: str,
-    venue: str = "arxiv",
-) -> dict:
-    """Revise a LaTeX section based on reviewer feedback.
-
-    Part of the AI Scientist v2-style iterative writing loop.
-
-    Args:
-        section: Section type
-        latex: Current LaTeX content to revise
-        feedback: Reviewer feedback (weaknesses + suggestions)
-        context: Experiment context
-        venue: Target venue
-
-    Returns:
-        {latex: revised LaTeX, changes: summary of changes made}
-    """
-    import os, re
-    _model2 = _get_model()
-    _api_base2 = _get_api_base()
-
-    # Title and abstract need special prompts (no LaTeX command instruction)
-    if section == "title":
-        system_prompt = (
-            f"You are revising the title of an academic paper. "
-            "The reviewer has provided feedback. Apply suggestions to improve the title. "
-            + _FORBIDDEN_NOTICE +
-            "CRITICAL: Output ONLY the plain title text. "
-            "Do NOT output any LaTeX commands (no \\section, no \\begin, no \\textbf, no \\title). "
-            "Output ONLY the plain title words. No quotes, no newlines, nothing else."
-        )
-    elif section == "abstract":
-        system_prompt = (
-            f"You are revising the abstract of an academic paper for {venue.upper()}. "
-            "The reviewer has provided feedback. Apply ALL suggestions precisely. "
-            + _FORBIDDEN_NOTICE +
-            "Output ONLY the revised abstract text (no \\begin{{abstract}} tags, no LaTeX preamble). "
-            "Do NOT include explanations. Just the improved abstract text."
-        )
-    else:
-        system_prompt = (
-            f"You are revising the {section} section of an academic paper for {venue.upper()}. "
-            "The reviewer has provided feedback. Apply ALL suggestions precisely. "
-            + _FORBIDDEN_NOTICE +
-            "Output ONLY the revised raw LaTeX for this section. "
-            "Do NOT include explanations. Just the improved LaTeX."
-        )
-    user_prompt = (
-        "Context: " + context[:400] + "\n\n"
-        "Reviewer feedback:\n" + feedback[:1000] + "\n\n"
-        "Current LaTeX:\n" + latex[:3000]
-    )
-
-    kwargs = {
-        "model": _model2,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
-    if _api_base2:
-        kwargs["api_base"] = _api_base2
-
-    response = await litellm.acompletion(**kwargs)
-    raw = response.choices[0].message.content or ""
-    if "</think>" in raw:
-        raw = raw.split("</think>")[-1]
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = "\n".join(raw.split("\n")[1:])
-    if raw.endswith("```"):
-        raw = "\n".join(raw.split("\n")[:-1])
-    return {"latex": raw.strip(), "changes": "Revised " + section + ": " + feedback[:200]}
+    return os.environ.get("LLM_API_BASE") or None
 
 
 def _make_cite_key(paper: dict, seen: dict) -> str:
     import re as _re
+
     authors = paper.get("authors", [])
-    lastname = _re.sub(r"[^a-z]", "", authors[0].split()[-1].lower()) if authors else "anon"
-    year = (paper.get("published", "2024") or "2024")[:4]
+    lastname = (
+        _re.sub(r"[^a-z]", "", authors[0].split()[-1].lower()) if authors else "anon"
+    )
+    year = str(paper.get("year") or paper.get("published") or "2024")[:4]
     words = paper.get("title", "").split()
     kw = _re.sub(r"[^a-z]", "", words[0].lower()) if words else "paper"
     base = f"{lastname}{year}{kw}"[:18]
@@ -713,7 +508,6 @@ def _make_cite_key(paper: dict, seen: dict) -> str:
         return base + str(seen[base])
     seen[base] = 0
     return base
-
 
 
 def _escape_bibtex_field_values(entry: str) -> str:
@@ -728,11 +522,13 @@ def _escape_bibtex_field_values(entry: str) -> str:
     not already escaped (no preceding backslash) and not part of a command/entity.
     """
     import re as _re_e
+
     out_lines = []
     for line in entry.split("\n"):
         m = _re_e.match(r"(\s*[A-Za-z][A-Za-z0-9_-]*\s*=\s*)\{(.*)\}(,?\s*)$", line)
         if not m:
-            out_lines.append(line); continue
+            out_lines.append(line)
+            continue
         prefix, value, suffix = m.group(1), m.group(2), m.group(3)
         value = _re_e.sub(r"(?<!\\)&", r"\\&", value)
         value = _re_e.sub(r"(?<!\\)%", r"\\%", value)
@@ -748,16 +544,19 @@ def _build_bib_content(refs_json: str) -> tuple:
     Falls back to synthesized BibTeX from arXiv metadata.
     Returns (bib_content: str, key_list: list of (key, title) tuples).
     """
-    import re as _re_bib, json as _json
+    import re as _re_bib
+
     if not refs_json:
         return "", []
-    try:
-        refs_data = _json.loads(refs_json) if isinstance(refs_json, str) else refs_json
-        papers = refs_data.get("papers", [])
-    except Exception:
-        return "", []
+    refs_data = _resolve_retrieval_refs(refs_json)
+    papers = refs_data.get("papers", [])
     entries, key_list, seen = [], [], {}
-    for p in papers[:15]:
+    # Cap generously (was 15) — collect_references already relevance-filters and
+    # bounds the set, and a hard 15-slice silently DROPPED collected refs,
+    # including (audit finding) the single most on-topic paper that happened to
+    # sort past index 15, while the reported count still said 17. Include the
+    # whole collected set; 50 is only a runaway guard.
+    for p in papers[:50]:
         real_bib = p.get("bibtex", "")
         cite_key = p.get("cite_key", "")
         title = p.get("title", "Unknown")
@@ -779,152 +578,394 @@ def _build_bib_content(refs_json: str) -> tuple:
             key = _make_cite_key(p, seen)
             seen[key] = True
             authors = " and ".join(p.get("authors", [])[:4]) or "Unknown"
-            year = (p.get("published", "2024") or "2024")[:4]
-            note = (p.get("abstract", "")[:120]
-                    .replace("{", "").replace("}", "").replace("\n", " "))
-            entries.append(_escape_bibtex_field_values(
-                "@article{" + key + ",\n"
-                "  author = {" + authors + "},\n"
-                "  title  = {" + title.replace("{","").replace("}","") + "},\n"
-                "  year   = {" + year + "},\n"
-                "  note   = {" + note + "}\n}"
-            ))
+            year = str(p.get("year") or p.get("published") or "2024")[:4]
+            note = (
+                p.get("abstract", "")[:120]
+                .replace("{", "")
+                .replace("}", "")
+                .replace("\n", " ")
+            )
+            entries.append(
+                _escape_bibtex_field_values(
+                    "@article{" + key + ",\n"
+                    "  author = {" + authors + "},\n"
+                    "  title  = {" + title.replace("{", "").replace("}", "") + "},\n"
+                    "  year   = {" + year + "},\n"
+                    "  note   = {" + note + "}\n}"
+                )
+            )
         key_list.append((key, title))
     return "\n\n".join(entries), key_list
 
 
-_MATH_ENV_NAMES = frozenset({
-    'equation', 'align', 'eqnarray', 'displaymath', 'math', 'gather',
-    'multline', 'alignat', 'flalign', 'split', 'aligned', 'gathered', 'cases',
-})
+_MATH_ENV_NAMES = frozenset(
+    {
+        "equation",
+        "align",
+        "eqnarray",
+        "displaymath",
+        "math",
+        "gather",
+        "multline",
+        "alignat",
+        "flalign",
+        "split",
+        "aligned",
+        "gathered",
+        "cases",
+    }
+)
+
+
+#: Language asserting that a VERIFICATION/VALIDATION was performed. A refiner
+#: may legitimately reword a result; it may not invent a process. These are the
+#: shapes an inserted sentence takes when it claims work that never happened
+#: ("we independently re-verified each figure ... and confirm they agree to
+#: within rounding" — a real insertion that shipped, and was false).
+_PROCESS_CLAIM_RE = re.compile(
+    r"\b(?:we|the authors?)\b[^.]{0,120}?\b("
+    r"re-?verif\w*|verif\w*|re-?check\w*|cross-?check\w*|re-?comput\w*|"
+    r"re-?measur\w*|confirm\w*|validat\w*|audit\w*|reproduc\w*"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _sentences_of(tex: str) -> list[str]:
+    """Prose sentences of a LaTeX document, comments and commands stripped."""
+    body = re.sub(r"(?m)^\s*%.*$", " ", tex)          # whole-line comments
+    body = re.sub(r"%.*", " ", body)                  # trailing comments
+    body = re.sub(r"\\begin\{[^}]*\}|\\end\{[^}]*\}", " ", body)
+    out: list[str] = []
+    for raw in re.split(r"(?<=[.!?])\s+", body):
+        s = re.sub(r"\s+", " ", raw).strip()
+        if len(s) > 40 and re.search(r"[a-zA-Z]{4}", s):
+            out.append(s)
+    return out
+
+
+def _inserted_sentences(original: str, refined: str) -> list[str]:
+    """Sentences present in *refined* but absent from *original*.
+
+    ``full_paper.draft.tex`` (the pre-refine copy) is written by this tool and
+    was read by NOTHING, and `difflib` had zero uses anywhere in ari-core or the
+    skills — so the one artifact that makes an insertion trivially detectable
+    went unused. This is that diff.
+    """
+    import difflib
+
+    before = _sentences_of(original)
+    after = _sentences_of(refined)
+    seen = {re.sub(r"\W+", "", s).lower() for s in before}
+    out: list[str] = []
+    for s in after:
+        if re.sub(r"\W+", "", s).lower() in seen:
+            continue
+        # A close match is a rewording (allowed); only genuinely new prose counts.
+        if difflib.get_close_matches(s, before, n=1, cutoff=0.75):
+            continue
+        out.append(s)
+    return out
+
+
+def _unrequested_process_claims(inserted: list[str], revisions: list) -> list[str]:
+    """Inserted sentences claiming a verification that no revision asked for."""
+    asked = " ".join(
+        str((r or {}).get("replacement", "")) + " " + str((r or {}).get("suggestion", ""))
+        for r in (revisions or []) if isinstance(r, dict)
+    ).lower()
+    out = []
+    for s in inserted:
+        if not _PROCESS_CLAIM_RE.search(s):
+            continue
+        # If the reviewer literally asked for this wording, it is requested.
+        if asked and re.sub(r"\W+", "", s).lower()[:60] in re.sub(r"\W+", "", asked):
+            continue
+        out.append(s)
+    return out
+
+
+_CLAIM_COMMENT_RE = re.compile(r"%\s*CLAIM:C\w+:NC\w+[^\r\n]*")
+_FIGURE_BLOCK_RE = re.compile(
+    r"\\begin\{figure\*?\}.*?\\end\{figure\*?\}",
+    re.DOTALL,
+)
+_FIGURE_GRAPHIC_RE = re.compile(
+    r"\\includegraphics(?:\[[^\]]*\])?\{([^}]*)\}"
+)
+
+
+def _claim_comment_contract(text: str):
+    """Return the multiset of exact scientific claim comments in *text*.
+
+    An anchor identity alone is insufficient: a forward declaration also owns
+    its ``metric=``, ``formula=``, and operand tokens.  Keeping only
+    ``% CLAIM:Cx:NCx`` silently turns a reproducible assertion into an unresolved
+    one.  Counts matter because the same assertion may be anchored in both the
+    abstract and results.
+    """
+    from collections import Counter
+
+    return Counter(match.group(0).rstrip() for match in _CLAIM_COMMENT_RE.finditer(text))
+
+
+def _preserves_claim_comment_contract(before: str, after: str) -> bool:
+    """Whether *after* retains every exact claim comment from *before*."""
+
+    required = _claim_comment_contract(before)
+    actual = _claim_comment_contract(after)
+    return all(actual[comment] >= count for comment, count in required.items())
+
+
+def _figure_block_contract(text: str):
+    """Return the exact multiset of renderer-owned figure environments."""
+    from collections import Counter
+
+    return Counter(match.group(0) for match in _FIGURE_BLOCK_RE.finditer(text))
+
+
+def _preserves_figure_block_contract(before: str, after: str) -> bool:
+    """Figures are immutable: no block may be changed, added, or removed."""
+
+    return _figure_block_contract(before) == _figure_block_contract(after)
+
+
+def _restore_authoritative_figure_snippets(text: str, snippets) -> str:
+    """Replace model-written figure blocks with exact FigureBatch snippets.
+
+    Matching is by the recorded ``includegraphics`` path, with basename as a
+    compatibility fallback. Duplicate occurrences are removed and missing
+    figures are inserted before Conclusion (or the bibliography). Paths,
+    captions, values, and labels therefore stay owned by the fixed renderer.
+    """
+
+    records: list[tuple[str, str, str]] = []
+    for raw in snippets or ():
+        snippet = str(raw or "").strip()
+        graphic = _FIGURE_GRAPHIC_RE.search(snippet)
+        if not snippet or graphic is None:
+            continue
+        path = graphic.group(1)
+        records.append((path, os.path.basename(path), snippet))
+    if not records:
+        return text
+
+    by_path = {record[0]: record for record in records}
+    by_basename = {record[1]: record for record in records}
+    seen: set[str] = set()
+
+    def _replace_block(match):
+        block = match.group(0)
+        graphic = _FIGURE_GRAPHIC_RE.search(block)
+        if graphic is None:
+            return block
+        candidate = graphic.group(1)
+        record = by_path.get(candidate) or by_basename.get(os.path.basename(candidate))
+        if record is None:
+            return block
+        path, _basename, snippet = record
+        if path in seen:
+            return ""
+        seen.add(path)
+        return snippet
+
+    restored = _FIGURE_BLOCK_RE.sub(_replace_block, text)
+    missing = [record for record in records if record[0] not in seen]
+    for path, basename, _snippet in missing:
+        # Remove a bare model-written include of the same asset before adding
+        # its complete, authoritative environment.
+        restored = _FIGURE_GRAPHIC_RE.sub(
+            lambda match: (
+                ""
+                if match.group(1) == path
+                or os.path.basename(match.group(1)) == basename
+                else match.group(0)
+            ),
+            restored,
+        )
+    if missing:
+        insertion = "\n\n".join(record[2] for record in missing)
+        marker = next(
+            (
+                candidate
+                for candidate in (
+                    "\\section{Conclusion}",
+                    "\\bibliographystyle",
+                    "\\bibliography",
+                    "\\end{document}",
+                )
+                if candidate in restored
+            ),
+            "",
+        )
+        if marker:
+            restored = restored.replace(marker, insertion + "\n\n" + marker, 1)
+        else:
+            restored = restored.rstrip() + "\n\n" + insertion + "\n"
+    return restored
 
 
 def _escape_text_underscores(text: str) -> str:
     """Escape bare underscores in LaTeX text mode. Skips command args and math."""
     import re as _re_esc
+
     result = []
     i = 0
-    skip_until = []  # stack of closing delimiters to skip
     while i < len(text):
         # Check if inside a command arg that should not be escaped
-        if text[i] == '\\' and i + 1 < len(text):
+        if text[i] == "\\" and i + 1 < len(text):
             cmd_end = i + 1
             while cmd_end < len(text) and text[cmd_end].isalpha():
                 cmd_end += 1
-            cmd_name = text[i+1:cmd_end]
+            cmd_name = text[i + 1 : cmd_end]
             result.append(text[i:cmd_end])
             i = cmd_end
             # If command name is empty and next char is _ ^ $ # etc, it's already escaped — pass through
-            if not cmd_name and i < len(text) and text[i] in '_^$#&%~|':
-                result.append(text[i]); i += 1; continue
+            if not cmd_name and i < len(text) and text[i] in "_^$#&%~|":
+                result.append(text[i])
+                i += 1
+                continue
             # \( ... \) and \[ ... \] math: skip verbatim (only $...$ was
             # recognized before, so \(k_p\) in plain prose got corrupted to
             # \(k\_p\) — literal underscore instead of a subscript).
-            if not cmd_name and i < len(text) and text[i] in '([':
-                closer = '\\)' if text[i] == '(' else '\\]'
+            if not cmd_name and i < len(text) and text[i] in "([":
+                closer = "\\)" if text[i] == "(" else "\\]"
                 end = text.find(closer, i + 1)
                 if end >= 0:
-                    result.append(text[i:end + 2]); i = end + 2
+                    result.append(text[i : end + 2])
+                    i = end + 2
                 else:
-                    result.append(text[i]); i += 1
+                    result.append(text[i])
+                    i += 1
                 continue
             # \begin{<math env>} ... \end{<math env>}: skip the body verbatim
             # (same math contract; subscripts there were corrupted the same way).
-            if cmd_name == 'begin' and i < len(text) and text[i] == '{':
-                _m_env = _re_esc.match(r'\{([A-Za-z]+\*?)\}', text[i:])
-                if _m_env and _m_env.group(1).rstrip('*') in _MATH_ENV_NAMES:
-                    _closer = '\\end{' + _m_env.group(1) + '}'
+            if cmd_name == "begin" and i < len(text) and text[i] == "{":
+                _m_env = _re_esc.match(r"\{([A-Za-z]+\*?)\}", text[i:])
+                if _m_env and _m_env.group(1).rstrip("*") in _MATH_ENV_NAMES:
+                    _closer = "\\end{" + _m_env.group(1) + "}"
                     _end = text.find(_closer, i + _m_env.end())
                     if _end >= 0:
-                        result.append(text[i:_end + len(_closer)])
+                        result.append(text[i : _end + len(_closer)])
                         i = _end + len(_closer)
                         continue
                 # not a math env (or unclosed): generic arg protection below
             # For label/ref/cite/eqref: include the {} arg without escaping
-            if cmd_name in ('label', 'ref', 'eqref', 'cite', 'pageref', 'autoref',
-                            'hyperref', 'nameref', 'vref', 'cref', 'Cref',
-                            'includegraphics', 'bibliography', 'bibliographystyle'):
+            if cmd_name in (
+                "label",
+                "ref",
+                "eqref",
+                "cite",
+                "pageref",
+                "autoref",
+                "hyperref",
+                "nameref",
+                "vref",
+                "cref",
+                "Cref",
+                "includegraphics",
+                "bibliography",
+                "bibliographystyle",
+            ):
                 # Handle optional [...] before {}, e.g. \includegraphics[width=...]{file}
-                if i < len(text) and text[i] == '[':
-                    _d = 1; result.append('['); i += 1
-                    while i < len(text) and _d > 0:
-                        if text[i] == '[': _d += 1
-                        elif text[i] == ']': _d -= 1
-                        result.append(text[i]); i += 1
-                if i < len(text) and text[i] == '{':
-                    depth = 1
-                    result.append('{')
+                if i < len(text) and text[i] == "[":
+                    _d = 1
+                    result.append("[")
                     i += 1
-                    while i < len(text) and depth > 0:
-                        if text[i] == '{': depth += 1
-                        elif text[i] == '}': depth -= 1
+                    while i < len(text) and _d > 0:
+                        if text[i] == "[":
+                            _d += 1
+                        elif text[i] == "]":
+                            _d -= 1
                         result.append(text[i])
                         i += 1
-            elif text[i:i+1] in ('[', '{'):
+                if i < len(text) and text[i] == "{":
+                    depth = 1
+                    result.append("{")
+                    i += 1
+                    while i < len(text) and depth > 0:
+                        if text[i] == "{":
+                            depth += 1
+                        elif text[i] == "}":
+                            depth -= 1
+                        result.append(text[i])
+                        i += 1
+            elif text[i : i + 1] in ("[", "{"):
                 # Other commands: also protect their arguments
                 depth = 1
                 result.append(text[i])
                 i += 1
                 while i < len(text) and depth > 0:
-                    if text[i] in ('{', '['): depth += 1
-                    elif text[i] in ('}', ']'): depth -= 1
+                    if text[i] in ("{", "["):
+                        depth += 1
+                    elif text[i] in ("}", "]"):
+                        depth -= 1
                     result.append(text[i])
                     i += 1
             continue
-        if text[i] == '$':
+        if text[i] == "$":
             # Check if this is an escaped dollar \$ (literal, not math mode)
-            if i > 0 and text[i-1] == '\\':
+            if i > 0 and text[i - 1] == "\\":
                 # Already appended '\\' — just append '$' as literal
-                result.append('$'); i += 1; continue
+                result.append("$")
+                i += 1
+                continue
             # Skip math mode: find matching closing $
-            if text[i+1:i+2] == '$':
-                end = text.find('$$', i+2)
+            if text[i + 1 : i + 2] == "$":
+                end = text.find("$$", i + 2)
                 if end < 0:
                     # Unclosed $$: emit as literal \$ to avoid LaTeX errors
-                    result.append('\\$'); i += 1; continue
-                result.append(text[i:end+2]); i = end+2
+                    result.append("\\$")
+                    i += 1
+                    continue
+                result.append(text[i : end + 2])
+                i = end + 2
             else:
-                end = text.find('$', i+1)
+                end = text.find("$", i + 1)
                 if end < 0:
                     # Unclosed $: emit as literal \$ to avoid Missing $ LaTeX error
-                    result.append('\\$'); i += 1; continue
-                result.append(text[i:end+1]); i = end+1
+                    result.append("\\$")
+                    i += 1
+                    continue
+                result.append(text[i : end + 1])
+                i = end + 1
             continue
-        if text[i] == '_':
-            result.append('\\_')
+        if text[i] == "_":
+            result.append("\\_")
             i += 1
             continue
         result.append(text[i])
         i += 1
-    return ''.join(result)
-
-
+    return "".join(result)
 
 
 _BFTS_TERM_MAP = {
-    'node label': 'compiler configuration',
-    'node labels': 'compiler configurations',
-    'colored by label': 'colored by flag set',
-    'by label': 'by configuration',
-    'search tree depth': 'configuration index',
-    'tree depth': 'configuration index',
-    'Tree Depth': 'Configuration Index',
-    'search step': 'configuration index',
-    'per-depth': 'per-group',
-    'BFTS': '', 'bfts': '',
-    'improve': 'high-performance',
-    'validation': 'verified',
-    'ablation': 'baseline',
-    'draft': 'initial',
-    'experiment workflow': 'systematic evaluation',
-    'exploration depth': 'number of configurations evaluated',
+    "node label": "compiler configuration",
+    "node labels": "compiler configurations",
+    "colored by label": "colored by flag set",
+    "by label": "by configuration",
+    "search tree depth": "configuration index",
+    "tree depth": "configuration index",
+    "Tree Depth": "Configuration Index",
+    "search step": "configuration index",
+    "per-depth": "per-group",
+    "BFTS": "",
+    "bfts": "",
+    "improve": "high-performance",
+    "validation": "verified",
+    "ablation": "baseline",
+    "draft": "initial",
+    "experiment workflow": "systematic evaluation",
+    "exploration depth": "number of configurations evaluated",
 }
+
 
 def _sanitize_bfts_terms(text: str) -> str:
     """Remove BFTS-internal terms from paper-facing text (captions, body)."""
     for old, new in _BFTS_TERM_MAP.items():
         text = text.replace(old, new)
     return text
+
 
 def _build_latex_template(
     venue_info: dict,
@@ -956,7 +997,9 @@ def _build_latex_template(
             "% YOU MUST USE ONLY THESE EXACT KEYS in \\cite{} commands.\n"
             "% DO NOT invent, guess, or modify any cite key. DO NOT use \\cite{key}.\n"
             "% If a fact has no matching key below, do NOT cite it — omit the citation entirely.\n"
-            + "\n".join(f"% \\cite{{{k}}}  — {title[:80]}" for k, title in _bib_keys[:20])
+            + "\n".join(
+                f"% \\cite{{{k}}}  — {title[:80]}" for k, title in _bib_keys[:20]
+            )
             + "\n% ══ END OF AVAILABLE KEYS ══"
         )
 
@@ -975,8 +1018,21 @@ def _build_latex_template(
                 f"\\end{{figure}}\n\n"
             )
 
+    first_figure_label = "fig:1"
+    if figures:
+        label_match = re.search(
+            r"\\label\{([^}]*)\}",
+            figures[0].get("latex", ""),
+        )
+        if label_match:
+            first_figure_label = label_match.group(1)
+
     # Title hint from experiment summary
-    _title_hint = experiment_summary.split("\n")[0][:100].strip() if experiment_summary else "Research Paper"
+    _title_hint = (
+        experiment_summary.split("\n")[0][:100].strip()
+        if experiment_summary
+        else "Research Paper"
+    )
 
     template = f"""\\documentclass[11pt]{{article}}
 \\usepackage{{geometry,booktabs,hyperref,amsmath,amssymb,graphicx,float,caption,natbib}}
@@ -1029,7 +1085,7 @@ FILL_EXPERIMENT_SETUP_END
 
 \\subsection{{Results}}
 FILL_RESULTS_START
-Present quantitative results. Reference Figure~\\ref{{fig:1}} below.
+Present quantitative results. Reference Figure~\\ref{{{first_figure_label}}} below.
 FILL_RESULTS_END
 
 {fig_environments}
@@ -1054,6 +1110,7 @@ def _fill_template_with_llm_output(template: str, llm_latex: str) -> str:
     Otherwise attempt to extract FILL blocks from template.
     """
     import re as _re_ft
+
     # LLM returned a complete document — use it
     if "\\begin{document}" in llm_latex and "\\end{document}" in llm_latex:
         return llm_latex
@@ -1072,25 +1129,42 @@ def _fill_template_with_llm_output(template: str, llm_latex: str) -> str:
     return result
 
 
-
 def _extract_metric_keyword(text: str) -> str:
     """Extract metric keyword from <!-- metric_keyword: X --> HTML comment."""
     import re as _re
-    m = _re.search(r'<!--\s*metric_keyword:\s*(\S+)\s*-->', text)
+
+    m = _re.search(r"<!--\s*metric_keyword:\s*(\S+)\s*-->", text)
     return m.group(1) if m else "metric"
+
 
 @mcp.tool()
 async def write_paper_iterative(
+    workspace_root: str,
+    science_data_path: str,
+    figures_manifest_path: str,
+    references_path: str,
+    ear_manifest_path: str,
+    rubric_id: str,
     experiment_summary: str = "",
     context: str = "",  # alias for experiment_summary (used by pipeline.py)
-    nodes_json_path: str = "",
-    refs_json: str = "",
-    figures_manifest_json: str = "",  # JSON content of figures manifest (loaded by pipeline)
-    science_data_json: str = "",  # JSON content of science_data.json (loaded by pipeline)
-    verified_context_json: str = "",  # PATH to verified_context.json (read HERE, not via load_inputs)
+    verified_context_path: str = "",
     venue: str = "arxiv",
     max_revision_rounds: int = 2,
     author_name: str = "",  # config-specified author; defaults to "Autonomous Research Infrastructure"
+    writer_prompt_override: str = "",  # "" => load paper_writer.md (linear byte-identical);
+                                       # non-empty => the governed paper_writer prompt DRIVES
+                                       # the reflection instruction (docs/reference/skills.md,
+                                       # the write_paper_iterative entry). The skill still
+                                       # evolves nothing and imports no ari.rqgm — a plain
+                                       # instruction string, not governance.
+    decode_seed: int = 0,  # 0 => no seed in the payload => byte-identical to today (linear);
+                           # non-zero => sampled under that seed, so callers generating a
+                           # POPULATION of drafts get distinct samples instead of K copies
+                           # (docs/reference/skills.md, the write_paper_iterative entry).
+                           # Same additive on-ramp shape as writer_prompt_override: a plain
+                           # scalar, no ari.rqgm import, no governance. NOTE: litellm `seed` is
+                           # best-effort and provider-dependent — it delivers diversity
+                           # (distinct seeds => distinct samples), not bit-exact replay.
 ) -> dict:
     """AI Scientist v2-style iterative paper writing agent.
 
@@ -1106,8 +1180,11 @@ async def write_paper_iterative(
 
     Args:
         experiment_summary: Experiment context and best results
-        nodes_json_path: Path to nodes_tree.json
-        refs_json: JSON from search_arxiv (related work references)
+        workspace_root: Closed checkpoint root containing all input artifacts.
+        science_data_path: Native ScienceDataV1 path under the workspace.
+        figures_manifest_path: Native FigureBatchV1 path under the workspace.
+        references_path: Recorded retrieval-result path under the workspace.
+        ear_manifest_path: EAR generation result path under the workspace.
         venue: Target venue
         max_revision_rounds: Max revisions per section
 
@@ -1115,47 +1192,48 @@ async def write_paper_iterative(
         latex, sections, reviews, revision_counts
     """
     import traceback as _tb_wpi
-    _tmpdir = ""
+
     try:
         import json
+
+        _authoring_inputs = load_authoring_inputs(
+            workspace_root=workspace_root,
+            science_data_path=science_data_path,
+            figures_manifest_path=figures_manifest_path,
+            references_path=references_path,
+            ear_manifest_path=ear_manifest_path,
+            verified_context_path=verified_context_path,
+        )
+        _authoring_recorder = AuthoringRecorder(_authoring_inputs)
+        science_data_json = _authoring_inputs.science_payload.decode("utf-8")
+        figures_manifest_json = _authoring_inputs.figures_payload.decode("utf-8")
+        refs_json = json.dumps(_authoring_inputs.references, ensure_ascii=False)
+        refs_json = json.dumps(
+            _resolve_retrieval_refs(
+                _authoring_inputs.references,
+                checkpoint=_authoring_inputs.workspace.root,
+            ),
+            ensure_ascii=False,
+        )
+        _rubric_contract = load_rubric(rubric_id)
         # Accept context as alias for experiment_summary (pipeline.py compat)
         if not experiment_summary and context:
             experiment_summary = context
 
-        # Extract implementation details from nodes_tree.json for richer paper content.
-        _impl_details = ""
-        if nodes_json_path and not nodes_json_path.lstrip().startswith("{"):
+        # Enrich only from the validated native ScienceDataV1.  The former
+        # node-tree metric fallback bypassed units and claim eligibility.
+        if science_data_json and _authoring_inputs.manuscript_binding is None:
             try:
-                _nodes_data = json.loads(Path(nodes_json_path).read_text())
-                _nodes_list = _nodes_data.get("nodes", []) if isinstance(_nodes_data, dict) else _nodes_data
-                _success_nodes = [n for n in _nodes_list if n.get("has_real_data") and n.get("metrics")]
-                # Sort by scientific score
-                _success_nodes.sort(
-                    key=lambda n: float((n.get("metrics") or {}).get("_scientific_score", 0)),
-                    reverse=True,
-                )
-                _impl_parts = []
-                for _sn in _success_nodes[:5]:
-                    _es = (_sn.get("eval_summary") or "")[:400]
-                    _met = json.dumps(_sn.get("metrics", {}), ensure_ascii=False)
-                    if _es:
-                        _impl_parts.append(f"- {_es}\n  metrics: {_met}")
-                if _impl_parts:
-                    _impl_details = (
-                        "\n\nImplementation details from experiment nodes "
-                        "(use these to write detailed Methodology with pseudocode):\n"
-                        + "\n".join(_impl_parts)
-                    )
-                    experiment_summary += _impl_details
-            except Exception as _e_nodes:
-                log.warning("Failed to extract impl details from nodes: %s", _e_nodes)
+                from ari.public.science_data import science_data_projection
 
-        # Enrich experiment_summary with source code and implementation details
-        # from science_data.json (produced by transform-skill).
-        if science_data_json:
-            try:
-                _sd = json.loads(science_data_json) if isinstance(science_data_json, str) else science_data_json
-                _sd_ctx = _sd.get("experiment_context", {})
+                _sd_native = _authoring_inputs.science.model_dump(mode="json")
+                _sd = science_data_projection(_sd_native)
+                _interpretation = _sd_native.get("interpretation") or {}
+                _sd_ctx = (
+                    _interpretation.get("experiment_context", {})
+                    if _interpretation.get("status") == "ok"
+                    else {}
+                )
 
                 # 1. Per-configuration results (FIRST — highest priority).
                 # Each configuration has different parameters; the LLM must
@@ -1193,8 +1271,7 @@ async def write_paper_iterative(
                         "/ invalid by the correctness gate (e.g. a normalized value > 1). "
                         "NEVER quote these as results: they are unsound and the final "
                         "paper is blocked if they appear.\n"
-                        "Entries:\n"
-                        + "\n".join(_cfg_parts)
+                        "Entries:\n" + "\n".join(_cfg_parts)
                     )
 
                 # 2. Implementation details (data structures, build config, etc.)
@@ -1205,13 +1282,15 @@ async def write_paper_iterative(
                         + json.dumps(_impl_det, indent=2, ensure_ascii=False)[:4000]
                     )
 
-                # 2b. Hardware/software environment, populated from
-                # node_report.json's executor / hostname / cpu_info / compilers
-                # (captured by ari.agent.run_env at experiment time).
-                # Surfaced separately so the paper has factual hardware
-                # specs to write under "Hardware/software environment"
-                # instead of saying "not recorded".
-                _hw = _sd_ctx.get("hardware", "")
+                # 2b. Hardware/software environment. Source changed: the
+                # framework no longer auto-scrapes host machine info into
+                # node_report (that leaked the hostname/partition). It is now
+                # AGENT-AUTHORED — the agent records the toolchain/hardware it
+                # used in node_report's ``environment`` field (grounded in tool
+                # output). Prefer the aggregated ``hardware`` key when the
+                # science_data step provides it, else the agent ``environment``
+                # note; omit the section (do not fabricate) when neither exists.
+                _hw = _sd_ctx.get("hardware", "") or _sd_ctx.get("environment", "")
                 if _hw:
                     if isinstance(_hw, dict):
                         _hw_text = json.dumps(_hw, indent=2, ensure_ascii=False)
@@ -1221,8 +1300,7 @@ async def write_paper_iterative(
                         "\n\nHARDWARE/SOFTWARE ENVIRONMENT (factual capture from "
                         "experiment runtime — write a concrete description in the "
                         "paper using these values, do NOT write 'not recorded' "
-                        "if any value is present here):\n"
-                        + _hw_text[:2500]
+                        "if any value is present here):\n" + _hw_text[:2500]
                     )
 
                 # 3. Source code from best nodes (last — longest section).
@@ -1257,12 +1335,17 @@ async def write_paper_iterative(
                         _na_str = "; ".join(
                             f"{_na.get('id')}: {_na.get('metric')}="
                             f"{_na.get('value')}{_na.get('unit', '')} ({_na.get('formula')})"
-                            for _na in _nas if isinstance(_na, dict)
+                            for _na in _nas
+                            if isinstance(_na, dict)
                         )
                         _cl_parts.append(
                             f"- {_cl.get('id')} [{_cl.get('section', 'results')}]: "
                             f"{_cl.get('text', '')}"
-                            + (f"\n    numeric_assertions: {_na_str}" if _na_str else "")
+                            + (
+                                f"\n    numeric_assertions: {_na_str}"
+                                if _na_str
+                                else ""
+                            )
                         )
                     if _cl_parts:
                         experiment_summary += (
@@ -1280,49 +1363,29 @@ async def write_paper_iterative(
                 # Forward-declaration table (Story2Proposal (c)): stable config
                 # handles the writer can reference to DECLARE every result number
                 # it states, so the hard gate verifies the derivation forward.
-                _cfg_nodes = _sd.get("_config_nodes", {}) if isinstance(_sd, dict) else {}
+                _cfg_nodes = (
+                    _sd.get("_config_nodes", {}) if isinstance(_sd, dict) else {}
+                )
                 if _cfg_nodes:
+
                     def _fmt_mets(_m):
                         if isinstance(_m, dict):
-                            return ", ".join(f"{k}={round(v, 4)}" for k, v in list(_m.items())[:26])
+                            return ", ".join(
+                                f"{k}={round(v, 4)}" for k, v in list(_m.items())[:26]
+                            )
                         return ", ".join((_m or [])[:26])  # back-compat (keys only)
+
                     _cfg_lines = []
                     for _cfgid, _cn in list(_cfg_nodes.items())[:20]:
                         _envd = _cn.get("environment", {}) or {}
                         _envs = f"{_envd.get('cpu_model', '?')}/{_envd.get('executor', '?')}"
-                        _cfg_lines.append(f"  {_cfgid} [env {_envs}]: {_fmt_mets(_cn.get('metrics'))}")
+                        _cfg_lines.append(
+                            f"  {_cfgid} [env {_envs}]: {_fmt_mets(_cn.get('metrics'))}"
+                        )
                     experiment_summary += (
-                        "\n\nFORWARD-DECLARATION — CONFIG HANDLES (metric_key=recorded_value). For "
-                        "EVERY numeric RESULT you state in the paper, DECLARE its derivation on the "
-                        "LaTeX comment line immediately before the sentence:\n"
-                        "  % CLAIM:Cx:NCx metric=<metric_key> formula=<formula> <operands>\n"
-                        "COMPLETE example (an absolute value reported as-is): "
-                        "`% CLAIM:C3:NC3 metric=GB_per_s formula=identity value=cfg1`. "
-                        "formula MUST be one of the allowed names below, exactly as spelled "
-                        "(never invent e.g. formula=value); operands are bare k=v tokens with "
-                        "NO label prefix.\n"
-                        "operands: `value=cfgN` (formula=identity, an absolute value); or "
-                        "`baseline=cfgN proposed=cfgM` (a comparison of the SAME metric across "
-                        "configs); or `baseline=cfgN:metricA proposed=cfgN:metricB` (a ratio of "
-                        "TWO metrics of one config). "
-                        "Allowed formulas (EXACT meaning — pick the one whose result equals your "
-                        "number): identity=value; relative_gain=proposed/baseline (a higher-is-better "
-                        "value reported as N times a smaller baseline: baseline=cfg:<baseline> "
-                        "proposed=cfg:<better>); relative_speedup=baseline/proposed (a lower-is-better "
-                        "value, the baseline being N times the proposed); relative_increase_percent="
-                        "(proposed-baseline)/baseline*100; relative_reduction_percent="
-                        "(baseline-proposed)/baseline*100; relative_improvement_percent="
-                        "(baseline-proposed)/baseline*100; absolute_difference=proposed-baseline; "
-                        "ratio_percent=proposed/baseline*100. Use EXACT metric_key + cfg id from the table. "
-                        "CRITICAL: the gate RE-COMPUTES your declaration from the recorded values "
-                        "below, so the metric_key(s) you pick MUST be the one(s) whose recorded value "
-                        "equals the number you write. If no metric_key matches a number, do NOT state "
-                        "that number. Declare EVERY result number you write — not only the headline, but "
-                        "also baseline/reference values you cite for comparison and secondary metrics — "
-                        "leaving none ungrounded (a number repeated in the abstract/conclusion that you "
-                        "already declared in the body needs no second anchor). Do not compare across "
-                        "different execution environments unless the study is explicitly cross-architecture. "
-                        "Configs (each lists metric_key=value):\n"
+                        "\n\n"
+                        + _load_prompt("forward_declaration")
+                        + "\n"
                         + "\n".join(_cfg_lines)
                     )
             except Exception as _e_sd:
@@ -1332,28 +1395,62 @@ async def write_paper_iterative(
         if figures_manifest_json:
             try:
                 import json as _json
+
                 figs = _json.loads(figures_manifest_json)
                 fig_lines = []
                 # Handle both list [{filename,caption}] and dict {"fig_1": "/path", ...} formats
                 figs_raw = figs if isinstance(figs, list) else figs.get("figures", figs)
                 # Extract latex_snippets (authoritative captions from plot-skill)
-                _latex_snips = figs.get("latex_snippets", {}) if isinstance(figs, dict) else {}
+                _latex_snips = (
+                    figs.get("latex_snippets", {}) if isinstance(figs, dict) else {}
+                )
                 if isinstance(figs_raw, dict):
                     for i, (k, v) in enumerate(figs_raw.items()):
                         import os as _os_fig
+
                         fname_base = _os_fig.path.basename(str(v))
                         # Use real caption from latex_snippets if available
                         _snip = _latex_snips.get(k, "")
-                        cap_m = re.search(r"\\caption\{((?:[^{}]|\{[^{}]*\})*)\}", _snip)
-                        cap = cap_m.group(1) if cap_m else f"Figure {i+1}: Experimental results for {k}. See text for analysis."
-                        fig_lines.append({"path": str(v), "basename": fname_base, "caption": cap, "latex": _snip})
+                        cap_m = re.search(
+                            r"\\caption\{((?:[^{}]|\{[^{}]*\})*)\}", _snip
+                        )
+                        cap = (
+                            cap_m.group(1)
+                            if cap_m
+                            else f"Figure {i + 1}: Experimental results for {k}. See text for analysis."
+                        )
+                        label_m = re.search(r"\\label\{([^}]*)\}", _snip)
+                        fig_lines.append(
+                            {
+                                "path": str(v),
+                                "basename": fname_base,
+                                "caption": cap,
+                                "latex": _snip,
+                                "label": (
+                                    label_m.group(1) if label_m else f"fig:{i + 1}"
+                                ),
+                            }
+                        )
                 else:
-                    for fig in (figs_raw if isinstance(figs_raw, list) else []):
-                        fname = fig.get("filename", "") if isinstance(fig, dict) else str(fig)
+                    for fig in figs_raw if isinstance(figs_raw, list) else []:
+                        fname = (
+                            fig.get("filename", "")
+                            if isinstance(fig, dict)
+                            else str(fig)
+                        )
                         cap = fig.get("caption", "") if isinstance(fig, dict) else ""
                         if fname:
                             import os as _os_fig2
-                            fig_lines.append({"path": fname, "basename": _os_fig2.path.basename(fname), "caption": cap, "latex": ""})
+
+                            fig_lines.append(
+                                {
+                                    "path": fname,
+                                    "basename": _os_fig2.path.basename(fname),
+                                    "caption": cap,
+                                    "latex": "",
+                                    "label": f"fig:{len(fig_lines) + 1}",
+                                }
+                            )
                 if fig_lines:
                     # Give LLM authoritative LaTeX snippets to embed in Experiments section
                     ctx_lines = [
@@ -1370,7 +1467,9 @@ async def write_paper_iterative(
                                 f"  Figure {j}: filename={f['basename']}, caption={f['caption']!r}. "
                                 f"Use \\begin{{figure}}[htbp]\\centering\\includegraphics[width=0.9\\linewidth]{{{f['basename']}}}\\caption{{{f['caption']}}}\\label{{fig:{j}}}\\end{{figure}}"
                             )
-                        ctx_lines.append(f"  Reference inline as: Figure~\\ref{{fig:{j}}}")
+                        ctx_lines.append(
+                            f"  Reference inline as: Figure~\\ref{{{f['label']}}}"
+                        )
                     experiment_summary += "\n".join(ctx_lines)
             except Exception as _ef:
                 log.warning("Figure manifest parse failed: %s", _ef)
@@ -1381,7 +1480,7 @@ async def write_paper_iterative(
             e = experiment_summary.find("-->", s)
             if s < 0 or e < 0:
                 break
-            experiment_summary = experiment_summary[:s] + experiment_summary[e+3:]
+            experiment_summary = experiment_summary[:s] + experiment_summary[e + 3 :]
         experiment_summary = experiment_summary.strip()
 
         # ──────────────────────────────────────────────────────────────────────
@@ -1391,75 +1490,55 @@ async def write_paper_iterative(
         # in a single call. This avoids the figure/citation placement problems
         # of the section-by-section approach.
         # ──────────────────────────────────────────────────────────────────────
-        venue_info = next((v for v in VENUES if v["id"] == venue), None) or {"id": "arxiv", "name": "arXiv preprint", "pages": 99}
-        _author_display = author_name.strip() if author_name.strip() else "Autonomous Research Infrastructure"
+        venue_info = next((v for v in VENUES if v["id"] == venue), None)
+        if venue_info is None:
+            raise ValueError(f"unknown versioned paper venue: {venue}")
+        _author_display = (
+            author_name.strip()
+            if author_name.strip()
+            else "Autonomous Research Infrastructure"
+        )
 
         # Parse figures list for template
         _figs_for_tpl = []
         if figures_manifest_json:
             try:
                 import json as _jft
-                _fmc_t = _jft.loads(figures_manifest_json) if isinstance(figures_manifest_json, str) else figures_manifest_json
-                _figs_raw_t = _fmc_t.get("figures", _fmc_t) if isinstance(_fmc_t, dict) else {}
-                _snips_t = _fmc_t.get("latex_snippets", {}) if isinstance(_fmc_t, dict) else {}
-                import os as _os_t
-                # Detect generic captions and refine them with VLM or LLM
-                _GENERIC_CAP_PAT = re.compile(
-                    r"^\s*(experimental results|results for|see text)",
-                    re.IGNORECASE,
+
+                _fmc_t = (
+                    _jft.loads(figures_manifest_json)
+                    if isinstance(figures_manifest_json, str)
+                    else figures_manifest_json
+                )
+                _figs_raw_t = (
+                    _fmc_t.get("figures", _fmc_t) if isinstance(_fmc_t, dict) else {}
+                )
+                _snips_t = (
+                    _fmc_t.get("latex_snippets", {}) if isinstance(_fmc_t, dict) else {}
                 )
                 if isinstance(_figs_raw_t, dict):
                     for _ki, _vi in _figs_raw_t.items():
-                        _bn = _os_t.path.basename(str(_vi))
+                        _bn = str(_vi)
                         _snip = _snips_t.get(_ki, "")
-                        _cap_m = re.search(r"\\caption\{((?:[^{}]|\{[^{}]*\})*)\}", _snip)
-                        _cap = _sanitize_bfts_terms(_cap_m.group(1) if _cap_m else f"Experimental results for {_ki}. See text for analysis.")
-                        # If caption is generic, try VLM refinement on the figure
-                        if _GENERIC_CAP_PAT.search(_cap):
-                            _fig_path = Path(str(_vi))
-                            _png_path = _fig_path.with_suffix(".png")
-                            # Convert PDF to PNG if needed
-                            if not _png_path.exists() and _fig_path.exists() and _fig_path.suffix == ".pdf":
-                                try:
-                                    import fitz as _fitz_cap
-                                    _doc = _fitz_cap.open(str(_fig_path))
-                                    _pix = _doc[0].get_pixmap(dpi=150)
-                                    _pix.save(str(_png_path))
-                                    _doc.close()
-                                except Exception as _e_conv:
-                                    log.warning("PDF->PNG conversion failed for %s: %s", _ki, _e_conv)
-                            if _png_path.exists():
-                                try:
-                                    import base64 as _b64_cap
-                                    _img_data = _png_path.read_bytes()
-                                    _img_b64 = _b64_cap.b64encode(_img_data).decode()
-                                    _vlm_resp = await litellm.acompletion(
-                                        model=_get_model(),
-                                        messages=[{"role": "user", "content": [
-                                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{_img_b64}"}},
-                                            {"type": "text", "text": (
-                                                "Write a single LaTeX figure caption (1-3 sentences) for this scientific figure. "
-                                                "Be specific: mention actual axis labels, metric names, key values, trends. "
-                                                "Do NOT use generic phrases like 'experimental results'. "
-                                                f"Experiment context: {experiment_summary[:300]}\n"
-                                                "Output ONLY the caption text."
-                                            )},
-                                        ]}],
-                                    )
-                                    _vlm_cap = _vlm_resp.choices[0].message.content.strip().strip('"')
-                                    if _vlm_cap and len(_vlm_cap) > 15:
-                                        _cap = _escape_text_underscores(_sanitize_bfts_terms(_vlm_cap))
-                                        # Use a lambda to avoid backslash interpretation in replacement string
-                                        _new_caption_str = f"\\caption{{{_cap}}}"
-                                        _snip = re.sub(
-                                            r"\\caption\{(?:[^{}]|\{[^{}]*\})*\}",
-                                            lambda _m: _new_caption_str,
-                                            _snip,
-                                        )
-                                        log.info("Refined generic caption for %s via VLM", _ki)
-                                except Exception as _e_vlm:
-                                    log.warning("VLM caption refinement failed for %s: %s", _ki, _e_vlm)
-                        _figs_for_tpl.append({"basename": _bn, "caption": _cap, "latex": _sanitize_bfts_terms(_snip)})
+                        _cap_m = re.search(
+                            r"\\caption\{((?:[^{}]|\{[^{}]*\})*)\}", _snip
+                        )
+                        _cap = _sanitize_bfts_terms(
+                            _cap_m.group(1)
+                            if _cap_m
+                            else f"Experimental results for {_ki}. See text for analysis."
+                        )
+                        _label_m = re.search(r"\\label\{([^}]*)\}", _snip)
+                        _figs_for_tpl.append(
+                            {
+                                "basename": _bn,
+                                "caption": _cap,
+                                "latex": _snip,
+                                "label": (
+                                    _label_m.group(1) if _label_m else ""
+                                ),
+                            }
+                        )
             except Exception as _et:
                 log.warning("Template figures parse failed: %s", _et)
 
@@ -1471,52 +1550,66 @@ async def write_paper_iterative(
             author_name=_author_display,
             experiment_summary=experiment_summary,
         )
+        _template_artifact = artifact_from_payload(
+            _authoring_inputs.workspace,
+            role="template",
+            relative_path=f".ari-paper/contracts/{venue}-template.tex",
+            payload=latex_template.encode("utf-8"),
+            media_type="text/x-tex; charset=utf-8",
+        )
+        _rubric_payload = Path(_rubric_contract.source_path).read_bytes()
+        _rubric_artifact = artifact_from_payload(
+            _authoring_inputs.workspace,
+            role="rubric",
+            relative_path=f".ari-paper/contracts/{_rubric_contract.id}.yaml",
+            payload=_rubric_payload,
+            media_type="application/yaml",
+        )
 
         # Build comprehensive context for the LLM
         refs_context = ""
-        if refs_json:
+        if refs_json and _authoring_inputs.manuscript_binding is None:
             try:
-                _refs_data = json.loads(refs_json) if isinstance(refs_json, str) else refs_json
+                _refs_data = (
+                    json.loads(refs_json) if isinstance(refs_json, str) else refs_json
+                )
                 _papers = _refs_data.get("papers", [])
                 _bib_ct, _bib_kt = _build_bib_content(refs_json)
                 _key_map = {i: k for i, (k, _) in enumerate(_bib_kt)}
                 lines = ["AVAILABLE REFERENCES (cite with \\cite{key}):"]
                 for _ri, _rp in enumerate(_papers[:12], 1):
-                    _rk = _key_map.get(_ri-1, str(_ri))
-                    lines.append(f"  \\cite{{{_rk}}}  {_rp.get('title','')[:80]}")
-                    lines.append(f"    {_rp.get('abstract','')[:150]}")
+                    _rk = _key_map.get(_ri - 1, str(_ri))
+                    lines.append(f"  \\cite{{{_rk}}}  {_rp.get('title', '')[:80]}")
+                    lines.append(f"    {_rp.get('abstract', '')[:150]}")
                 refs_context = "\n".join(lines)
             except Exception as _er:
                 log.warning("Refs context failed: %s", _er)
 
-        # Verified context (artifact-grounded claims). Read the PATH directly so
-        # this does NOT touch the write_paper stage's load_inputs / dep resolution
-        # (the verified_context wiring must not perturb the claim-stage topology).
+        # Verified context was already loaded through the closed workspace.
         _grounded_block = ""
-        if verified_context_json:
+        if (
+            _authoring_inputs.manuscript_binding is None
+            and _authoring_inputs.verified_context is not None
+        ):
             try:
-                import json as _json_vc
-                from pathlib import Path as _Path_vc
-                _vc_data = None
-                _vp = _Path_vc(verified_context_json)
-                if _vp.is_file():
-                    _vc_data = _json_vc.loads(_vp.read_text())
-                elif verified_context_json.lstrip().startswith("{"):
-                    _vc_data = _json_vc.loads(verified_context_json)
-                if isinstance(_vc_data, dict):
-                    try:
-                        from ari.public.verified_context import render_grounded_block as _rgb
-                        _grounded_block = _rgb(_vc_data)
-                    except Exception as _e_rgb:
-                        log.warning("render_grounded_block unavailable: %s", _e_rgb)
+                from ari.public.verified_context import render_grounded_block as _rgb
+
+                _grounded_block = _rgb(_authoring_inputs.verified_context)
             except Exception as _e_vc:
-                log.warning("verified_context read failed: %s", _e_vc)
+                log.warning("verified context render failed: %s", _e_vc)
 
         # Single LLM call to fill the entire template
         _system_prompt_a = (
             f"You are an expert academic writer. Fill in ALL the FILL_*_START ... FILL_*_END "
             f"placeholder blocks in the provided LaTeX template. Target venue: {venue_info['name']}. "
             + _load_prompt("fill_in_writer")
+            + (
+                "\nVENUE RUBRIC AUTHOR GUIDANCE:\n"
+                + _rubric_contract.author_hint.strip()
+                + "\nEND VENUE RUBRIC AUTHOR GUIDANCE\n"
+                if _rubric_contract.author_hint.strip()
+                else ""
+            )
             + _paper_language_directive()
             + _grounded_block
         )
@@ -1530,45 +1623,40 @@ async def write_paper_iterative(
             "model": _get_model(),
             "messages": [
                 {"role": "system", "content": _system_prompt_a},
-                {"role": "user",   "content": _user_prompt_a},
+                {"role": "user", "content": _user_prompt_a},
             ],
-            "temperature": 0.7, "max_tokens": 16384,
+            "temperature": 0.7,
+            "max_tokens": 16384,
         }
+        if decode_seed:
+            _kw_a["seed"] = int(decode_seed)
         _apib_a = _get_api_base()
         if _apib_a:
             _kw_a["api_base"] = _apib_a
         _resp_a = await litellm.acompletion(**_kw_a)
         _raw_a = _resp_a.choices[0].message.content or ""
+        _initial_call = _authoring_recorder.record_call(
+            purpose="initial-authoring",
+            prompt=_paper_json_bytes(
+                {
+                    "messages": _kw_a["messages"],
+                    "temperature": _kw_a["temperature"],
+                    "max_tokens": _kw_a["max_tokens"],
+                }
+            ),
+            raw_response=_raw_a.encode("utf-8"),
+            response=_resp_a,
+            model=str(_kw_a["model"]),
+            sampling={"temperature": _kw_a["temperature"]},
+        )
         if "</think>" in _raw_a:
             _raw_a = _raw_a.split("</think>")[-1]
-        full_latex = _extract_latex(_raw_a) or _fill_template_with_llm_output(latex_template, _raw_a)
+        full_latex = _extract_latex(_raw_a) or _fill_template_with_llm_output(
+            latex_template, _raw_a
+        )
         if not full_latex:
             full_latex = latex_template  # fallback to template with placeholders
         full_latex = _escape_text_underscores(full_latex)
-
-        # Post-process: restore refined captions that LLM may have overwritten.
-        # For each figure in _figs_for_tpl, find the corresponding \begin{figure}
-        # block in full_latex and replace its \caption{} with the refined one.
-        for _fig_info in _figs_for_tpl:
-            _ref_cap = _fig_info.get("caption", "")
-            _ref_bn = _fig_info.get("basename", "")
-            if not _ref_cap or not _ref_bn:
-                continue
-            # Skip if the caption is itself generic (refinement failed)
-            if re.search(r"^\s*(experimental results|results for|see text)", _ref_cap, re.IGNORECASE):
-                continue
-            # Find the figure block containing this file and replace its caption
-            _fig_pattern = re.compile(
-                r"(\\begin\{figure\}.*?\\includegraphics[^}]*\{" + re.escape(_ref_bn) + r"\}.*?)"
-                r"\\caption\{(?:[^{}]|\{[^{}]*\})*\}"
-                r"(.*?\\end\{figure\})",
-                re.DOTALL,
-            )
-            _replacement = rf"\1\\caption{{{_ref_cap}}}\2"
-            _new_latex = _fig_pattern.sub(lambda m: m.group(1) + f"\\caption{{{_ref_cap}}}" + m.group(2), full_latex, count=1)
-            if _new_latex != full_latex:
-                full_latex = _new_latex
-                log.info("Restored refined caption for %s", _ref_bn)
 
         # Populate dummy sections/reviews dicts for compat with downstream code
         sections = {}
@@ -1576,172 +1664,115 @@ async def write_paper_iterative(
         revision_counts = {}
         log.info("Option A: template filled, %d chars", len(full_latex))
 
-        # Build bib_content and key_list needed by _compile_in_tmpdir and return value
+        # Build the exact bibliography admitted by the retrieval snapshot.
         bib_content, key_list = _build_bib_content(refs_json)
         # Remove cite keys not in bib to prevent undefined citation errors
         if bib_content:
             full_latex = _strip_invalid_cite_keys(full_latex, bib_content)
 
-                # ─── Option C: post-assembly figure injection (if LLM didn't place inline)
-        _has_bare_graphics = ("\\includegraphics" in full_latex and "\\begin{figure}" not in full_latex)
-        if ("\\includegraphics" not in full_latex or _has_bare_graphics) and figures_manifest_json:
-            try:
-                import json as _jfig_c, os as _os_fig, re as _re_fig
-                _fmc = _jfig_c.loads(figures_manifest_json) if isinstance(figures_manifest_json, str) else figures_manifest_json
-                _figs_c = _fmc.get("figures", {}) if isinstance(_fmc, dict) else {}
-                _snips_c = _fmc.get("latex_snippets", {}) if isinstance(_fmc, dict) else {}
-                if _figs_c and _has_bare_graphics:
-                    # Direct replacement: wrap bare \includegraphics lines in figure environments
-                    import re as _bre
-                    def _wrap_inc(m):
-                        fname = m.group(1)
-                        key = _bre.sub(r"\.pdf$", "", fname)
-                        snip = _snips_c.get(key, "")
-                        if snip and "\\begin{figure}" in snip:
-                            return snip
-                        cap = f"Experimental results for {key}. See text for analysis."
-                        return (f"\\begin{{figure}}[htbp]\n\\centering\n"
-                                f"\\includegraphics[width=0.85\\linewidth]{{{fname}}}\n"
-                                f"\\caption{{{cap}}}\n\\label{{fig:{key}}}\n\\end{{figure}}")
-                    full_latex = _bre.sub(
-                        r"\\includegraphics\[[^\]]*\]\{([^}]+)\}",
-                        _wrap_inc, full_latex)
-                    log.info("Direct figure wrap: replaced bare \\includegraphics with figure environments")
-                if _figs_c and not _has_bare_graphics:
-                    _fig_list = []
-                    for _i, (_k, _fp) in enumerate(_figs_c.items(), 1):
-                        _fn = _os_fig.path.basename(str(_fp))
-                        _snip = _snips_c.get(_k, "")
-                        _cap_m = _re_fig.search(r"\\caption\{((?:[^{}]|\{[^{}]*\})*)\}", _snip)
-                        cap = _cap_m.group(1) if _cap_m else f"Figure {_i}: Experimental results for {_k}. See text for analysis."
-                        _fig_list.append(f"Figure {_i}: file={_fn}, caption={cap!r}")
-                    _fig_inject_prompt = (
-                        "The paper below is missing all figure inclusions. "
-                        "Insert the following figures at the most appropriate locations in the Experiments/Results section "
-                        "(NOT as a separate Figures section at the end). "
-                        "Each figure should appear right after the paragraph that discusses its content.\n\n"
-                        "Available figures:\n" + "\n".join(_fig_list) + "\n\n"
-                        "Use the LaTeX figure environment:\n"
-                        r"\begin{figure}[H]\centering\includegraphics[width=0.85\linewidth]{FILENAME}"
-                        "\n"
-                        r"\caption{CAPTION}\label{fig:N}\end{figure}"
-                        "\n\nReturn the COMPLETE revised LaTeX document in ```latex ... ``` fences."
-                    )
-                    _kw_fig = {
-                        "model": _get_model(),
-                        "messages": [
-                            {"role": "system", "content": _load_prompt("figure_inserter")},
-                            {"role": "user", "content": _fig_inject_prompt + "\n\nPaper:\n```latex\n" + full_latex + "\n```"},
-                        ],
-                        "temperature": 0.1, "max_tokens": 16384,
-                    }
-                    _apib_fig = _get_api_base()
-                    if _apib_fig:
-                        _kw_fig["api_base"] = _apib_fig
-                    _resp_fig = await litellm.acompletion(**_kw_fig)
-                    _raw_fig = _resp_fig.choices[0].message.content or ""
-                    if "</think>" in _raw_fig:
-                        _raw_fig = _raw_fig.split("</think>")[-1]
-                    _new_fig_latex = _extract_latex(_raw_fig)
-                    if _new_fig_latex and len(_new_fig_latex) > len(full_latex) * 0.8 and "\\includegraphics" in _new_fig_latex:
-                        full_latex = _new_fig_latex
-                        log.info("Figure injection pass: %d figures embedded inline", len(_figs_c))
-            except Exception as _fig_e:
-                log.warning("Figure injection pass failed: %s", _fig_e)
+        # FigureBatch owns figure paths, captions, values, and labels. Restore
+        # the entire environment even when the model kept the file but rewrote
+        # its caption/label; omission-only repair was insufficient.
+        _authoritative_figure_snippets = tuple(
+            _authoring_inputs.figures.latex_snippets.values()
+        )
+        full_latex = _restore_authoritative_figure_snippets(
+            full_latex,
+            _authoritative_figure_snippets,
+        )
 
         # ─── AI Scientist v2: compile + reflection loop
         # _msg_history starts with the assembled full paper so reflection LLM has context
         _system_prompt = (
-            _load_prompt("paper_writer")
+            (writer_prompt_override or _load_prompt("paper_writer"))
             + _paper_language_directive()
         )
         # msg_history starts with the assembled full paper as 'assistant' turn
         # This mimics v2's approach where reflection LLM knows what it wrote
         _msg_history: list = [
-            {"role": "user", "content": f"Write a scientific LaTeX paper for this experiment:\n{experiment_summary[:15000]}"},
+            {
+                "role": "user",
+                "content": f"Write a scientific LaTeX paper for this experiment:\n{experiment_summary[:15000]}",
+            },
             {"role": "assistant", "content": f"```latex\n{full_latex}\n```"},
         ]
-        # v2 reference: perform_writeup.py compile_latex() + reflection rounds
-        # Key difference from naive approach: msg_history is preserved so LLM
-        # knows what it wrote and performs targeted fixes (not full replacement).
-        import tempfile as _tmpmod, shutil as _shutil, subprocess as _spmod, os as _os2
 
-        async def _compile_in_tmpdir(latex_text: str) -> tuple[list[str], str, bool]:
-            """pdflatex -> bibtex -> pdflatex -> pdflatex. Returns (errors, chktex_out, bbl_ok)."""
-            _td = _tmpmod.mkdtemp(prefix="ari_paper_")
-            _pdflatex = _os2.environ.get("PDFLATEX_PATH", "pdflatex")
-            _bibtex   = _os2.environ.get("BIBTEX_PATH", "bibtex")
-            # Copy figures
-            if figures_manifest_json:
-                try:
-                    import json as _jj_c, shutil as _sh_c
-                    _fmc = _jj_c.loads(figures_manifest_json) if isinstance(figures_manifest_json, str) else figures_manifest_json
-                    for _fp in ((_fmc.get("figures", {}) or {}).values() if isinstance(_fmc, dict) else []):
-                        _fp = str(_fp)
-                        if _os2.path.exists(_fp): _sh_c.copy2(_fp, _td)
-                except Exception: pass
-            _tp = Path(_td) / "full_paper.tex"
-            _tp.write_text(latex_text)
-            if bib_content:
-                (Path(_td) / "refs.bib").write_text(bib_content)
-            _errs = []
-            _bbl_ok = False
-            for _cmd in [
-                [_pdflatex, "-interaction=nonstopmode", "full_paper.tex"],
-                ([_bibtex, "full_paper"] if bib_content else None),
-                [_pdflatex, "-interaction=nonstopmode", "full_paper.tex"],
-                [_pdflatex, "-interaction=nonstopmode", "full_paper.tex"],
-            ]:
-                if _cmd is None: continue
-                try:
-                    _r = await asyncio.to_thread(_spmod.run, _cmd, cwd=_td,
-                                                 capture_output=True, text=True, timeout=90)
-                    if _cmd[0] == _pdflatex:
-                        _lines = _r.stdout.splitlines()
-                    _errs.extend([l for l in _lines if l.startswith("!")])
-                    # Also capture undefined-reference and undefined-citation warnings
-                    _errs.extend([l for l in _lines
-                                  if "LaTeX Warning:" in l and
-                                  ("undefined" in l or "Citation" in l)])
-                except Exception as _e:
-                    log.warning("compile cmd %s failed: %s", _cmd[0], _e)
-            _bbl = Path(_td) / "full_paper.bbl"
-            _bbl_ok = _bbl.exists() and _bbl.stat().st_size > 100
-            # chktex (non-fatal, diagnostic only)
-            _chktex_out = ""
-            try:
-                _ck = await asyncio.to_thread(_spmod.run,
-                    ["chktex", str(_tp), "-q", "-n2", "-n24", "-n13", "-n1"],
-                    capture_output=True, text=True, timeout=15)
-                _chktex_out = (_ck.stdout or "")[:600]
-            except Exception: pass
-            # _td is not cleaned up here — caller reads PDF/log then cleans up
-            return (_errs[-3:], _chktex_out, _bbl_ok, _td)
+        # Compile through the shared bounded execution contract.  The authoring
+        # loop never launches subprocesses or guesses figure siblings itself.
+        async def _compile_draft(latex_text: str):
+            _authoring_inputs.workspace.atomic_write_text(
+                "paper_preview.tex",
+                latex_text,
+            )
+            _authoring_inputs.workspace.atomic_write_text("refs.bib", bib_content)
+            outcome = await asyncio.to_thread(
+                compile_project,
+                workspace=_authoring_inputs.workspace,
+                main_file="paper_preview.tex",
+                bib_file="refs.bib" if bib_content else None,
+                figures=_authoring_inputs.figures,
+                output_pdf="full_paper.pdf",
+                output_bbl="full_paper.bbl",
+                timeout_seconds=90,
+            )
+            return (
+                list(outcome.diagnostics[-3:]),
+                "",
+                outcome.bbl_path is not None,
+                outcome,
+            )
+
+        _authoring_recorder.record_revision(
+            tex=full_latex,
+            bib=bib_content,
+            reason="initial",
+            call_id=_initial_call.call_id,
+        )
 
         # Initial compile
-        _errs, _chktex, _bbl_ok, _tmpdir = await _compile_in_tmpdir(full_latex)
+        _errs, _chktex, _bbl_ok, _compile_outcome = await _compile_draft(full_latex)
         log.info("Initial compile: errors=%s bbl_ok=%s", _errs, _bbl_ok)
 
         # ── v2 reflection rounds (msg_history preserved) ──────────────────────────
-        _n_reflections = max(1, max_revision_rounds)  # from workflow.yaml max_revision_rounds
+        _n_reflections = max(
+            1, max_revision_rounds
+        )  # from workflow.yaml max_revision_rounds
         for _ri in range(_n_reflections):
             # Build figure usage info (v2 style)
-            import re as _re_fig, os as _os_fig
-            _refs_in_paper = set(_os_fig.path.basename(f)
-                for f in _re_fig.findall(r'\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}', full_latex))
+            import re as _re_fig
+            import os as _os_fig
+
+            _refs_in_paper = set(
+                _os_fig.path.basename(f)
+                for f in _re_fig.findall(
+                    r"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}", full_latex
+                )
+            )
             _avail_figs: set = set()
             if figures_manifest_json:
                 try:
                     import json as _jjr
-                    _fmr = _jjr.loads(figures_manifest_json) if isinstance(figures_manifest_json, str) else figures_manifest_json
-                    _avail_figs = set(_os_fig.path.basename(str(v))
-                        for v in ((_fmr.get("figures", {}) or {}).values() if isinstance(_fmr, dict) else []))
-                except Exception: pass
+
+                    _fmr = (
+                        _jjr.loads(figures_manifest_json)
+                        if isinstance(figures_manifest_json, str)
+                        else figures_manifest_json
+                    )
+                    _avail_figs = set(
+                        _os_fig.path.basename(str(v))
+                        for v in (
+                            (_fmr.get("figures", {}) or {}).values()
+                            if isinstance(_fmr, dict)
+                            else []
+                        )
+                    )
+                except Exception:
+                    pass
             _unused = sorted(_avail_figs - _refs_in_paper)
             _invalid = sorted(_refs_in_paper - _avail_figs)
 
             _reflection_prompt = (
-                f"Reflection round {_ri+1}/{_n_reflections}. Review the LaTeX you just wrote:\n"
+                f"Reflection round {_ri + 1}/{_n_reflections}. Review the LaTeX you just wrote:\n"
                 f"1) LaTeX compile errors and warnings (fix ALL): {_errs if _errs else 'none'}\n"
                 f"2) BibTeX: {'OK (bibliography compiled)' if _bbl_ok else 'FAILED — refs.bib may be missing or cite keys mismatch. Do NOT try to fix this by replacing bibliography commands with thebibliography environment — the build system will handle BibTeX compilation.'}\n"
                 f"3) Figures available but not referenced in paper: {_unused}\n"
@@ -1750,6 +1781,13 @@ async def write_paper_iterative(
                 f"\nNote: if there are undefined \\ref{{}} warnings, fix the \\label{{}} names to match.\n"
                 f"IMPORTANT: NEVER replace \\bibliographystyle{{...}} or \\bibliography{{refs}} with "
                 f"\\begin{{thebibliography}}...\\end{{thebibliography}}. Keep BibTeX commands as-is.\n"
+                f"SCIENTIFIC CONTRACT: preserve every existing `% CLAIM:Cx:NCx ...` "
+                f"comment VERBATIM, including metric=, formula=, and operand tokens, "
+                f"and preserve every occurrence. A revision that changes or drops one "
+                f"will be rejected.\n"
+                f"FIGURE CONTRACT: preserve every existing figure environment "
+                f"VERBATIM; renderer-owned paths, captions, values, and labels may "
+                f"not be edited. A changed/added/removed figure block will be rejected.\n"
                 f"If everything is correct, say: I am done\n"
                 f"Otherwise, provide a revised complete LaTeX document in ```latex ... ``` fences.\n"
                 f"Do NOT hallucinate results, hardware specs, or citations not in the provided data.\n"
@@ -1764,20 +1802,40 @@ async def write_paper_iterative(
                     *_msg_history,
                     {"role": "user", "content": _reflection_prompt},
                 ],
-                "temperature": 0.3, "max_tokens": 16384,
+                "temperature": 0.3,
+                "max_tokens": 16384,
             }
+            if decode_seed:
+                _kw_ref["seed"] = int(decode_seed)
             _apib2 = _get_api_base()
             if _apib2:
                 _kw_ref["api_base"] = _apib2
             try:
                 _resp_r = await litellm.acompletion(**_kw_ref)
                 _raw_r = _resp_r.choices[0].message.content or ""
+                _reflection_call = _authoring_recorder.record_call(
+                    purpose="reflection",
+                    prompt=_paper_json_bytes(
+                        {
+                            "messages": _kw_ref["messages"],
+                            "temperature": _kw_ref["temperature"],
+                            "max_tokens": _kw_ref["max_tokens"],
+                        }
+                    ),
+                    raw_response=_raw_r.encode("utf-8"),
+                    response=_resp_r,
+                    model=str(_kw_ref["model"]),
+                    sampling={"temperature": _kw_ref["temperature"]},
+                )
                 if "</think>" in _raw_r:
                     _raw_r = _raw_r.split("</think>")[-1].strip()
                 # Force continue if hard LaTeX errors still present (ignore "I am done")
-                _still_has_errors = any('Missing $' in e or 'Extra }' in e or 'undefined' in e for e in _errs)
+                _still_has_errors = any(
+                    "Missing $" in e or "Extra }" in e or "undefined" in e
+                    for e in _errs
+                )
                 if "I am done" in _raw_r and not _still_has_errors:
-                    log.info("v2 reflection %d: LLM says done", _ri+1)
+                    log.info("v2 reflection %d: LLM says done", _ri + 1)
                     break
                 _new_latex = _extract_latex(_raw_r)
                 if _new_latex and bib_content:
@@ -1785,6 +1843,7 @@ async def write_paper_iterative(
                 if _new_latex and len(_new_latex) > len(full_latex) * 0.7:
                     # v2 cleanup_map: fix common LLM LaTeX mistakes (from perform_writeup.py)
                     import re as _re_cleanup
+
                     _cleanup_map = {
                         "</end": r"\end",
                         "</begin": r"\begin",
@@ -1793,7 +1852,9 @@ async def write_paper_iterative(
                     for _bad, _repl in _cleanup_map.items():
                         _new_latex = _new_latex.replace(_bad, _repl)
                     # v2: fix bare % in numbers (e.g., "5%" → "5\%")
-                    _new_latex = _re_cleanup.sub(r"(\d+(?:\.\d+)?)%", r"\1\\%", _new_latex)
+                    _new_latex = _re_cleanup.sub(
+                        r"(\d+(?:\.\d+)?)%", r"\1\\%", _new_latex
+                    )
                     # Guard: if LLM replaced \bibliography{refs} with \begin{thebibliography},
                     # revert to BibTeX commands so the build pipeline can generate .bbl properly.
                     if r"\begin{thebibliography}" in _new_latex and bib_content:
@@ -1803,108 +1864,110 @@ async def write_paper_iterative(
                             _new_latex,
                             flags=_re_cleanup.DOTALL,
                         )
-                        log.warning("v2 reflection %d: reverted thebibliography to \\bibliography{refs}", _ri+1)
+                        log.warning(
+                            "v2 reflection %d: reverted thebibliography to \\bibliography{refs}",
+                            _ri + 1,
+                        )
+                    if not _preserves_claim_comment_contract(full_latex, _new_latex):
+                        missing = _claim_comment_contract(full_latex) - _claim_comment_contract(
+                            _new_latex
+                        )
+                        log.warning(
+                            "v2 reflection %d: rejected revision that changed or dropped "
+                            "%d scientific claim declaration(s)",
+                            _ri + 1,
+                            sum(missing.values()),
+                        )
+                        continue
+                    if not _preserves_figure_block_contract(full_latex, _new_latex):
+                        log.warning(
+                            "v2 reflection %d: rejected revision that changed, added, "
+                            "or dropped a renderer-owned figure block",
+                            _ri + 1,
+                        )
+                        continue
                     full_latex = _new_latex
-                    log.info("v2 reflection %d: updated latex (%d chars)", _ri+1, len(full_latex))
+                    log.info(
+                        "v2 reflection %d: updated latex (%d chars)",
+                        _ri + 1,
+                        len(full_latex),
+                    )
                     # Update msg_history for next round
                     _msg_history.append({"role": "user", "content": _reflection_prompt})
                     _msg_history.append({"role": "assistant", "content": _raw_r})
-                    _errs, _chktex, _bbl_ok, _tmpdir = await _compile_in_tmpdir(full_latex)
+                    _authoring_recorder.record_revision(
+                        tex=full_latex,
+                        bib=bib_content,
+                        reason="reflection",
+                        call_id=_reflection_call.call_id,
+                    )
+                    _errs, _chktex, _bbl_ok, _compile_outcome = await _compile_draft(
+                        full_latex
+                    )
                 else:
-                    log.warning("v2 reflection %d: LLM produced too-small output (%d chars), skipping", _ri+1, len(_new_latex))
+                    log.warning(
+                        "v2 reflection %d: LLM produced too-small output (%d chars), skipping",
+                        _ri + 1,
+                        len(_new_latex),
+                    )
                     break
             except Exception as _re:
-                log.warning("v2 reflection %d failed: %s", _ri+1, _re)
+                log.warning("v2 reflection %d failed: %s", _ri + 1, _re)
                 break
-        # Copy compiled PDF to output location before cleanup
-        _pdf_in_tmp = Path(_tmpdir) / "full_paper.pdf"
-        if _pdf_in_tmp.exists():
-            import os as _os_pdf
-            _ckpt_dir = _os_pdf.path.dirname(figures_manifest_json.get("ckpt_path","")) if isinstance(figures_manifest_json, dict) else ""
-            # Try to infer ckpt dir from nodes_json_path
-            if not _ckpt_dir and nodes_json_path:
-                _ckpt_dir = str(Path(nodes_json_path).parent)
-            if _ckpt_dir and Path(_ckpt_dir).is_dir():
-                _pdf_dest = Path(_ckpt_dir) / "full_paper.pdf"
-                _shutil.copy2(str(_pdf_in_tmp), str(_pdf_dest))
-                log.info("Copied compiled PDF to %s", _pdf_dest)
-                # Also copy .tex and .bbl so skip_if_exists works and citations are visible
-                _tex_in_tmp = Path(_tmpdir) / "full_paper.tex"
-                _bbl_in_tmp = Path(_tmpdir) / "full_paper.bbl"
-                if _tex_in_tmp.exists():
-                    _shutil.copy2(str(_tex_in_tmp), str(Path(_ckpt_dir) / "full_paper.tex"))
-                if _bbl_in_tmp.exists():
-                    _shutil.copy2(str(_bbl_in_tmp), str(Path(_ckpt_dir) / "full_paper.bbl"))
-        # ── AI Scientist v2-style evaluation: check compile quality ──────────────────
-        _bbl_path = Path(_tmpdir) / "full_paper.bbl"
-        _log_path = Path(_tmpdir) / "full_paper.log"
-        _bbl_ok   = _bbl_path.exists() and _bbl_path.stat().st_size > 100
-        _undef_cites = []
-        if _log_path.exists():
-            _log_txt = _log_path.read_text(errors='ignore')
-            _undef_cites = [l for l in _log_txt.splitlines()
-                            if 'Citation' in l and ('undefined' in l or 'empty' in l)]
+        # Compile diagnostics are complete content-addressed artifacts.  Keep
+        # citation repair deterministic and limited to keys admitted by refs.bib.
+        _undef_cites = [
+            line
+            for line in _compile_outcome.diagnostics
+            if "Citation" in line and ("undefined" in line or "empty" in line)
+        ]
         if not _bbl_ok or _undef_cites:
-            log.warning("Compile: bbl_ok=%s, undefined_cites=%s", _bbl_ok, _undef_cites[:3])
+            log.warning(
+                "Compile: bbl_ok=%s, undefined_cites=%s", _bbl_ok, _undef_cites[:3]
+            )
             # Targeted fix: replace entire \cite{} group if keys unknown, keep rest of paper
             if _undef_cites and key_list:
                 _valid_keys = [k for k, _ in key_list]
+
                 def _replace_bad_cite(m):
                     # Keep only valid keys from the cite group
-                    keys = [k.strip() for k in m.group(1).split(',')]
+                    keys = [k.strip() for k in m.group(1).split(",")]
                     good = [k for k in keys if k in _valid_keys]
-                    return (r'\cite{' + ', '.join(good) + '}') if good else ''
-                import re as _re_cit
-                full_latex = _re_cit.sub(r'\\cite\{([^}]+)\}', _replace_bad_cite, full_latex)
-                log.info("Filtered invalid cite keys; valid keys=%s", _valid_keys[:5])
-        _shutil.rmtree(_tmpdir, ignore_errors=True)
+                    return (r"\cite{" + ", ".join(good) + "}") if good else ""
 
-        # Fallback: if LLM didn't embed figures, append them at end (suboptimal but safe)
-        _has_bare_graphics = ("\\includegraphics" in full_latex and "\\begin{figure}" not in full_latex)
-        if ("\\includegraphics" not in full_latex or _has_bare_graphics) and figures_manifest_json:
-            try:
-                import json as _jj3, os as _os4
-                _fm3 = _jj3.loads(figures_manifest_json) if isinstance(figures_manifest_json, str) else figures_manifest_json
-                _figs3 = _fm3.get("figures", {}) if isinstance(_fm3, dict) else {}
-                if isinstance(_figs3, dict) and _figs3:
-                    # Insert each figure inline in Experiments/Results section (not at end)
-                    _target_sections = ["\\section{Experiments}", "\\section{Results}", "\\section{Experiment}"]
-                    _insert_after = None
-                    for _sec in _target_sections:
-                        if _sec in full_latex:
-                            _insert_after = _sec
-                            break
-                    if not _insert_after:
-                        _insert_after = "\\section{Conclusion}"
-                    _fblk = ""
-                    for _i3, (_k3, _fp3) in enumerate(_figs3.items(), 1):
-                        _fn3 = _os4.path.basename(str(_fp3))
-                        _fblk += (
-                            "\n\\begin{figure}[H]\n"
-                            "  \\centering\n"
-                            "  \\includegraphics[width=0.85\\linewidth]{" + _fn3 + "}\n"
-                            "  \\caption{Figure " + str(_i3) + ": Performance results.}\n"
-                            "  \\label{fig:" + str(_i3) + "}\n"
-                            "\\end{figure}\n"
-                        )
-                    # Find end of Experiments section (before Conclusion)
-                    _conc_idx = full_latex.find("\\section{Conclusion}")
-                    if _conc_idx > 0:
-                        full_latex = full_latex[:_conc_idx] + _fblk + "\n" + full_latex[_conc_idx:]
-                    else:
-                        ins = "\\bibliographystyle" if "\\bibliographystyle" in full_latex else "\\end{document}"
-                        full_latex = full_latex.replace(ins, _fblk + "\n" + ins, 1)
-                    log.info("Inserted %d figures before Conclusion", len(_figs3))
-            except Exception as _fe3:
-                log.warning("Figure re-insertion failed: %s", _fe3)
+                import re as _re_cit
+
+                full_latex = _re_cit.sub(
+                    r"\\cite\{([^}]+)\}", _replace_bad_cite, full_latex
+                )
+                log.info("Filtered invalid cite keys; valid keys=%s", _valid_keys[:5])
 
         # Normalize bibliography name: LLM may write \bibliography{references} instead of {refs}
         import re as _re_bib2
-        full_latex = _re_bib2.sub(r"\\bibliography\{[^}]+\}", r"\\bibliography{refs}", full_latex)
+
+        full_latex = _re_bib2.sub(
+            r"\\bibliography\{[^}]+\}", r"\\bibliography{refs}", full_latex
+        )
         # Ensure \end{document} is present (LLM fix or re-insertion may have stripped it)
         if "\\end{document}" not in full_latex:
             full_latex = full_latex.rstrip() + "\n\\end{document}\n"
             log.warning("Re-added missing \\end{document}")
+
+        _authoring_recorder.record_revision(
+            tex=full_latex,
+            bib=bib_content,
+            reason="refinement",
+            call_id=None,
+        )
+        _draft_build = _authoring_recorder.draft_build(
+            venue_id=venue,
+            venue_version="ari-venue-template/v1",
+            template_artifact=_template_artifact,
+            rubric_id=_rubric_contract.id,
+            rubric_version=_rubric_contract.version,
+            rubric_artifact=_rubric_artifact,
+            compile_record=_compile_outcome.record,
+        )
 
         return {
             "latex": full_latex,
@@ -1913,22 +1976,18 @@ async def write_paper_iterative(
             "revision_counts": revision_counts,
             "bib": bib_content,
             "key_list": list(key_list),
+            "paper_build": _draft_build.model_dump(mode="json"),
         }
 
     except Exception as _ewpi:
-        # Write traceback to file (bypasses stdio capture in MCP server)
-        _tb_file = str(Path(__file__).parents[3] / "logs" / "ari_wpi_traceback.txt")
-        try:
-            with open(_tb_file, "w") as _f:
-                _f.write(_tb_wpi.format_exc())
-        except Exception:
-            pass
         import sys as _sys_wpi
-        _sys_wpi.stderr.write("=== write_paper_iterative TRACEBACK ===\n" + _tb_wpi.format_exc() + "\n")
-        _sys_wpi.stderr.flush()
-        log.error("write_paper_iterative TRACEBACK (also in %s):\n%s", _tb_file, _tb_wpi.format_exc())
-        raise
 
+        _sys_wpi.stderr.write(
+            "=== write_paper_iterative TRACEBACK ===\n" + _tb_wpi.format_exc() + "\n"
+        )
+        _sys_wpi.stderr.flush()
+        log.error("write_paper_iterative traceback:\n%s", _tb_wpi.format_exc())
+        raise
 
 
 async def _litellm_caller(
@@ -1936,13 +1995,17 @@ async def _litellm_caller(
 ) -> str:
     """LLM adapter used by review_engine to call the project's default backend."""
     import json as _json2  # noqa: F401
+
     _kw = {
-        "model": model or _get_model(),
+        "model": model or _get_model("rubric"),
         "messages": messages,
         "temperature": float(temperature),
         "max_tokens": 8192,
     }
-    _apib = _get_api_base()
+    panel_seed = os.environ.get("ARI_PANEL_SEED", "").strip()
+    if panel_seed and panel_seed.lstrip("+").isdigit():
+        _kw["seed"] = int(panel_seed)
+    _apib = _get_api_base("rubric")
     if _apib:
         _kw["api_base"] = _apib
     _resp = await litellm.acompletion(**_kw)
@@ -1956,7 +2019,8 @@ def _extract_paper_artifacts(
 
     Returns (paper_text, captions, figures_info, citation_note).
     """
-    import re as _re, subprocess as _sp, json as _json
+    import re as _re
+    import json as _json
     import pathlib as _pl_rv
 
     # 1. Extract text from PDF
@@ -1964,6 +2028,7 @@ def _extract_paper_artifacts(
     if pdf_path:
         try:
             import fitz as _fitz
+
             _doc = _fitz.open(pdf_path)
             pdf_text = "\n".join(_page.get_text() for _page in _doc)
             _doc.close()
@@ -1972,18 +2037,10 @@ def _extract_paper_artifacts(
         if not pdf_text:
             try:
                 from pdfminer.high_level import extract_text as _pdfminer_extract
+
                 pdf_text = _pdfminer_extract(pdf_path)
             except Exception as _pe:
                 log.warning("pdfminer failed: %s", _pe)
-        if not pdf_text:
-            try:
-                _r = _sp.run(
-                    ["pdftotext", pdf_path, "-"],
-                    capture_output=True, text=True, timeout=30,
-                )
-                pdf_text = _r.stdout
-            except Exception as _e:
-                log.warning("pdftotext failed: %s", _e)
 
     tex_text = ""
     if tex_path:
@@ -2053,6 +2110,7 @@ def _extract_paper_artifacts(
 def _parse_vlm_findings(vlm_findings_json: str) -> list[dict]:
     """Accept JSON string, list, or dict payload; return list of per-figure findings."""
     import json as _json
+
     if not vlm_findings_json:
         return []
     if isinstance(vlm_findings_json, list):
@@ -2068,17 +2126,20 @@ def _parse_vlm_findings(vlm_findings_json: str) -> list[dict]:
         if isinstance(figs, list):
             return [f for f in figs if isinstance(f, dict)]
         # {figure_path: {score, issues...}} shape
-        return [{"figure_path": k, **(v if isinstance(v, dict) else {})} for k, v in data.items()]
+        return [
+            {"figure_path": k, **(v if isinstance(v, dict) else {})}
+            for k, v in data.items()
+        ]
     return []
 
 
 @mcp.tool()
 async def review_compiled_paper(
+    rubric_id: str,
     tex_path: str = "",
     pdf_path: str = "",
     figures_manifest_json: str = "",
     experiment_summary: str = "",
-    rubric_id: str = "",
     vlm_findings_json: str = "",
     num_reflections: int | None = None,
     num_fs_examples: int | None = None,
@@ -2092,7 +2153,7 @@ async def review_compiled_paper(
 
     Flow:
       1. Extract paper text (PDF → pymupdf/pdfminer/pdftotext; .tex fallback)
-      2. Load rubric (arg → $ARI_RUBRIC → 'neurips' fallback)
+      2. Load the explicitly selected, versioned rubric
       3. Load few-shot examples (static from fewshot_dir, or dynamic OpenReview retrieval)
       4. Run N reviewers with temperature jitter; each does initial draft + reflection
       5. If N>1: run Area Chair meta-review
@@ -2116,8 +2177,8 @@ async def review_compiled_paper(
         num_reviews_ensemble:  Override N (number of reviewer agents). Default: rubric / env.
     """
     import os as _os
-    # Resolve rubric (arg → env → 'neurips' default → 'neurips' fallback)
-    rubric = resolve_rubric(rubric_id or None)
+
+    rubric = resolve_rubric(rubric_id)
 
     # num_reflections: explicit arg > env var > rubric default
     if num_reflections is not None:
@@ -2135,7 +2196,11 @@ async def review_compiled_paper(
         n = int(num_reviews_ensemble)
     else:
         env_n = _os.environ.get("ARI_NUM_REVIEWS_ENSEMBLE", "").strip()
-        n = int(env_n) if env_n.isdigit() and int(env_n) >= 1 else rubric.params.num_reviews_ensemble
+        n = (
+            int(env_n)
+            if env_n.isdigit() and int(env_n) >= 1
+            else rubric.params.num_reviews_ensemble
+        )
     rubric.params.num_reviews_ensemble = max(1, n)
 
     paper_text, captions, figs_info, citation_note = _extract_paper_artifacts(
@@ -2168,16 +2233,26 @@ async def review_compiled_paper(
     user_prompt = build_user_prompt(rubric, paper_text, captions, citation_note)
 
     reviews = await run_ensemble(
-        rubric, user_prompt, _litellm_caller, fewshot_examples=examples,
+        rubric,
+        user_prompt,
+        _litellm_caller,
+        fewshot_examples=examples,
     )
+    raw_evidence = []
+    for review in reviews:
+        raw_evidence.append(review.pop("_raw_responses", []))
     # Primary review (reviews[0]) is the top-level shape for consumers that
     # expect a single review dict. N=1 => pass-through; N>1 => primary doubles
     # as the headline review and the full list is attached as ensemble_reviews.
-    primary = reviews[0] if reviews else {
-        "error": "ensemble returned no reviews",
-        "rubric_id": rubric.id,
-        "overall_score": 0,
-    }
+    primary = (
+        reviews[0]
+        if reviews
+        else {
+            "error": "ensemble returned no reviews",
+            "rubric_id": rubric.id,
+            "overall_score": 0,
+        }
+    )
     out: dict = dict(primary)
     out["rubric_id"] = rubric.id
     out["rubric_version"] = rubric.version
@@ -2192,34 +2267,109 @@ async def review_compiled_paper(
     if len(reviews) > 1:
         out["ensemble_reviews"] = reviews
         meta = await run_meta_review(rubric, reviews, _litellm_caller)
+        raw_evidence.append([meta.pop("_raw_response", "")])
         meta["rubric_id"] = rubric.id
         meta["rubric_hash"] = rubric.hash
         meta["source_review_count"] = len(reviews)
         out["meta_review"] = meta
-    return out
+    from ari.public.execution import WorkspaceRefV1
+    from ari.public.paper import canonical_paper_digest
 
+    review_workspace = WorkspaceRefV1(root=str(Path(tex_path).resolve().parent))
+    source_tex_digest = review_workspace.file_digest(tex_path)
+    source_pdf_digest = (
+        review_workspace.file_digest(pdf_path)
+        if pdf_path and Path(pdf_path).is_file()
+        else None
+    )
+    raw_artifact = artifact_from_payload(
+        review_workspace,
+        role="raw-model-response",
+        relative_path=".ari-paper/text-review/raw-responses.json",
+        payload=_paper_json_bytes(raw_evidence),
+        media_type="application/json",
+    )
+    prompt_payload = _paper_json_bytes(
+        {
+            "system": build_system_prompt(rubric),
+            "user": user_prompt,
+            "rubric_hash": rubric.hash,
+            "ensemble_size": len(reviews),
+            "num_reflections": rubric.params.num_reflections,
+        }
+    )
+    out.update(
+        {
+            "schema_version": "ari.paper-text-review/v1",
+            "model": _get_model(),
+            "model_revision": os.environ.get("ARI_MODEL_PAPER_REVISION") or None,
+            "provider": os.environ.get("ARI_MODEL_PAPER_PROVIDER")
+            or _get_model().split("/", 1)[0],
+            "prompt_digest": canonical_paper_digest(
+                json.loads(prompt_payload.decode("utf-8"))
+            ),
+            "paper_digest": canonical_paper_digest({"paper_text": paper_text}),
+            "source_tex_digest": source_tex_digest,
+            "source_pdf_digest": source_pdf_digest,
+            "sampling": {"temperature": rubric.params.temperature},
+            "raw_response_artifact": raw_artifact.model_dump(mode="json"),
+        }
+    )
+    out["review_digest"] = canonical_paper_digest(out)
+    return out
 
 
 def _hard_gate_revisions(hard_gate: dict) -> list[dict]:
     """Turn blocking hard-gate errors into concrete refine instructions."""
     out: list[dict] = []
-    for e in (hard_gate.get("errors") or []):
+    findings = hard_gate.get("blocking_findings")
+    if findings is None:  # supported published pre-v1 report reader
+        findings = hard_gate.get("errors") or []
+    for e in findings:
         t = e.get("type")
-        sec = e.get("section", "")
+        details = e.get("details") if isinstance(e.get("details"), dict) else e
+        sec = details.get("section", "")
         if t == "numeric_mismatch":
-            out.append({"section": sec or "results", "source": "hard_gate",
-                        "instruction": (
-                            f"Correct the reported number {e.get('reported')} so it matches the "
-                            f"value re-computed from the executed results ({e.get('recomputed')}), "
-                            f"or remove the unsupported claim.")})
+            out.append(
+                {
+                    "section": sec or "results",
+                    "source": "hard_gate",
+                    "instruction": (
+                        f"Correct the reported number {details.get('reported')} so it matches the "
+                        f"value re-computed from the executed results ({details.get('recomputed')}), "
+                        f"or remove the unsupported claim."
+                    ),
+                }
+            )
         elif t == "uncovered_numeric":
-            out.append({"section": sec, "source": "hard_gate",
-                        "instruction": (
-                            f"The number {e.get('value')} in {sec} is an unregistered result claim. "
-                            f"Either support it with executed evidence or remove/soften it.")})
-        elif t in ("missing_evidence", "operand_unresolved"):
-            out.append({"section": sec, "source": "hard_gate",
-                        "instruction": f"Resolve unsupported claim: {e.get('message', '')}"})
+            out.append(
+                {
+                    "section": sec,
+                    "source": "hard_gate",
+                    "instruction": (
+                        f"The number {details.get('value')} in {sec} is an unregistered result claim. "
+                        f"Either support it with executed evidence or remove/soften it."
+                    ),
+                }
+            )
+        elif t in (
+            "missing_evidence",
+            "operand_unresolved",
+            "result_unresolved",
+            "cross_run_evidence",
+            "cross_run_artifact",
+            "artifact_digest_mismatch",
+            "artifact_missing",
+            "unit_mismatch",
+            "unit_unresolved",
+        ):
+            out.append(
+                {
+                    "section": sec,
+                    "source": "hard_gate",
+                    "instruction": f"Resolve unsupported claim: {e.get('message', '')}",
+                }
+            )
     return out
 
 
@@ -2240,9 +2390,8 @@ async def merge_reviews(
 
     Evidence-grounded reviews (claim_evidence_hard_gate + evidence_grounded_
     semantic_review) are reported SEPARATELY under ``evidence_grounded_reviews``.
-    The structural in-place VLM attach to review_report.json is preserved for
-    back-compat. A unified ``suggested_revisions`` list (semantic review +
-    hard-gate-derived edits) is emitted for paper_refine.
+    Inputs remain immutable. A unified ``suggested_revisions`` list (semantic
+    review + hard-gate-derived edits) is emitted for paper_refine.
 
     No LLM call. Args beyond review_report_path are optional (back-compatible
     with the v0.6.0 two-arg signature).
@@ -2255,7 +2404,7 @@ async def merge_reviews(
         return {"error": f"review_report not found: {rr_path}"}
 
     try:
-        report = _json.loads(rr_path.read_text())
+        _json.loads(rr_path.read_text())
     except Exception as e:
         return {"error": f"failed to parse review_report: {e}"}
 
@@ -2271,38 +2420,24 @@ async def merge_reviews(
         return None, None
 
     vlm_data, vlm_err = _load(vlm_review_path)
-    hard_gate, _ = _load(hard_gate_path)
-    semantic, _ = _load(semantic_review_path)
-
-    # ── back-compat: attach VLM to review_report.json in place ──
-    report["vlm_figure_review"] = vlm_data
-    report["_review_composition"] = {
-        "text_reviewer": {
-            "source": "review_compiled_paper",
-            "input": "paper text + captions + citation audit",
-            "parity": "AI Scientist v2 (arXiv:2408.06292) perform_review",
-        },
-        "vlm_reviewer": {
-            "source": "vlm-skill/review_figure",
-            "input": "figure images",
-            "load_status": "ok" if vlm_data is not None else (
-                f"error: {vlm_err}" if vlm_err else "missing"
-            ),
-        },
-        "merge_policy": (
-            "structural post-hoc merge; no LLM synthesis; text-review fields "
-            "are unchanged; VLM output attached under vlm_figure_review"
-        ),
-    }
-    rr_path.write_text(_json.dumps(report, indent=2, ensure_ascii=False))
+    # Keep these errors. Binding them to `_` made a corrupt/truncated hard-gate
+    # or semantic-review file indistinguishable from one that was never
+    # configured: review_merge_log.json read ok:true, status:null, and the
+    # gate's suggested_revisions (e.g. "correct 42.0 -> 17.3") silently vanished
+    # from what paper_refine received. A parse failure on the file that carries
+    # the blocking findings is the last place to be silent.
+    hard_gate, hard_gate_err = _load(hard_gate_path)
+    semantic, semantic_err = _load(semantic_review_path)
 
     # ── separated review log (Story2Proposal Phase E) ──
     suggested_revisions: list[dict] = []
     if isinstance(semantic, dict):
         suggested_revisions.extend(
-            r for r in (semantic.get("suggested_revisions") or []) if isinstance(r, dict)
+            r
+            for r in (semantic.get("suggested_revisions") or [])
+            if isinstance(r, dict)
         )
-        # `detected_overclaim_count` counts the review's `warnings`, but the
+        # `detected_overclaim_count` counts the review's typed findings, but the
         # refiner only consumes revision entries — a warning without a parallel
         # suggested_revision would never reach paper_refine and the count could
         # never decrease. Forward every warning as an advisory revision entry.
@@ -2311,27 +2446,42 @@ async def merge_reviews(
             for r in suggested_revisions
             if isinstance(r, dict)
         }
-        for w in semantic.get("warnings") or []:
+        findings = semantic.get("findings")
+        if findings is None:  # supported published pre-v1 review reader
+            findings = semantic.get("warnings") or []
+        for w in findings:
             if not isinstance(w, dict):
                 continue
             msg = str(w.get("message") or "").strip()
             if not msg or msg in _seen_instr:
                 continue
             _seen_instr.add(msg)
-            suggested_revisions.append({
-                "section": w.get("section", ""),
-                "instruction": msg,
-                "source": "semantic_warning",
-                "warning_type": w.get("type", ""),
-            })
+            suggested_revisions.append(
+                {
+                    "section": w.get("section", ""),
+                    "instruction": msg,
+                    "source": "semantic_warning",
+                    "warning_type": w.get("type", ""),
+                }
+            )
     if isinstance(hard_gate, dict):
         suggested_revisions.extend(_hard_gate_revisions(hard_gate))
 
+    # A configured review source that failed to LOAD is a load error, not an
+    # absent review — surface it so `ok` and the status reflect it.
+    _load_errors = {}
+    if hard_gate_path and hard_gate is None and hard_gate_err:
+        _load_errors["claim_evidence_hard_gate"] = hard_gate_err
+    if semantic_review_path and semantic is None and semantic_err:
+        _load_errors["evidence_grounded_semantic_review"] = semantic_err
+
     return {
         "stage": "merge_reviews",
-        "ok": True,
+        "ok": not _load_errors,
         "review_report_path": str(rr_path),
         "has_vlm_review": vlm_data is not None,
+        "load_errors": _load_errors or None,
+        "vlm_load_error": vlm_err,
         "independent_reviews": {
             "venue_review": str(rr_path),
             "vlm_figure_review": vlm_review_path or None,
@@ -2339,9 +2489,15 @@ async def merge_reviews(
         },
         "evidence_grounded_reviews": {
             "claim_evidence_hard_gate": hard_gate_path or None,
-            "claim_evidence_hard_gate_status": (hard_gate or {}).get("status"),
+            "claim_evidence_hard_gate_status": (
+                (hard_gate or {}).get("status")
+                if hard_gate is not None
+                else (f"load_error: {hard_gate_err}" if hard_gate_err else None)),
             "evidence_grounded_semantic_review": semantic_review_path or None,
-            "evidence_grounded_semantic_review_status": (semantic or {}).get("status"),
+            "evidence_grounded_semantic_review_status": (
+                (semantic or {}).get("status")
+                if semantic is not None
+                else (f"load_error: {semantic_err}" if semantic_err else None)),
         },
         "suggested_revisions": suggested_revisions,
         "merge_policy": (
@@ -2382,9 +2538,17 @@ async def link_paper_claims(
 
     def _empty(note: str) -> dict:
         return {
-            "stage": "link_paper_claims", "paper_claim_links": [], "numeric_mentions": [],
-            "figure_refs": [], "unresolved_anchors": [], "uncovered_numeric_candidates": [],
-            "counts": {}, "note": note,
+            "schema_version": "ari.paper-claim-links/v1",
+            "stage": "link_paper_claims",
+            "paper_claim_links": [],
+            "numeric_mentions": [],
+            "figure_refs": [],
+            "unresolved_anchors": [],
+            "uncovered_numeric_candidates": [],
+            "counts": {},
+            "paper_digest": None,
+            "claim_links_digest": None,
+            "note": note,
         }
 
     try:
@@ -2403,31 +2567,55 @@ async def link_paper_claims(
         return _empty(f"paper tex not found: {tex_path}")
 
     def _load_jsonish(val):
+        """Return ``(value, error)``. ``error`` distinguishes a genuine
+        empty/absent input from a source that EXISTS but could not be read —
+        the two were both ``{}`` before, so a missing/truncated science_data
+        (it arrives as a raw path string when absent — stages.py only reads
+        content when the file exists) produced 0 resolved anchors and the reason
+        string blamed the writer for inventing claim ids."""
         if not val:
-            return {}
+            return {}, None
         if isinstance(val, dict):
-            return val
+            return val, None
         try:
-            return _json.loads(val)
+            return _json.loads(val), None
         except Exception:
             sp = _Path(val)
             if sp.is_file():
                 try:
-                    return _json.loads(sp.read_text())
-                except Exception:
-                    return {}
-        return {}
+                    return _json.loads(sp.read_text()), None
+                except Exception as e:
+                    return {}, f"{sp.name}: {e}"
+            # a raw path string for a file that does not exist
+            return {}, f"not found: {val}"
 
-    sd = _load_jsonish(science_data_json)
-    fm = _load_jsonish(figures_manifest_json) or None
+    sd, sd_err = _load_jsonish(science_data_json)
+    fm, _fm_err = _load_jsonish(figures_manifest_json)
+    fm = fm or None
     try:
+        # ``claim_links.link_paper_claims`` owns the native-v1 -> flat gate
+        # projection.  Pre-projecting here leaves schema_version unchanged and
+        # makes that function try to parse the already-flat projection as a
+        # native ScienceDataV1 a second time.  The resulting empty error
+        # document can pass through the warn-mode gate but is correctly rejected
+        # by the final PaperBuild lock because it differs from recomputation.
         result = _cl.link_paper_claims(tex, sd if isinstance(sd, dict) else {}, fm)
     except Exception as _e:  # pragma: no cover - defensive
         return _empty(f"link_paper_claims failed: {_e}")
 
+    if sd_err:
+        # The claim registry could not be read, so 0 resolved anchors here means
+        # "the registry is missing", NOT "the writer invented claim ids". Say so
+        # instead of letting the per-anchor reason strings misdirect the reader.
+        result["science_data_load_error"] = sd_err
+        log.warning("science_data unreadable (%s); claim anchors cannot be "
+                     "resolved against the registry", sd_err)
+
     if output_path:
         try:
-            _Path(output_path).write_text(_json.dumps(result, indent=2, ensure_ascii=False))
+            _Path(output_path).write_text(
+                _json.dumps(result, indent=2, ensure_ascii=False)
+            )
             result["output_path"] = output_path
         except Exception as _e:
             result["_write_error"] = str(_e)
@@ -2441,6 +2629,16 @@ async def paper_refine(
     merged_review_path: str = "",
     semantic_review_path: str = "",
     venue: str = "arxiv",
+    writer_prompt_override: str = "",  # "" => byte-identical to today (linear); non-empty =>
+                                       # the governed paper_writer prompt frames the refine
+                                       # (docs/reference/skills.md, the paper_refine entry).
+                                       # Additive, no ari.rqgm import — a plain instruction
+                                       # string.
+    decode_seed: int = 0,  # 0 => no seed in the payload => byte-identical to today (linear);
+                           # non-zero => the refine is sampled under its draft's seed, so a
+                           # refine child inherits its parent's decode identity
+                           # (docs/reference/skills.md, the paper_refine entry). Additive
+                           # plain scalar.
 ) -> dict:
     """Apply suggested revisions to the paper while PRESERVING ``% CLAIM:Cx:NCx``
     anchors (Story2Proposal generate-evaluate-adapt loop).
@@ -2472,17 +2670,40 @@ async def paper_refine(
     import re as _re
     from pathlib import Path as _Path
 
+    from ari.public.execution import WorkspaceRefV1
+    from ari.public.paper import PaperModelCallBatchV1, PaperModelCallV1
+
     def _find_anchors(text: str) -> list:
         try:
             return _import_claim_links().find_anchors(text)
         except Exception:  # pragma: no cover - defensive fallback
-            return [{"anchor": f"CLAIM:{m.group(1)}:{m.group(2)}"}
-                    for m in _re.finditer(r"%\s*CLAIM:(C\w+):(NC\w+)", text)]
+            return [
+                {"anchor": f"CLAIM:{m.group(1)}:{m.group(2)}"}
+                for m in _re.finditer(r"%\s*CLAIM:(C\w+):(NC\w+)", text)
+            ]
 
     p = _Path(tex_path)
     if not p.is_file():
-        return {"error": f"paper tex not found: {tex_path}", "latex": "", "refined": False}
+        return {
+            "error": f"paper tex not found: {tex_path}",
+            "latex": "",
+            "refined": False,
+        }
     original = p.read_text(encoding="utf-8")
+    refinement_workspace = WorkspaceRefV1(root=str(p.resolve().parent))
+    refinement_calls: list[PaperModelCallV1] = []
+    refinement_batch_path = ".ari-paper/refinement/model_calls.json"
+
+    def _persist_refinement_calls() -> str:
+        batch = PaperModelCallBatchV1.create(
+            operation="refinement",
+            calls=tuple(refinement_calls),
+        )
+        refinement_workspace.atomic_write_bytes(
+            refinement_batch_path,
+            _paper_json_bytes(batch.model_dump(mode="json")),
+        )
+        return refinement_batch_path
 
     revisions: list[dict] = []
 
@@ -2497,25 +2718,57 @@ async def paper_refine(
                 if isinstance(obj.get(key), list):
                     _collect(obj[key])
 
+    # A configured review source that fails to PARSE is not "no revisions": it
+    # is a review we could not read. Swallowing it let the note below assert the
+    # reviewers requested nothing, so a retracted claim shipped unchanged. Two
+    # real triggers: a truncated file, and a valid-but-non-ASCII file read
+    # without encoding= under LC_ALL=C (the tex is read encoding="utf-8" above).
+    _load_errors: list[str] = []
+    _sources_configured = 0
     if suggested_revisions_json:
+        _sources_configured += 1
         try:
-            _collect(_json.loads(suggested_revisions_json) if isinstance(suggested_revisions_json, str) else suggested_revisions_json)
-        except Exception:
-            pass
+            _collect(
+                _json.loads(suggested_revisions_json)
+                if isinstance(suggested_revisions_json, str)
+                else suggested_revisions_json
+            )
+        except Exception as _e:
+            _load_errors.append(f"suggested_revisions_json: {_e}")
     for _path in (semantic_review_path, merged_review_path):
         if _path and _Path(_path).is_file():
+            _sources_configured += 1
             try:
-                _collect(_json.loads(_Path(_path).read_text()))
-            except Exception:
-                pass
+                _collect(_json.loads(_Path(_path).read_text(encoding="utf-8")))
+            except Exception as _e:
+                _load_errors.append(f"{_Path(_path).name}: {_e}")
 
     orig_anchors = {a["anchor"] for a in _find_anchors(original)}
 
-    if not revisions:
+    # Every configured review source failed to load: we do NOT know the
+    # reviewers requested nothing. Return an error rather than a clean pass.
+    if _load_errors and _sources_configured and len(_load_errors) >= _sources_configured:
         return {
+            "error": "review inputs unreadable: " + "; ".join(_load_errors),
             "latex": original, "refined": False, "anchors_preserved": True,
             "applied_revisions": 0, "anchor_count": len(orig_anchors),
-            "note": "no actionable suggested_revisions; paper returned unchanged",
+            "warnings": _load_errors,
+        }
+
+    if not revisions:
+        persisted_calls = _persist_refinement_calls()
+        return {
+            "latex": original,
+            "refined": False,
+            "anchors_preserved": True,
+            "applied_revisions": 0,
+            "anchor_count": len(orig_anchors),
+            "warnings": _load_errors or [],
+            "refinement_call_path": persisted_calls,
+            "note": ("no actionable suggested_revisions; paper returned unchanged"
+                     if not _load_errors else
+                     "some review sources were unreadable (see warnings); "
+                     "applied only the sources that parsed"),
         }
 
     _rev_lines = []
@@ -2532,12 +2785,16 @@ async def paper_refine(
     # the model sees the whole paper (global context) yet returns only TARGETED
     # find/replace edits. This keeps generation volume ~= the changed spans instead
     # of regenerating the entire document, which (with the slow CLI shim) timed out.
+    # writer_prompt_override == "" (linear default) => byte-identical to today.
+    # Under rqgm_archive the governed paper_writer prompt is prepended so the
+    # refine is framed by the epoch's ACTIVE writer bytes; the core owns the
+    # prompt-evolution lifecycle and this skill only receives the bytes for
+    # the epoch it was called in — it still evolves nothing.
     system_prompt = (
-        _load_prompt("global_coherence")
+        ((writer_prompt_override + "\n\n") if writer_prompt_override else "")
+        + _load_prompt("global_coherence")
         + _paper_language_directive()
     )
-    _ANCHOR_RE = _re.compile(r"%\s*CLAIM:C\w+:NC\w+")
-
     # (b) The semantic review usually specifies an EXPLICIT replacement (e.g. replace
     # "Roofline/Loopline Validation" with "... Context"). Extract those quoted OLD->NEW
     # pairs so they can be applied DETERMINISTICALLY first -- the concrete review edits
@@ -2559,8 +2816,13 @@ async def paper_refine(
                 # word could be globally unique by accident and get rewritten in the
                 # WRONG span. Single-word fixes are routed to the LLM pass instead (its
                 # prompt carries the section label for context).
-                if (old and old != new and len(old) >= 4 and any(c.isspace() for c in old)
-                        and (old, new) not in subs):
+                if (
+                    old
+                    and old != new
+                    and len(old) >= 4
+                    and any(c.isspace() for c in old)
+                    and (old, new) not in subs
+                ):
                     subs.append((old, new))
         return subs
 
@@ -2571,7 +2833,7 @@ async def paper_refine(
             s = _m.group(1).strip()
         _a, _b = s.find("["), s.rfind("]")
         if _a != -1 and _b > _a:
-            s = s[_a:_b + 1]
+            s = s[_a : _b + 1]
         try:
             data = _json.loads(s)
         except Exception:
@@ -2593,9 +2855,18 @@ async def paper_refine(
             if n != 1:  # not found, or ambiguous -> never guess
                 skipped.append(f"find not unique (n={n}): {find[:50]!r}")
                 continue
-            # anchor safety: every % CLAIM anchor inside the replaced span must survive
-            if not set(_ANCHOR_RE.findall(find)).issubset(set(_ANCHOR_RE.findall(repl))):
-                skipped.append(f"edit would drop a % CLAIM anchor: {find[:50]!r}")
+            # Claim safety covers the full declaration, not only Cx/NCx.  A
+            # replacement that retains the marker but removes ``formula=`` is
+            # scientifically destructive and must not land.
+            if not _preserves_claim_comment_contract(find, repl):
+                skipped.append(
+                    f"edit would change/drop a % CLAIM declaration: {find[:50]!r}"
+                )
+                continue
+            if not _preserves_figure_block_contract(find, repl):
+                skipped.append(
+                    f"edit would change/add/drop a figure block: {find[:50]!r}"
+                )
                 continue
             doc = doc.replace(find, repl, 1)
             applied += 1
@@ -2604,8 +2875,12 @@ async def paper_refine(
     async def _run_edit(cur_doc: str, pass_idx: int = 0) -> list:
         _user = (
             f"Revision requests:\n{revisions_text}\n\n"
-            + ("NOTE: some requests may ALREADY be reflected in the document below — "
-               "apply ONLY the ones not yet addressed.\n\n" if pass_idx > 0 else "")
+            + (
+                "NOTE: some requests may ALREADY be reflected in the document below — "
+                "apply ONLY the ones not yet addressed.\n\n"
+                if pass_idx > 0
+                else ""
+            )
             + f"Return targeted find/replace edits for this document:\n\n```latex\n{cur_doc}\n```"
         )
         _kw = {
@@ -2614,13 +2889,59 @@ async def paper_refine(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": _user},
             ],
-            "temperature": 0.4, "max_tokens": 8192, "timeout": 1800,
+            "temperature": 0.4,
+            "max_tokens": 8192,
+            "timeout": 1800,
         }
+        if decode_seed:
+            _kw["seed"] = int(decode_seed)
         _ab = _get_api_base()
         if _ab:
             _kw["api_base"] = _ab
         _resp = await litellm.acompletion(**_kw)
         _raw = _resp.choices[0].message.content or ""
+        call_index = len(refinement_calls) + 1
+        prompt_artifact = artifact_from_payload(
+            refinement_workspace,
+            role="prompt",
+            relative_path=(f".ari-paper/refinement/call-{call_index:03d}/prompt.json"),
+            payload=_paper_json_bytes(
+                {
+                    "messages": _kw["messages"],
+                    "temperature": _kw["temperature"],
+                    "max_tokens": _kw["max_tokens"],
+                    "timeout": _kw["timeout"],
+                }
+            ),
+            media_type="application/json",
+        )
+        raw_artifact = artifact_from_payload(
+            refinement_workspace,
+            role="raw-model-response",
+            relative_path=(f".ari-paper/refinement/call-{call_index:03d}/response.txt"),
+            payload=_raw.encode("utf-8"),
+            media_type="text/plain; charset=utf-8",
+        )
+        model = str(_kw["model"])
+        refinement_calls.append(
+            PaperModelCallV1.create(
+                call_id=f"refinement-{call_index:03d}",
+                purpose="refinement",
+                model=model,
+                model_revision=os.environ.get("ARI_MODEL_PAPER_REVISION") or None,
+                provider=(
+                    os.environ.get("ARI_MODEL_PAPER_PROVIDER") or routed_provider(model)
+                ),
+                prompt_digest=prompt_artifact.digest,
+                prompt_artifact=prompt_artifact,
+                raw_response_artifact=raw_artifact,
+                sampling={
+                    "temperature": _kw["temperature"],
+                    "max_tokens": _kw["max_tokens"],
+                },
+                usage=model_usage_from_response(_resp),
+            )
+        )
         if "</think>" in _raw:
             _raw = _raw.split("</think>")[-1]
         return _extract_edits(_raw)
@@ -2636,7 +2957,11 @@ async def paper_refine(
     det_subs = _extract_substitutions()
     applied_subs: set = set()
     for _old, _new in det_subs:
-        if doc.count(_old) == 1 and set(_ANCHOR_RE.findall(_old)).issubset(set(_ANCHOR_RE.findall(_new))):
+        if (
+            doc.count(_old) == 1
+            and _preserves_claim_comment_contract(_old, _new)
+            and _preserves_figure_block_contract(_old, _new)
+        ):
             doc = doc.replace(_old, _new, 1)
             applied_total += 1
             applied_subs.add((_old, _new))
@@ -2655,11 +2980,20 @@ async def paper_refine(
             break
         new_doc, applied, skipped = _apply_edits(doc, edits)
         if skipped:
-            warnings.append(f"pass {_pass + 1}: skipped {len(skipped)} unsafe/non-unique edit(s): {skipped[:2]}")
+            warnings.append(
+                f"pass {_pass + 1}: skipped {len(skipped)} unsafe/non-unique edit(s): {skipped[:2]}"
+            )
         if applied == 0:
             break
-        if not orig_anchors.issubset({a["anchor"] for a in _find_anchors(new_doc)}):
-            warnings.append(f"pass {_pass + 1}: edits would drop a % CLAIM anchor; kept prior text")
+        if (
+            not orig_anchors.issubset({a["anchor"] for a in _find_anchors(new_doc)})
+            or not _preserves_claim_comment_contract(original, new_doc)
+            or not _preserves_figure_block_contract(original, new_doc)
+        ):
+            warnings.append(
+                f"pass {_pass + 1}: edits would change/drop a % CLAIM declaration; "
+                "kept prior text"
+            )
             break
         doc = new_doc
         applied_total += applied
@@ -2671,29 +3005,46 @@ async def paper_refine(
     # those NOT in applied_subs were skipped (non-unique / absent). Keyed on the b1
     # apply outcome, NOT on `_old in refined` -- an expand edit ("X" -> "X Context")
     # leaves OLD present yet was applied, so a presence test would falsely flag it.
-    unaddressed = [{"old": _o, "new": _n} for _o, _n in det_subs if (_o, _n) not in applied_subs]
+    unaddressed = [
+        {"old": _o, "new": _n} for _o, _n in det_subs if (_o, _n) not in applied_subs
+    ]
     if unaddressed:
         warnings.append(
             f"{len(unaddressed)} explicit replacement(s) not applied (find not unique/absent): "
-            + ", ".join(f"{u['old'][:40]!r}" for u in unaddressed[:3]))
+            + ", ".join(f"{u['old'][:40]!r}" for u in unaddressed[:3])
+        )
 
     final_anchors = {a["anchor"] for a in _find_anchors(refined)}
     anchors_ok = orig_anchors.issubset(final_anchors)
+    claim_comments_ok = _preserves_claim_comment_contract(original, refined)
+    figures_ok = _preserves_figure_block_contract(original, refined)
 
-    if applied_total == 0 or not anchors_ok:
-        if not anchors_ok:
-            warnings.append(f"anchors lost {sorted(orig_anchors - final_anchors)}; reverting to draft")
+    if applied_total == 0 or not anchors_ok or not claim_comments_ok or not figures_ok:
+        if not anchors_ok or not claim_comments_ok or not figures_ok:
+            warnings.append(
+                "claim declarations or figure blocks changed/lost; reverting to draft"
+            )
         try:
             (_Path(tex_path).parent / "full_paper.draft.tex").write_text(original)
         except Exception:
             pass
+        persisted_calls = _persist_refinement_calls()
         return {
-            "latex": original, "refined": False, "anchors_preserved": True,
-            "applied_revisions": 0, "anchor_count": len(orig_anchors), "warnings": warnings,
-            "refine_passes": passes, "deterministic_substitutions": len(applied_subs),
+            "latex": original,
+            "refined": False,
+            "anchors_preserved": True,
+            "applied_revisions": 0,
+            "anchor_count": len(orig_anchors),
+            "warnings": warnings,
+            "refine_passes": passes,
+            "deterministic_substitutions": len(applied_subs),
             "unaddressed_substitutions": unaddressed,
-            "note": ("no safe edits applied; paper unchanged" if applied_total == 0
-                     else "edits dropped anchors; reverted to draft"),
+            "refinement_call_path": persisted_calls,
+            "note": (
+                "no safe edits applied; paper unchanged"
+                if applied_total == 0
+                else "edits dropped anchors; reverted to draft"
+            ),
         }
 
     refined = _escape_text_underscores(refined)
@@ -2704,12 +3055,34 @@ async def paper_refine(
     except Exception as _e:
         warnings.append(f"failed to save draft copy: {_e}")
 
+    inserted = _inserted_sentences(original, refined)
+    unrequested = _unrequested_process_claims(inserted, revisions)
+    if unrequested:
+        warnings.append(
+            f"{len(unrequested)} inserted sentence(s) assert a verification/"
+            f"validation process that no revision requested: "
+            + "; ".join(s[:90] for s in unrequested[:2]))
+    persisted_calls = _persist_refinement_calls()
     return {
-        "latex": refined, "refined": True, "anchors_preserved": True,
-        "applied_revisions": applied_total, "anchor_count": len(orig_anchors),
-        "warnings": warnings, "refine_passes": passes,
+        "latex": refined,
+        "refined": True,
+        "anchors_preserved": True,
+        "applied_revisions": applied_total,
+        "anchor_count": len(orig_anchors),
+        "warnings": warnings,
+        "refine_passes": passes,
         "deterministic_substitutions": len(applied_subs),
         "unaddressed_substitutions": unaddressed,
+        # Every guard above is an `issubset` PRESERVATION check on anchors, so
+        # an anchorless INSERTION passes all of them by construction (the empty
+        # set is a subset of anything) and nothing else reads the final text for
+        # new assertions. Observed live: refine inserted "we independently
+        # re-verified each such figure ... and confirm they agree to within
+        # rounding" — no such verification existed, no revision asked for it,
+        # and it was factually false; it shipped in the PDF unexamined.
+        "inserted_sentences": inserted,
+        "unrequested_process_claims": unrequested,
+        "refinement_call_path": persisted_calls,
         "note": ("deterministic explicit replacements + bounded multi-pass find/replace "
                  "(S2P refiner: global role, diff output); PDF recompile is a follow-up"),
     }
@@ -2724,13 +3097,16 @@ async def list_rubrics() -> list[dict]:
 def _strip_invalid_cite_keys(latex: str, bib_content: str) -> str:
     """Remove cite keys not present in bib to prevent undefined citation warnings."""
     import re as _rc
+
     valid = set(_rc.findall(r"@\w+\{([^,\s]+)", bib_content))
     if not valid:
         return latex
+
     def _filt(m):
         keys = [k.strip() for k in m.group(1).split(",")]
         good = [k for k in keys if k in valid]
         return ("\\cite{" + ",".join(good) + "}") if good else ""
+
     return _rc.sub(r"\\cite\{([^}]+)\}", _filt, latex)
 
 
@@ -2741,6 +3117,7 @@ def _strip_fill_markers(latex: str) -> str:
     This strips only the marker lines, preserving the content inside.
     """
     import re as _rem
+
     # Remove lines that are exactly a FILL marker (with optional whitespace)
     latex = _rem.sub(r"(?m)^[ \t]*FILL_[A-Z_]+_(START|END)[ \t]*\n?", "", latex)
     return latex
@@ -2759,7 +3136,7 @@ def _extract_latex(llm_response: str) -> str:
     # Find the end: \end{document}
     e = llm_response.rfind("\\end{document}")
     if e >= 0:
-        result = llm_response[s:e + len("\\end{document}")]
+        result = llm_response[s : e + len("\\end{document}")]
     else:
         result = llm_response[s:]
     return _strip_fill_markers(result)
@@ -2780,7 +3157,31 @@ _CODE_AVAIL_BEGIN = "% ari-code-availability:begin"
 _CODE_AVAIL_END = "% ari-code-availability:end"
 
 
-def _render_code_availability_block(ref: str, sha256: str, doi: str = "", license_id: str = "") -> str:
+def _tex_literal(value: str) -> str:
+    """Escape an external identifier for safe use in LaTeX text/arguments."""
+
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "{": r"\{",
+        "}": r"\}",
+        "#": r"\#",
+        "$": r"\$",
+        "%": r"\%",
+        "&": r"\&",
+        "_": r"\_",
+        "^": r"\^{}",
+        "~": r"\~{}",
+    }
+    return "".join(replacements.get(char, char) for char in str(value))
+
+
+def _tex_monospace(value: str) -> str:
+    return r"\texttt{" + _tex_literal(value) + "}"
+
+
+def _render_code_availability_block(
+    ref: str, sha256: str, doi: str = "", license_id: str = ""
+) -> str:
     """Render the LaTeX block to insert.
 
     The block sandwiches the Code Availability section between sentinel
@@ -2795,27 +3196,31 @@ def _render_code_availability_block(ref: str, sha256: str, doi: str = "", licens
         r"\section*{Code Availability}",
     ]
     if ref:
-        parts.append(r"\coderef{" + ref + "}%")
+        parts.append(r"\coderef{" + _tex_literal(ref) + "}%")
     if sha256:
         parts.append(r"\codedigest{" + sha256 + "}%")
     if doi:
-        parts.append(r"\codeavailability{" + doi + "}%")
+        parts.append(r"\codeavailability{" + _tex_literal(doi) + "}%")
     body_lines = []
     if ref:
         body_lines.append(
             r"The curated Experimental Artifact Repository for this paper is "
-            r"available at \texttt{" + ref + "}."
+            "available at " + _tex_monospace(ref) + "."
         )
         body_lines.append(
-            r"It can be retrieved with one command: \texttt{ari clone " + ref + "}."
+            "It can be retrieved with one command: "
+            + _tex_monospace("ari clone " + ref)
+            + "."
         )
     if sha256:
         body_lines.append(
-            r"Bundle integrity is verified by SHA-256 digest \texttt{" + sha_short + "} "
+            r"Bundle integrity is verified by SHA-256 digest \texttt{"
+            + sha_short
+            + "} "
             r"(full digest: \texttt{" + sha256 + "})."
         )
     if doi:
-        body_lines.append(r"Persistent identifier: \texttt{" + doi + "}.")
+        body_lines.append("Persistent identifier: " + _tex_monospace(doi) + ".")
     if license_id:
         body_lines.append(r"License: " + license_id + ".")
     if body_lines:
@@ -2859,6 +3264,7 @@ def inject_code_availability(
     # The pipeline calls this stage with checkpoint_dir but no ref/sha,
     # because those values become known only after curate (manifest.lock)
     # and publish (publish_record.json). Look them up from disk.
+    _load_errors: list[str] = []
     if checkpoint_dir and not (ref or sha256):
         ckpt = Path(checkpoint_dir)
         manifest = ckpt / "ear_published" / "manifest.lock"
@@ -2869,8 +3275,12 @@ def inject_code_availability(
                 sha256 = sha256 or m.get("bundle_sha256", "")
                 if not license_id:
                     license_id = (m.get("publish") or {}).get("license") or ""
-            except Exception:
-                pass
+            except Exception as exc:
+                # EXISTS but unparseable — not "never published". Swallowing it
+                # shipped a Code Availability section WITHOUT its integrity
+                # digest (or dropped the section entirely), byte-identical to a
+                # legitimately-unpublished run.
+                _load_errors.append(f"manifest.lock: {exc}")
         if record.exists():
             try:
                 r = json.loads(record.read_text(encoding="utf-8"))
@@ -2878,10 +3288,20 @@ def inject_code_availability(
                 if not doi:
                     extra = r.get("extra") or {}
                     doi = extra.get("doi") or ""
-            except Exception:
-                pass
+            except Exception as exc:
+                _load_errors.append(f"publish_record.json: {exc}")
+    if _load_errors:
+        log.warning("code-availability sources exist but are unreadable (%s); "
+                    "the section may omit integrity metadata", "; ".join(_load_errors))
 
     content = p.read_text(encoding="utf-8")
+
+    def _with_errors(result: dict) -> dict:
+        # Corrupt-but-present sources are otherwise indistinguishable from a
+        # legitimately-unpublished run: surface them so callers can gate.
+        if _load_errors:
+            result["load_errors"] = list(_load_errors)
+        return result
 
     # FR-PA2: omit the section entirely when neither ref nor sha is provided.
     if not ref and not sha256:
@@ -2889,16 +3309,18 @@ def inject_code_availability(
         new_content = _strip_existing_code_avail_block(content)
         if new_content != content:
             p.write_text(new_content, encoding="utf-8")
-            return {"injected": False, "tex_path": str(p), "block": None, "stripped_prior": True}
-        return {"injected": False, "tex_path": str(p), "block": None}
+            return _with_errors({"injected": False, "tex_path": str(p), "block": None, "stripped_prior": True})
+        return _with_errors({"injected": False, "tex_path": str(p), "block": None})
 
-    block = _render_code_availability_block(ref=ref, sha256=sha256, doi=doi, license_id=license_id)
+    block = _render_code_availability_block(
+        ref=ref, sha256=sha256, doi=doi, license_id=license_id
+    )
     new_content, replaced = _splice_code_avail_block(content, block)
     if new_content == content:
         # No change (idempotent re-injection) — return success without writing.
-        return {"injected": True, "tex_path": str(p), "block": block, "noop": True}
+        return _with_errors({"injected": True, "tex_path": str(p), "block": block, "noop": True})
     p.write_text(new_content, encoding="utf-8")
-    return {"injected": True, "tex_path": str(p), "block": block, "replaced": replaced}
+    return _with_errors({"injected": True, "tex_path": str(p), "block": block, "replaced": replaced})
 
 
 def _strip_existing_code_avail_block(content: str) -> str:
@@ -2929,6 +3351,7 @@ def _splice_code_avail_block(content: str, block: str) -> tuple[str, bool]:
 
 def main():
     mcp.run()
+
 
 if __name__ == "__main__":
     main()

@@ -17,7 +17,7 @@
 # Hard gates: the two deterministic byte/hash checks above (zero false-positive
 # risk; already codified in CONTRIBUTING.md §385-399). Advisory: the co-change
 # coupling nudge and the inline-prompt inventory (Stage-1 warning-first, per
-# docs/refactoring/012_github_workflow_integration_plan.md §8).
+# refactoring plan 012, GitHub workflow integration, §8).
 #
 # Diff idiom: this workflow uses github.event.pull_request.base.sha (immutable
 # for the run), NOT the origin/<base_ref> merge-base idiom in

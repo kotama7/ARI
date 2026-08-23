@@ -1,0 +1,11 @@
+# Cheap and NOT resolved enough to support a verdict. Stated in the data rather
+# than left for a reader to infer from the numbers afterwards: at this size the
+# measurement's own spread swamps the difference a regression verdict claims to
+# have found.
+schema_version: ari.harness-case-set/v1
+revision: native-perf-spmm-cases/v1@smoke
+kind: spmm
+description: A wiring check. Too small to support a regression verdict.
+resolves: false
+cases:
+  - [uniform, 2000, 16]

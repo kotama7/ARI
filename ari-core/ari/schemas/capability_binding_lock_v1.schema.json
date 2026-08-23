@@ -1,0 +1,526 @@
+{
+  "$defs": {
+    "CapabilityBindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Binding Digest",
+          "type": "string"
+        },
+        "call_context": {
+          "enum": [
+            "none",
+            "run",
+            "node"
+          ],
+          "title": "Call Context",
+          "type": "string"
+        },
+        "capability_contract_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Contract Digest",
+          "type": "string"
+        },
+        "capability_ref": {
+          "pattern": "^ari\\.[a-z0-9][a-z0-9.-]*/v[1-9][0-9]*$",
+          "title": "Capability Ref",
+          "type": "string"
+        },
+        "credential_scope_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Credential Scope Ids",
+          "type": "array"
+        },
+        "declared_resource_cost": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Declared Resource Cost",
+          "type": "array"
+        },
+        "determinism_class": {
+          "enum": [
+            "deterministic",
+            "conditional",
+            "stochastic",
+            "live-data"
+          ],
+          "title": "Determinism Class",
+          "type": "string"
+        },
+        "dispatch_tool_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dispatch Tool Ref"
+        },
+        "environment_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Environment Evidence Digest",
+          "type": "string"
+        },
+        "input_schema_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Input Schema Digest",
+          "type": "string"
+        },
+        "lifecycle_tool_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Lifecycle Tool Refs",
+          "type": "array"
+        },
+        "manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Manifest Digest",
+          "type": "string"
+        },
+        "output_schema_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Output Schema Digest",
+          "type": "string"
+        },
+        "phase": {
+          "title": "Phase",
+          "type": "string"
+        },
+        "policy_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Policy Digest",
+          "type": "string"
+        },
+        "provider_id": {
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "provider_identity_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Provider Identity Digest",
+          "type": "string"
+        },
+        "provider_lock_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Provider Lock Digest",
+          "type": "string"
+        },
+        "provider_status": {
+          "enum": [
+            "candidate",
+            "verified",
+            "deprecated",
+            "revoked"
+          ],
+          "title": "Provider Status",
+          "type": "string"
+        },
+        "reproducibility_grade": {
+          "title": "Reproducibility Grade",
+          "type": "string"
+        },
+        "requirement_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Requirement Digest",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.capability-binding/v1",
+          "default": "ari.capability-binding/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "selection_rank": {
+          "items": {},
+          "title": "Selection Rank",
+          "type": "array"
+        },
+        "side_effect_class": {
+          "enum": [
+            "read-only",
+            "workspace-write",
+            "scheduler-submit",
+            "external-write",
+            "physical-actuation"
+          ],
+          "title": "Side Effect Class",
+          "type": "string"
+        },
+        "source_requirement_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Requirement Refs",
+          "type": "array"
+        },
+        "subject_argument": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subject Argument"
+        },
+        "subject_tool_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subject Tool Ref"
+        },
+        "tie_break_reason": {
+          "enum": [
+            "only-eligible",
+            "deterministic-rank"
+          ],
+          "title": "Tie Break Reason",
+          "type": "string"
+        },
+        "tool_ref": {
+          "title": "Tool Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "capability_ref",
+        "capability_contract_digest",
+        "requirement_digest",
+        "source_requirement_refs",
+        "provider_id",
+        "provider_identity_digest",
+        "provider_status",
+        "tool_ref",
+        "provider_lock_digest",
+        "manifest_digest",
+        "input_schema_digest",
+        "output_schema_digest",
+        "policy_digest",
+        "role",
+        "phase",
+        "call_context",
+        "side_effect_class",
+        "credential_scope_ids",
+        "environment_evidence_digest",
+        "determinism_class",
+        "reproducibility_grade",
+        "declared_resource_cost",
+        "selection_rank",
+        "tie_break_reason",
+        "binding_digest"
+      ],
+      "title": "CapabilityBindingV1",
+      "type": "object"
+    },
+    "CapabilityRequirementV1": {
+      "additionalProperties": false,
+      "description": "A semantic capability need; it grants no executable authority.",
+      "properties": {
+        "capability_contract_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Contract Digest",
+          "type": "string"
+        },
+        "capability_ref": {
+          "pattern": "^ari\\.[a-z0-9][a-z0-9.-]*/v[1-9][0-9]*$",
+          "title": "Capability Ref",
+          "type": "string"
+        },
+        "context_requirement": {
+          "default": "none",
+          "enum": [
+            "none",
+            "run",
+            "node"
+          ],
+          "title": "Context Requirement",
+          "type": "string"
+        },
+        "environment_requirements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Environment Requirements",
+          "type": "array"
+        },
+        "explicit_provider_pin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Explicit Provider Pin"
+        },
+        "explicit_tool_pin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Explicit Tool Pin"
+        },
+        "forbidden_capability_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Forbidden Capability Refs",
+          "type": "array"
+        },
+        "permitted_credential_scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Permitted Credential Scopes",
+          "type": "array"
+        },
+        "phases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Phases",
+          "type": "array"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "requirement_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Requirement Digest",
+          "type": "string"
+        },
+        "resource_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Resource Types",
+          "type": "array"
+        },
+        "roles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Roles",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "ari.capability-requirement/v1",
+          "default": "ari.capability-requirement/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "semantic_constraints": {
+          "additionalProperties": true,
+          "title": "Semantic Constraints",
+          "type": "object"
+        },
+        "side_effect_ceiling": {
+          "default": "read-only",
+          "enum": [
+            "read-only",
+            "workspace-write",
+            "scheduler-submit",
+            "external-write",
+            "physical-actuation"
+          ],
+          "title": "Side Effect Ceiling",
+          "type": "string"
+        },
+        "source_requirement_refs": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Requirement Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "capability_ref",
+        "capability_contract_digest",
+        "source_requirement_refs",
+        "requirement_digest"
+      ],
+      "title": "CapabilityRequirementV1",
+      "type": "object"
+    },
+    "UnsatisfiedCapabilityV1": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_ref": {
+          "pattern": "^ari\\.[a-z0-9][a-z0-9.-]*/v[1-9][0-9]*$",
+          "title": "Capability Ref",
+          "type": "string"
+        },
+        "rejection_codes": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Rejection Codes",
+          "type": "array"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "requirement_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Requirement Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "requirement_digest",
+        "capability_ref",
+        "required",
+        "rejection_codes"
+      ],
+      "title": "UnsatisfiedCapabilityV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/capability-binding-lock-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "bindings": {
+      "items": {
+        "$ref": "#/$defs/CapabilityBindingV1"
+      },
+      "title": "Bindings",
+      "type": "array"
+    },
+    "environment_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Environment Digest",
+      "type": "string"
+    },
+    "epoch_id": {
+      "title": "Epoch Id",
+      "type": "string"
+    },
+    "lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lock Digest",
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "audit",
+        "enforce"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "ontology_snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Ontology Snapshot Digest",
+      "type": "string"
+    },
+    "producer_component_id": {
+      "const": "capability_binder_v1",
+      "default": "capability_binder_v1",
+      "title": "Producer Component Id",
+      "type": "string"
+    },
+    "prompt_hash": {
+      "default": null,
+      "title": "Prompt Hash",
+      "type": "null"
+    },
+    "provider_catalog_snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Provider Catalog Snapshot Digest",
+      "type": "string"
+    },
+    "provider_lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Provider Lock Digest",
+      "type": "string"
+    },
+    "request_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Request Digest",
+      "type": "string"
+    },
+    "requirements": {
+      "items": {
+        "$ref": "#/$defs/CapabilityRequirementV1"
+      },
+      "title": "Requirements",
+      "type": "array"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.capability-binding-lock/v1",
+      "default": "ari.capability-binding-lock/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "unsatisfied": {
+      "items": {
+        "$ref": "#/$defs/UnsatisfiedCapabilityV1"
+      },
+      "title": "Unsatisfied",
+      "type": "array"
+    }
+  },
+  "required": [
+    "run_id",
+    "epoch_id",
+    "request_digest",
+    "ontology_snapshot_digest",
+    "provider_catalog_snapshot_digest",
+    "provider_lock_digest",
+    "environment_digest",
+    "requirements",
+    "bindings",
+    "unsatisfied",
+    "mode",
+    "lock_digest"
+  ],
+  "title": "ARI Capability Binding Lock v1",
+  "type": "object"
+}

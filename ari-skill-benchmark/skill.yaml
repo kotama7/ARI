@@ -1,0 +1,28 @@
+schema_version: 1
+name: benchmark-skill
+package: ari-skill-benchmark
+version: 0.2.0
+display_name: Analyze experiment results
+description: Typed deterministic summaries, statistical tests, and provenance-aware run comparison.
+environment_policy: complete
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: []
+credential_scopes: []
+tool_defaults:
+  phases: [bfts]
+  side_effects: workspace-write
+  determinism: deterministic
+  timeout_class: bounded
+  permissions: [workspace-read, workspace-write]
+  result_schema: ari.result-envelope/v1
+tools:
+  - name: analyze_results
+    capability_ref: ari.analysis.results
+  - name: statistical_test
+    capability_ref: ari.analysis.statistics
+  - name: compare_runs
+    capability_ref: ari.analysis.runs.compare

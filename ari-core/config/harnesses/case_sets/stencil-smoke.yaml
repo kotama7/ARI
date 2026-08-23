@@ -1,0 +1,9 @@
+# Cheap and NOT resolved enough to support a verdict; see the scored set's note
+# on how much of a short run is the harness rather than the kernel.
+schema_version: ari.harness-case-set/v1
+revision: native-perf-stencil-cases/v1@smoke
+kind: stencil
+description: A wiring check. Too small and too few sweeps to support a verdict.
+resolves: false
+cases:
+  - [64, 64, 64, 4]

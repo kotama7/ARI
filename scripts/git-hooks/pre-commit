@@ -42,4 +42,143 @@ if git -C "$root" grep -lI -e '— TODO' -- '*README.md' >/dev/null 2>&1; then
   echo "readme_sync: NOTE — some READMEs still have '— TODO' descriptions to fill in by hand." >&2
 fi
 
+
+# --- Harness pin drift -----------------------------------------------------
+#
+# A manifest pins the driver's content digest and the digest of the result
+# schema ARI ships for that driver's report type. Both are computable, neither
+# was computed by anything that wrote a manifest, so an edit to instrument code
+# silently invalidated the pin and prepare() then refused the harness as
+# "driver bytes drifted": registered, signed, and unable to run. That has
+# happened three times in distinct episodes.
+#
+# Nothing occupied the pre-commit slot for it. The tests catch it, and CI runs
+# them, but only after the commit exists -- and on a branch that is never
+# pushed, never at all.
+#
+# BLOCKING, and only when the commit touches something a pin depends on. The
+# trigger set is asked of the digest functions rather than listed here: a
+# hand-list would drift from the digests the same way the manifests did, and it
+# would drift silently, because a path missing from it just stops firing.
+#
+# It reads the WORKING TREE, not the index. A commit that stages a subset of
+# its edits can therefore be judged on files it is not committing; the check
+# says what it compared so that is visible rather than assumed.
+if [ -z "${ARI_SKIP_PIN_CHECK:-}" ]; then
+  repin="$root/scripts/rqgm_assurance/repin_and_promote_harness.py"
+  # THE INTERPRETER IS NOT ALWAYS UNDER $root. In a linked worktree $root is the
+  # worktree, which has the scripts but NOT the venv -- so `-x "$root/.venv/..."`
+  # was false and the gate skipped in silence. That is exactly where promotions
+  # are told to run, and where this session's own promotion commits were made:
+  # the gate was absent from every commit it most needed to see. So the common
+  # directory's venv is tried too, which for a linked worktree is the main
+  # checkout's.
+  python="${ARI_PYTHON:-}"
+  if [ -z "$python" ]; then
+    for candidate in \
+      "$root/.venv/bin/python" \
+      "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/../.venv/bin/python"
+    do
+      [ -x "$candidate" ] && { python="$candidate"; break; }
+    done
+  fi
+  # FAIL LOUD WHEN THE GATE CANNOT RUN. Silence here is indistinguishable from
+  # "checked and clean", which is the property that let the drift land three
+  # times. A commit may still be made -- with ARI_SKIP_PIN_CHECK=1, said out
+  # loud -- but not by accident.
+  if [ -z "$python" ] || [ ! -f "$repin" ]; then
+    echo "pin check: cannot run (no interpreter or missing $repin)." >&2
+    echo "  Set ARI_PYTHON, or ARI_SKIP_PIN_CHECK=1 to commit without it." >&2
+    exit 1
+  fi
+  if true; then
+    staged_paths=$(git -C "$root" diff --cached --name-only)
+    if [ -n "$staged_paths" ]; then
+      watched=$("$python" "$repin" paths 2>/dev/null)
+      if [ -n "$watched" ] \
+         && printf '%s\n' "$staged_paths" | grep -qxF -f <(printf '%s\n' "$watched"); then
+        if ! out=$("$python" "$repin" check 2>&1); then
+          echo "" >&2
+          echo "pin check: this commit touches code a Harness manifest pins, and a pin is stale:" >&2
+          printf '%s\n' "$out" | sed 's/^/  /' >&2
+          echo "" >&2
+          echo "  A stale pin does not fail loudly. prepare() refuses the harness at run time" >&2
+          echo "  with \"driver bytes drifted\", so it stays registered and signed and cannot run." >&2
+          echo "" >&2
+          echo "  Re-pin the manifest:" >&2
+          echo "    scripts/rqgm_assurance/repin_and_promote_harness.py repin <manifest>.yaml" >&2
+          echo "" >&2
+          echo "  That moves manifest_digest, so the evidence bundle and the signature over" >&2
+          echo "  it then have to be RE-EARNED by running the harness's controls. The re-pin" >&2
+          echo "  surface names the attesting surface for the family; it writes no evidence" >&2
+          echo "  itself, because it runs no controls." >&2
+          echo "" >&2
+          echo "  To commit anyway (the re-registration is a separate commit):" >&2
+          echo "    ARI_SKIP_PIN_CHECK=1 git commit ..." >&2
+          exit 1
+        fi
+      fi
+    fi
+  fi
+fi
+
+# --------------------------------------------------------------------------
+# THE CATALOG STILL DESCRIBES ITS BUNDLES.
+#
+# A SECOND QUESTION WITH A SECOND ANSWER. The pin check above asks whether a
+# manifest pins the code it is measured by; this asks whether the artifacts
+# BESIDE that manifest still describe it. Moving a manifest without re-earning
+# its evidence passes the first and fails the second, which happened three
+# times in one day, by three different actors, each committing cleanly and each
+# discovered by someone else's `load_harness_catalog` afterwards.
+#
+# A SEPARATE VARIABLE, AND THIS IS THE POINT RATHER THAN TIDINESS. Moving an
+# instrument is exactly what the pin check refuses, so every actor that moves
+# one reaches for ARI_SKIP_PIN_CHECK -- correctly; it is the documented flow,
+# and a commit in this history says so in as many words while being the commit
+# that left two Harnesses pinning drivers that no longer existed. If one
+# variable carried both assertions, that habitual escape would silently cover
+# the catalog too, which is the case this gate exists for. Two assertions, two
+# variables, and the commit message shows which was claimed.
+if [ -z "${ARI_SKIP_CATALOG_CHECK:-}" ]; then
+  staged_paths=$(git -C "$root" diff --cached --name-only)
+  case "$staged_paths" in
+    *ari-core/config/harnesses/*)
+      catalog_check="$root/scripts/rqgm_assurance/check_catalog_loads.py"
+      # Same interpreter resolution as above, and the same reason: in a linked
+      # worktree $root has the scripts and not the venv, which is precisely
+      # where promotions are made.
+      python="${ARI_PYTHON:-}"
+      if [ -z "$python" ]; then
+        for candidate in           "$root/.venv/bin/python"           "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/../.venv/bin/python"
+        do
+          [ -x "$candidate" ] && { python="$candidate"; break; }
+        done
+      fi
+      if [ -z "$python" ] || [ ! -f "$catalog_check" ]; then
+        echo "catalog check: cannot run (no interpreter or missing $catalog_check)." >&2
+        echo "  Set ARI_PYTHON, or ARI_SKIP_CATALOG_CHECK=1 to commit without it." >&2
+        exit 1
+      fi
+      if ! out=$("$python" "$catalog_check" 2>&1); then
+        echo "" >&2
+        echo "catalog check: this commit touches the Harness tree and the catalog will not load:" >&2
+        printf '%s
+' "$out" | sed 's/^/  /' >&2
+        echo "" >&2
+        echo "  Nothing refuses this at run time the way a stale pin does. The catalog is" >&2
+        echo "  simply unloadable for everyone who pulls, and every test that reads it fails." >&2
+        echo "" >&2
+        echo "  Re-earn the bundle by running that harness's controls:" >&2
+        echo "    scripts/rqgm_assurance/repin_and_promote_harness.py check" >&2
+        echo "  names the attesting surface for each family." >&2
+        echo "" >&2
+        echo "  To commit anyway (a re-pin whose re-earning is the next commit):" >&2
+        echo "    ARI_SKIP_CATALOG_CHECK=1 git commit ..." >&2
+        exit 1
+      fi
+      ;;
+  esac
+fi
+
 exit 0

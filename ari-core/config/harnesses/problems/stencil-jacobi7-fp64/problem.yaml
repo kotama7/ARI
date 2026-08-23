@@ -1,0 +1,67 @@
+# 3-D 7-point Jacobi. See ari/assurance/problems.py for what a problem may and
+# may not declare; this file adds no ARI code.
+schema_version: ari.harness-problem/v1
+id: stencil-jacobi7-fp64
+revision: stencil-jacobi7-fp64/v1@2026q3
+family: stencil
+entry_point: jacobi
+description: >-
+  nt sweeps of a 3-D 7-point Jacobi stencil on an fp64 field with fixed
+  boundary planes, measured against a frozen parallel-first-touch reference.
+scaffolding:
+  contract_header: stencil_kernel.h
+  driver: stencil_main.c
+  reference: reference_stencil.c
+  seed_candidate: seed_stencil.c
+  profiled_driver: stencil_main_profiled.c
+  negative_control_slow: slow_stencil.c
+  negative_control_wrong: wrong_stencil.c
+score_inputs:
+  # WHAT ACTUALLY DETERMINES THE SCORE, and therefore what the sterility gate
+  # hashes to tell a real edit from a pure re-measurement. The two declaration
+  # files are here because the prototype left the compiler one out: a node that
+  # changed ONLY its compiler then read as an unchanged copy while moving the
+  # score across a toolchain boundary. [0] is the candidate source and is the
+  # file the seed is written to; the other two are optional and agent-written.
+  - candidate_stencil.c
+  - candidate_flags.txt
+  - candidate_cc.txt
+case_set: native-perf-stencil-cases/v1@scored-2026q3
+parity_case_set: native-perf-stencil-cases/v1@parity
+axis: speedup
+denominator: competent_frozen
+goal: |
+  Make `jacobi` in candidate_stencil.c as fast as you can without changing what
+  it computes.
+
+  The contract is in stencil_kernel.h and must be kept exactly:
+
+      u_new[i,j,k] = c0*u[i,j,k]
+                   + cw*( u[i-1,j,k] + u[i+1,j,k]
+                        + u[i,j-1,k] + u[i,j+1,k]
+                        + u[i,j,k-1] + u[i,j,k+1] )
+
+  with c0 = 0.5 and cw = 1/12, applied for nt sweeps. Boundary planes are fixed
+  (Dirichlet) and keep their u0 value throughout.
+
+  What you are measured on, stated so it is not a surprise:
+
+  - This problem is bandwidth-bound at the scored grid, and the first thing that
+    matters is WHERE THE PAGES ARE. The kernel allocates its own scratch, and
+    scratch a kernel allocates itself is placed under measurement -- unlike the
+    input and output fields, which the frozen driver first-touches outside the
+    timed window. Touching your scratch from one thread places every page on one
+    NUMA domain.
+  - Edit only candidate_stencil.c. The driver and the header are frozen.
+  - Your object may define only the `jacobi` symbol, and may not run code
+    outside the timed call.
+  - One cold call per process is timed, covering all nt sweeps. There is no
+    warmup.
+  - The output buffer arrives poisoned with NaN, so a kernel that does not write
+    every element fails the oracle rather than scoring fast.
+  - Correctness is a per-element bound scaled by nt, so reassociating the
+    6-neighbour sum is allowed; dropping terms, changing the coefficients or
+    precomputing the answer is not.
+
+  You are compared against a frozen reference that first-touches its buffers
+  with the same threads that later sweep them. Passing means not slower than it.

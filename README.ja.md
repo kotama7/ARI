@@ -39,6 +39,38 @@ ARI は一つの原則に基づいて設計されています：**ゴールを M
 
 ---
 
+## 新機能 — Constitutional ARI-RQGM（未リリース）
+
+このブランチは既存の実行経路をデフォルトのまま維持し、オプトインの
+ガバナンス／共進化レイヤを追加します。
+
+- **Constitutional `ari_rqgm` モード** — エポック内で凍結されたプロンプト、
+  コンポーネント、utility policy は、決定論的カーネルと T1–T21 の
+  レジストリライフサイクルを通じてのみ進化します。`simple_bfts` は
+  デフォルトのままで、RQGM 状態を構築しません。政策と宣言済み実行基盤
+  は別の指紋値を持ち、提供者や環境の版が不明なら未解決と記録します。
+- **来歴に結び付く説明責任** — 研究生成役を設立時の構成要素として登録し、
+  ノードへ生成構成要素、指示文、期を一度だけ付与します。古いノードや
+  曖昧なノードは対象なしとし、後継へ責任を移しません。
+- **統治された論文アーカイブ** — 直交する
+  `paper.mode: rqgm_archive` 経路が、統治された writer／reviewer ロールで
+  ドラフト木を探索し、勝者を既存のコンパイル＋claim-evidence gate へ渡します。
+- **Dashboard v2** — run スコープの Overview、Projects、Ideas、Tree、
+  Results、Governance、Configuration Studio、ログ、リアルタイム無効化、
+  token 認証、正準 `/api/v1` 読み書き面を追加しました。
+- **完全性と失敗の可視化** — rubric 監査、node provenance 監査、
+  統合 `run_integrity.json`、先行研究に接地した root ideation、従来握り
+  潰されていた成果物／論文段階エラーの fail-loud 処理を導入しました。
+
+現版のセキュリティ境界は、信頼されたホスト上の応用処理レベルの参照
+監視です。OS 隔離、電子署名、外部固定による巻戻し検出、外部への不可逆
+操作を閉じる固定門はまだ保証しません。
+
+入口は [実行モード](docs/ja/guides/execution_modes.md)、
+[RQGM アーキテクチャ](docs/ja/concepts/rqgm_architecture.md)、
+[Dashboard ガイド](docs/ja/guides/dashboard.md) です。全変更は
+[CHANGELOG.md](CHANGELOG.md) を参照してください。
+
 ## v0.9.0 の新機能（2026-06-12）
 
 **主張の end-to-end 検証。** このリリースの主題: 論文は、その全ての主張が
@@ -95,12 +127,12 @@ MCP ツール・描画出力のいずれも変更なし。
   でドッグフードに使用可能。
 - **`container_image` のエンドツーエンド配線** — ウィザード → API ワーカー →
   MCP ツール → サンドボックスランナーまで同じ 1 フィールドが流れる。
-  `pb-env` / `pb-reproducer` の短縮エイリアスは
-  `scripts/build_pb_images.sh` でビルドされる `image:latest` タグに解決。
+  v1.0 は immutable なローカル SIF、完全な Docker
+  `sha256:<image-id>`、または digest 固定 URI のみを許可し、mutable な
+  `pb-env` / `pb-reproducer` エイリアスは削除した。
 - **fail-loud な事前条件チェック** — サンドボックス / GPU の不整合は
-  既定で `RuntimeError` を送出（従来サイレントに CPU 実行へ降格していた
-  4 箇所を修正）。互換挙動は `ARI_PHASE1_ALLOW_FALLBACK=1` と
-  `ARI_SLURM_ALLOW_NO_GRES=1` でオプトイン可能。
+  エラーで停止する。旧 host-local 再現 fallback は v1.0 で削除され、GPU
+  要求も黙って降格できない。
 - **PaperBench env-truth ガードレール** — Stage 1 のプロンプトに
   「scaffold 前にホストを probe する」「言語選択を Python 偏重から
   打ち消す」「ホスト実機を反映した `ADDITIONAL NOTES`（バイナリ / GPU /
@@ -169,6 +201,8 @@ experiment.md  ──►  ARI Core  ──►  結果 + 論文 + 再現性レポ
 2. **仮説空間を BFTS で探索。** 最良優先木探索（BFTS）が探索を導きます — 全探索ではなく、エビデンス駆動です。
 3. **決定論的ツール、推論する LLM。** MCP スキルは純粋関数です。LLM が推論し、スキルが実行します。
 4. **論文から証明まで。** ARI は論文を執筆し、*さらに* 自身の主張を二重に検証します。決定論的な主張-エビデンス/メトリクス正当性ゲートが、報告されたすべての数値を記録済みの結果から再導出し、客観的に誤った、または未検証のメトリクスをブロックします。*加えて* 独立した再現性チェックが実験を再実行します。
+
+> **実行モード。** 上記のすべてはデフォルトの `simple_bfts` モードです。オプトインの `ari_rqgm` モード（設定のみ: `ari.mode: ari_rqgm` + `rqgm.enabled: true`）は、同じ BFTS エンジンの上に Constitutional なエポックガバナンスとプロンプト/コンポーネントの共進化を重ねます。オフのままなら、チェックポイントは以前のリリースとバイト単位で同一に保たれます。論文フェーズには直交する独自のスイッチ `paper.mode: linear | rqgm_archive`（および `rqgm.paper.enabled` インターロック）があります。`rqgm_archive` は論文ドラフトの最良優先ツリーを探索し、ガバナンス下の `paper_reviewer` ロールがスコア付けし、その過剰採択は敵対者が弾劾できます。一方 `linear`（デフォルト）は現行の論文パイプラインをバイト単位で同一に保ちます。[docs/guides/execution_modes.md](docs/guides/execution_modes.md) を参照。
 
 ---
 
@@ -355,7 +389,7 @@ WebSocket（ツリー変更）と SSE（ログ配信）でリアルタイム更�
 
 ### スキル（MCP プラグインサーバー）
 
-合計 13 スキル。12 個は `workflow.yaml` でデフォルト登録され、残り 1 個（orchestrator）は設定に追加することで有効化できます。
+合計 17 スキル。13 個は `workflow.yaml` でデフォルト登録されます。federated tool registry は自身の manifest で `enabled_by_default: true` を宣言しており、設定が `skills:` セクションを省略した場合に manifest 自動検出で拾われます — 同梱の `workflow.yaml` は 13 個を明示列挙しているので、並べて登録するにはそこへ追加してください。orchestrator はデフォルト無効で、明示的に有効化できます。tool registry スキルを有効にしても leaf は 1 つも有効になりません — 実行できるのは選択した catalog に載る source だけで、チェックイン済みの `ari-skill-tool-registry/CATALOG.lock` は設計上空です。
 
 v0.6.0 では 2 つのスキルを廃止しました。`ari-skill-figure-router` は `ari-skill-plot` に統合され（matplotlib プロットと SVG アーキテクチャ図を単一スキルで扱い、同じ VLM レビューループで両方を駆動）、`ari-skill-review`（リバッタル生成）は削除されました — ルーブリック駆動の査読スコアが最終的な品質シグナルであり、自前論文へのリバッタルは情報量を追加しないためです。
 
@@ -373,7 +407,11 @@ v0.6.0 では 2 つのスキルを廃止しました。`ari-skill-figure-router`
 | `ari-skill-benchmark` | CSV/JSON 分析、プロット、統計検定 | ✗ | ✓ |
 | `ari-skill-vlm` | Vision-Language モデルによる図/表レビュー | ✓ | ✓ |
 | `ari-skill-coding` | コード生成 + 実行 + ファイル読取 + bash | ✗ | ✓ |
+| `ari-skill-replicate` | PaperBench 互換のルーブリック生成と監査 | ✓ | ✓ |
 | `ari-skill-orchestrator` | ARI を MCP サーバとして公開、再帰的サブ実験、stdio+HTTP デュアル転送 | ✗ | — |
+| `ari-skill-harness` | Harness の catalog / requirement / Attestation への読み取り専用クエリと、非権威的な補助リクエスト | ✗ | — |
+| `ari-skill-knowledge` | 内容アドレス指定された手続き的知識への読み取り専用クエリと、非権威的なリクエスト面 | ✗ | — |
+| `ari-skill-tool-registry` | 大規模 MCP コレクションの不変フェデレーション、科学的 admission、リプレイ | ✗ | 自動検出のみ |
 
 ✗ = LLM 不使用、△ = 一部ツールで LLM 使用、✓ = 主要ツールが LLM 使用。
 

@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-22
 ---
 
 # トラブルシューティング
@@ -34,8 +34,10 @@ ari run /abs/path/to/experiment.md
 
 ### `DeprecationWarning: $HOME/.ari/...`
 
-**原因:** レガシーフォールバックパスが参照されています。v1.0 ではハードエラーに
-なります。v0.5–v0.8 では警告を出します。
+**原因:** レガシーフォールバックパスが参照されています。v0.5 以降のすべての
+リリースが置き換え先を示す `DeprecationWarning` を出し
+(`ari/_deprecation.py`、`removal_version="v1.0"`)、v1.0 でフォールバック自体が
+削除されます。
 
 **修正:** 明示的な環境変数を設定してください。対応表:
 
@@ -77,12 +79,21 @@ sacct -j <jobid> --format=Reason # Sometimes more verbose
 
 ### ビルドステップで `exit_code=127`
 
-**原因:** ほぼ確実にコンパイラの欠如です。HPC スキルは `gcc` のみを許可しており、
-`mpicc` / `icc` / `aocc` はほとんどのクラスタのデフォルト PATH にありません。
+**原因:** コマンドが `PATH` にありません。`slurm_submit` の script bridge は
+`#SBATCH --export=NIL` で投入したうえで `PATH=/usr/local/bin:/usr/bin:/bin` を
+設定するため、到達できるのはベースのシステムツールチェーン (通常は `gcc`) だけです。
+サイトが environment module 経由で提供するコンパイラ (`mpicc` / `icc` / `aocc`)
+はここに入っていません。
 
-**修正:** `mpicc` を `gcc -fopenmp` に置き換えてください (必要であれば
-OpenMPI を明示的にリンク)。制約を事前に宣言するために experiment.md の
-`Hardware Limits` セクションを更新してください。
+**修正:** そのツールチェーンが入っている module を load してください。bridge は
+本体の実行前にノード上で module システム自身の init
+(`/etc/profile.d/modules.sh`、`/etc/profile.d/lmod.sh`、
+`$MODULESHOME/init/bash`) を source するので、スクリプト内に書いた
+`module load` は機能します。ツールに `modules=` を渡した場合は先に
+`module --force purge` が入り、module システムが無い環境では `86` で終了します。
+それ以外の場合は `mpicc` を `gcc -fopenmp` に置き換え (必要であれば OpenMPI を
+明示的にリンク)、experiment.md の `Hardware Limits` セクションに制約を
+宣言してください。
 
 ### `--account` が拒否される
 
@@ -106,30 +117,38 @@ OpenMPI を明示的にリンク)。制約を事前に宣言するために expe
 curl -fsS http://127.0.0.1:8283/healthz   # Should return 200
 
 # If it fails, restart per docs/guides/hpc_setup.md#6
-docker compose -f containers/letta/docker-compose.yml up -d
+docker compose -f scripts/letta/docker-compose.yml up -d
 # or
-apptainer run containers/letta.sif &
+scripts/letta/start_singularity.sh
 ```
 
 ダッシュボードの `/api/memory/health` ルートは同じプローブですので、
 UI が "Letta unhealthy" と表示している場合はクラスタで Letta サービスが
 起動していません。
 
-### `LETTA_EMBEDDING_CONFIG is required`
+### `Letta agent embedding mismatch`
 
-**原因:** Letta はアーカイブコレクションを構築するために埋め込みモデル設定が必要です。
+**原因:** `LETTA_EMBEDDING_CONFIG` は設定ファイルのパスではなく embedding の
+*handle* であり、しかも Letta はエージェントの `embedding_config` を作成時点で
+凍結します。チェックポイントのエージェントが別の handle — 多くはホスト版の
+`letta/letta-free` → `embeddings.memgpt.ai` エンドポイント（上流が落ちると空
+ボディの 522 を返します）— で作成されていた場合、env var の値によらず凍結済みの
+handle が使われ続け、`add_memory` は不透明な 400 で失敗します。
 
-**修正:** 埋め込みエンドポイントを記述した JSON ファイルを `LETTA_EMBEDDING_CONFIG`
-に指定してください。OpenAI 互換の例:
+**修正:** handle を設定したうえで、チェックポイントのエージェントを purge し、
+次の `add_memory` でその handle により再作成させてください
+（`LettaBackend.purge_checkpoint`。既存の archival passages は削除されます）:
 
-```json
-{
-  "embedding_endpoint_type": "openai",
-  "embedding_model": "text-embedding-3-small",
-  "embedding_dim": 1536,
-  "embedding_endpoint": "https://api.openai.com/v1"
-}
+```bash
+export LETTA_EMBEDDING_CONFIG=openai/text-embedding-3-small
 ```
+
+未設定の場合は `letta-default` が既定値です。ARI は空値・`letta-default`・
+`letta/letta-free` を同じもの（「明示的な選択なし」）として扱うため、不安定な
+MemGPT ホスト側エンドポイントでもバックエンドは警告を出すだけです。上記の
+ハードエラーは、エージェントが凍結した handle とは*異なる* handle を明示的に
+要求した場合にのみ送出されます。`letta-default` がサーバ側で何に展開されるかは
+Letta 自身の決定であり、ARI の関与するところではありません。
 
 ### `archival memory search returned 0 results`
 
@@ -150,7 +169,7 @@ UI が "Letta unhealthy" と表示している場合はクラスタで Letta サ
 **原因:** プロバイダーのレート制限。
 
 **修正:** ARI はすべての LLM 呼び出しを
-`$ARI_CHECKPOINT_DIR/cost_log.jsonl` に記録します。1 分あたりの呼び出し率を
+`$ARI_CHECKPOINT_DIR/cost_trace.jsonl` に記録します。1 分あたりの呼び出し率を
 確認し、プロバイダーのクォータを超えている場合は `ARI_PARALLEL` を下げるか、
 BFTS ジャッジをより安価な / ローカルモデルに移行してください
 (`ARI_MODEL_JUDGE=ollama/qwen3:32b`)。
@@ -163,18 +182,58 @@ BFTS ジャッジをより安価な / ローカルモデルに移行してくだ
 python - <<'PY'
 import json, collections
 costs = collections.Counter()
-with open(f"{__import__('os').environ['ARI_CHECKPOINT_DIR']}/cost_log.jsonl") as fh:
+with open(f"{__import__('os').environ['ARI_CHECKPOINT_DIR']}/cost_trace.jsonl") as fh:
     for line in fh:
         rec = json.loads(line)
-        costs[rec["metadata"].get("skill", "?")] += rec["cost_usd"]
+        costs[rec.get("skill") or "?"] += rec["estimated_cost_usd"]
 for skill, c in costs.most_common():
     print(f"{c:7.3f}  {skill}")
 PY
 ```
 
+各行はフラットな `CallRecord` (`timestamp`, `node_id`, `phase`, `skill`,
+`model`, `*_tokens`, `estimated_cost_usd`, …) で、ネストした `metadata`
+オブジェクトはありません。追加フィールド `epoch` は `ari_rqgm` 実行時のみ
+書き込まれるため、デフォルト実行では存在しません。
+
+`ari_rqgm` 実行でも、このフィールドが押されるのは ARI **コア**プロセスから
+発行された呼び出しだけです。`RQGMRuntime` はエポック開始時に
+`cost_tracker.set_default_metadata(epoch=...)` で設定しますが、この既定値は
+設定したプロセス自身のメモリ上にしか存在しません。各 MCP スキルサーバーは
+別プロセスであり、その `bootstrap_skill(...)` が登録するのは `skill`
+(と場合により `phase`) のみで、エポックをプロセス境界の向こうへ運ぶ環境変数も
+ありません。したがってスキルが発行した呼び出しは `epoch` なしで記録されます。
+`cost_trace.jsonl` を `epoch` で集計して得られるのはコアプロセスの費用であり、
+実行全体の費用ではありません。全体を見るには `skill` で集計してください。
+スキル呼び出しをエポックへ正確に帰属させるには MCP 越しの呼び出し単位の
+メタデータ配管が必要ですが、ARI はそれを行っていません。
+
 最も費用がかかるのは通常 BFTS ジャッジ (`ari-skill-evaluator`) または
 ルーブリックレビュー (`ari-skill-paper`) です。`ARI_MODEL_EVAL` /
 `ARI_MODEL_JUDGE` でモデルを制限してください。
+
+### すべての呼び出しが `$0.00` で記録される
+
+**原因:** 価格表 (`ari/configs/model_prices.yaml`) を読み込めていません。
+追記行の書式崩れか、スキル venv に PyYAML が無いのが典型です。表が空だと
+すべての呼び出しが 0 と見積もられます。
+
+**診断:** `cost_summary.json` がこれを明示します。
+
+```bash
+python - <<'PY'
+import json, os
+s = json.load(open(f"{os.environ['ARI_CHECKPOINT_DIR']}/cost_summary.json"))
+print("pricing_table_unavailable:", s["pricing_table_unavailable"])
+print("dropped_records:", s["dropped_records"], "/ call_count:", s["call_count"])
+PY
+```
+
+`pricing_table_unavailable: true` は表の読み込み失敗を意味します
+(ローダーも `model_prices table unavailable` を警告出力します)。
+`dropped_records` が 0 でない場合、`call_count` は**過小カウント**です
+— その件数だけ使用量はあったのに記録が例外で失敗しており、各件は
+`cost record dropped` としてログに残ります。
 
 ## VLM (図 / テーブルレビュー)
 
@@ -205,13 +264,17 @@ file $ARI_CHECKPOINT_DIR/figures/fig1.png   # should report PNG
 
 ### `RLIMIT_NPROC: resource temporarily unavailable`
 
-**原因:** coding サンドボックスが `ARI_MAX_CHILD_PROCS` (デフォルト 1024) で
-fork() を制限しており、子プロセスがその上限を超えました。
+**原因:** `ARI_MAX_CHILD_PROCS` が設定されているため、coding サンドボックスが
+`RLIMIT_NPROC` で fork() を制限しており、子プロセスがその上限を超えました。
+**デフォルトの上限はありません** — 未設定なら `ari.container` も coding skill も
+一切の上限を課しません。
 
 **修正:** 問題のコマンドを削減するか (採点プロンプトが曖昧だとエージェントが
 フォークボムに陥ることがあります)、`ARI_MAX_CHILD_PROCS` を増やしてください。
-デフォルト値は意図的に余裕を持たせているため、上限に達した場合は予算不足ではなく
-実際のバグが原因であることがほとんどです。
+`RLIMIT_NPROC` はプロセスツリー単位ではなく real uid 単位で適用される点に注意して
+ください。その uid がホスト上のどこかで既に持っている task をすべて数えるため、
+小さい値を明示すると、ほかに何もしていないビルドでも `EAGAIN` になります。
+多くの場合は設定を解除するのが正解です。
 
 ## ダッシュボード / viz
 
@@ -223,10 +286,10 @@ SSH 接続している場合は、ポートのフォワーディングが必要�
 **修正:**
 
 ```bash
-# From your laptop:
-ssh -L 8000:127.0.0.1:8000 user@remote-host
-# Then on the remote:
-ari viz --port 8000
+# 手元のマシンから — WebSocket は port+1 を使うので両方フォワードします:
+ssh -L 8765:127.0.0.1:8765 -L 8766:127.0.0.1:8766 user@remote-host
+# リモート側で (checkpoint ディレクトリは必須引数。--port の既定値は 8765):
+ari viz /abs/path/to/checkpoints/<run_id>
 ```
 
 ### フロントエンドが古いステートを表示する
@@ -239,10 +302,12 @@ ari viz --port 8000
 ## 次に確認する場所
 
 - `$ARI_CHECKPOINT_DIR/ari.log` — アプリケーションログ。
-- `$ARI_CHECKPOINT_DIR/cost_log.jsonl` — LLM コストの履歴。
+- `$ARI_CHECKPOINT_DIR/cost_trace.jsonl` — LLM コストの履歴
+  (集計は `cost_summary.json`)。
 - `$ARI_CHECKPOINT_DIR/lineage_decisions.jsonl` — 停滞判断の記録 (v0.7+)。
 - `docs/reference/file_formats.md` — チェックポイント内の各ファイルの意味。
-- `docs/_archive/refactor_audit.md` — 既知のマイグレーション負債。
+- `docs/guides/migration.md` — バージョン間のマイグレーション手順
+  (v0.5 → v0.6 以降) と GUI リフレッシュのノート。
 
 ## 関連
 

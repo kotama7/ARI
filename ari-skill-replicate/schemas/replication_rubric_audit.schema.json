@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ari://schemas/replication_rubric_audit.schema.json",
+  "title": "ARI Replication Rubric Audit V2",
+  "type": "object",
+  "required": ["schema_version", "rubric_sha256", "paper_sha256", "deterministic", "llm_review", "regen_recommended", "report_sha256"],
+  "properties": {
+    "schema_version": {"const": "ari.replication-rubric-audit/v2"},
+    "rubric_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "paper_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "deterministic": {
+      "type": "object",
+      "required": ["leaves_total", "leaves_flagged", "by_flag", "findings"],
+      "properties": {
+        "leaves_total": {"type": "integer", "minimum": 0},
+        "leaves_flagged": {"type": "integer", "minimum": 0},
+        "by_flag": {
+          "type": "object",
+          "required": ["vague_qualifier", "no_paper_evidence", "duplicate", "unverifiable"],
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["leaf_id", "flags"],
+            "properties": {
+              "leaf_id": {"type": "string", "format": "uuid"},
+              "flags": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {"enum": ["unverifiable", "duplicate", "no_paper_evidence", "vague_qualifier"]}
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "llm_review": {
+      "type": "object",
+      "required": ["status", "independence_status", "generator_identity", "auditor_identity", "successful_calls", "failed_calls", "calls"],
+      "properties": {
+        "status": {"enum": ["completed", "partial", "unavailable"]},
+        "independence_status": {"enum": ["independent-model", "not-independent"]},
+        "generator_identity": {"$ref": "#/$defs/identity"},
+        "auditor_identity": {"$ref": "#/$defs/identity"},
+        "successful_calls": {"type": "integer", "minimum": 0},
+        "failed_calls": {"type": "integer", "minimum": 0},
+        "calls": {"type": "array", "items": {"$ref": "#/$defs/model_call"}}
+      },
+      "additionalProperties": false
+    },
+    "regen_recommended": {"type": "boolean"},
+    "report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  },
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "required": ["model", "model_revision", "provider"],
+      "properties": {
+        "model": {"type": ["string", "null"]},
+        "model_revision": {"type": ["string", "null"]},
+        "provider": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["relative_path", "sha256", "size_bytes", "media_type"],
+      "properties": {
+        "relative_path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "media_type": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "model_call": {
+      "type": "object",
+      "required": ["label", "status", "model", "provider", "prompt", "call_sha256"],
+      "properties": {
+        "label": {"type": "string", "minLength": 1},
+        "status": {"enum": ["completed", "failed", "budget-exhausted"]},
+        "model": {"type": "string", "minLength": 1},
+        "model_revision": {"type": ["string", "null"]},
+        "provider": {"type": "string", "minLength": 1},
+        "prompt": {"$ref": "#/$defs/artifact"},
+        "raw_response": {"$ref": "#/$defs/artifact"},
+        "error": {"type": ["string", "null"]},
+        "call_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

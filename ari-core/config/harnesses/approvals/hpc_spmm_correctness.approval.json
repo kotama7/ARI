@@ -1,0 +1,15 @@
+{
+  "actor_id": "kotama",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:888c83cac4194f383f9a56c9b8a28045f24f55d62a537820833c6e94a75041e5",
+  "approved_date": "2026-08-17",
+  "authorization_basis": "reviewed the four-execution control sequence and its discrimination evidence",
+  "evidence_bundle_digest": "sha256:49f5873969b75166a27f310d9b20647de3d2a54697a687622ecdafe11acac866",
+  "from_status": "candidate",
+  "harness_id": "hpc/spmm-correctness",
+  "harness_manifest_digest": "sha256:7669d2dd4485ac13fe49ca4b085dacc61b8906901d68766409202a24175bbbac",
+  "harness_version": "1.0.0",
+  "registration_report_digest": "sha256:9c6989b4ad1febb938f8135effb02d76e32b286286f502b2fd52285e4e9cb866",
+  "schema_version": "ari.harness-promotion-approval/v1",
+  "to_status": "verified"
+}

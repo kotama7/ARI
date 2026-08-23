@@ -1,0 +1,388 @@
+{
+  "$defs": {
+    "JudgeIdentityV1": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "model_revision": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Revision"
+        },
+        "provider": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "provider"
+      ],
+      "title": "JudgeIdentityV1",
+      "type": "object"
+    },
+    "LeafGradeEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "explanation": {
+          "title": "Explanation",
+          "type": "string"
+        },
+        "leaf_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Leaf Id",
+          "type": "string"
+        },
+        "raw_response_artifacts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReproductionArtifactV1"
+          },
+          "title": "Raw Response Artifacts",
+          "type": "array"
+        },
+        "requirements": {
+          "minLength": 1,
+          "title": "Requirements",
+          "type": "string"
+        },
+        "run_scores": {
+          "default": [],
+          "items": {
+            "type": "number"
+          },
+          "title": "Run Scores",
+          "type": "array"
+        },
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "valid_score": {
+          "title": "Valid Score",
+          "type": "boolean"
+        },
+        "verification": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verification"
+        }
+      },
+      "required": [
+        "leaf_id",
+        "requirements",
+        "score",
+        "valid_score",
+        "explanation"
+      ],
+      "title": "LeafGradeEvidenceV1",
+      "type": "object"
+    },
+    "NegativeControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "boilerplate_score": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boilerplate Score"
+        },
+        "empty_score": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Empty Score"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "threshold": {
+          "default": 0.05,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Threshold",
+          "type": "number"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "NegativeControlV1",
+      "type": "object"
+    },
+    "ReproductionArtifactV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.reproduction-artifact/v1",
+          "default": "ari.reproduction-artifact/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "relative_path",
+        "digest",
+        "size_bytes",
+        "media_type",
+        "role"
+      ],
+      "title": "ReproductionArtifactV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "call_artifacts": {
+      "items": {
+        "$ref": "#/$defs/ReproductionArtifactV1"
+      },
+      "title": "Call Artifacts",
+      "type": "array"
+    },
+    "errors": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Errors",
+      "type": "array"
+    },
+    "independence_status": {
+      "enum": [
+        "independent-model",
+        "not-independent"
+      ],
+      "title": "Independence Status",
+      "type": "string"
+    },
+    "judge": {
+      "$ref": "#/$defs/JudgeIdentityV1"
+    },
+    "leaves": {
+      "items": {
+        "$ref": "#/$defs/LeafGradeEvidenceV1"
+      },
+      "title": "Leaves",
+      "type": "array"
+    },
+    "n_runs_completed": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "N Runs Completed",
+      "type": "integer"
+    },
+    "n_runs_requested": {
+      "maximum": 100,
+      "minimum": 1,
+      "title": "N Runs Requested",
+      "type": "integer"
+    },
+    "negative_control": {
+      "$ref": "#/$defs/NegativeControlV1"
+    },
+    "ors_score": {
+      "anyOf": [
+        {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ors Score"
+    },
+    "paper_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Paper Digest",
+      "type": "string"
+    },
+    "raw_score": {
+      "anyOf": [
+        {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Raw Score"
+    },
+    "report_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Report Digest",
+      "type": "string"
+    },
+    "reproduction_run_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reproduction Run Digest"
+    },
+    "reproduction_status": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "timed_out",
+        "cancelled",
+        "unavailable"
+      ],
+      "title": "Reproduction Status",
+      "type": "string"
+    },
+    "rubric_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Rubric Digest",
+      "type": "string"
+    },
+    "rubric_schema_version": {
+      "title": "Rubric Schema Version",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.reproduction-grade-report/v1",
+      "default": "ari.reproduction-grade-report/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "score_stddev": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Score Stddev"
+    },
+    "status": {
+      "enum": [
+        "valid",
+        "invalid-negative-control",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "rubric_schema_version",
+    "rubric_digest",
+    "paper_digest",
+    "reproduction_status",
+    "judge",
+    "independence_status",
+    "n_runs_requested",
+    "n_runs_completed",
+    "status",
+    "leaves",
+    "negative_control",
+    "call_artifacts",
+    "report_digest"
+  ],
+  "title": "GradeReportV1",
+  "type": "object"
+}

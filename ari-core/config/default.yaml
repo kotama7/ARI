@@ -68,6 +68,15 @@ skills:
 - name: evaluator-skill
   path: /path/to/ari/ari-skill-evaluator
   phase: bfts
+# Federated third-party instruments (OpenROAD, Qiskit, ToolUniverse). Left off
+# by default: the packaged CATALOG.lock is empty, so the broker would add five
+# tools to every agent's surface and serve nothing. Enable it only together
+# with ARI_TOOL_REGISTRY_LOCK pointing at a materialized site catalog -- ARI
+# reads the same variable when it projects the brokered leaves onto
+# capabilities, so the two cannot disagree about which lock is in force.
+# - name: tool-registry-skill
+#   path: /path/to/ari/ari-skill-tool-registry
+#   phase: bfts
 # ── Pipeline phase: tools used AFTER BFTS completes (paper / review) ─────────
 - name: paper-skill
   path: /path/to/ari/ari-skill-paper

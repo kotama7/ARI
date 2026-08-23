@@ -1,0 +1,9 @@
+# The set the parity probe certifies at. Separate from the scored set so a probe
+# can be cheap without changing what a scored run measures, and pinned like any
+# other.
+schema_version: ari.harness-case-set/v1
+revision: native-perf-stencil-cases/v1@parity
+kind: stencil
+description: One cube, large enough that the timed sweeps dominate the setup.
+cases:
+  - [256, 256, 256, 240]

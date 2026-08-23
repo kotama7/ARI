@@ -4,17 +4,37 @@ sources:
     role: implementation
   - path: ari-skill-paper
     role: implementation
+  - path: ari-skill-transform/src/curate.py
+    role: implementation
+  - path: ari-skill-evaluator/src/server.py
+    role: implementation
+  - path: ari-core/ari/latex_claims.py
+    role: implementation
+  - path: ari-core/ari/clone
+    role: implementation
+  - path: ari-core/ari/publish
+    role: implementation
+  - path: ari-core/ari/registry
+    role: implementation
+  - path: ari-core/ari/cli/commands.py
+    role: implementation
+  - path: ari-core/ari/agent/run_env.py
+    role: implementation
+  - path: ari-core/ari/agent/shims/git.sh
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-12
+last_verified: 2026-08-16
 ---
 
 # Publication Lifecycle (v0.7.0)
 
 ARI v0.7.0 turns the EAR from "drop the whole checkpoint into ear/"
 into a curated, digest-anchored publication chain. The author writes a
-small `ear/publish.yaml` allowlist; ari-core enforces a built-in deny
-list and computes a deterministic bundle digest. The digest is baked
+small `ear/publish.yaml` allowlist; transform-skill's `curate.py`
+enforces a built-in deny list (`BUILTIN_DENY`: `.env*`, `secrets/**`,
+`*.pem`, `*.key`, `id_rsa`, `id_ed25519`) and computes a deterministic
+bundle digest. The digest is baked
 into the paper (`\codedigest{...}`), so any reader can verify the
 bundle at any future time, even if the registry hosting it disappears.
 
@@ -24,11 +44,12 @@ generate_ear ──▶ {checkpoint}/ear/                 (full author-curated re
         │
         ▼ ear_curate (transform-skill)
         ▼
-{checkpoint}/ear_published/  +  manifest.lock      (sha256 of canonical {path,sha256,size} JSON)
+{checkpoint}/ear_published/  +  manifest.lock      (sha256 of canonical v2 JSON: {path,sha256,size,role})
         │
-        ▼ ear_publish (transform-skill, optional)
+        ▼ ear_publish (transform-skill; enabled by default)
         ▼
-backend.publish ──▶ ari-registry / gh / zenodo / local-tarball
+backend.publish ──▶ local-tarball (workflow default) / ari-registry / gh / zenodo
+                     always visibility=staged
         │
         ▼ writes publish_record.json
         │
@@ -46,12 +67,20 @@ backend.publish ──▶ ari-registry / gh / zenodo / local-tarball
         │        ▼ render_paper (recompile refined .tex ──▶ full_paper.pdf)
         │        ▼ link_paper_claims (final)          ──▶ paper_claim_links_final.json
         │        ▼ claim_evidence_hard_gate (FINAL)   ──▶ evaluation/claim_evidence_hard_gate_final.json
-        │        │   (blocks finalize in strict mode)
+        │        │   (blocks finalize: objective falsehoods always,
+        │        │    the configured block_on list in strict mode)
         ▼        ▼
         └────────┴──▶ finalize_paper (paper-skill: inject_code_availability)
                        DEPENDS ON ear_publish AND the FINAL hard gate
         ▼
 full_paper.tex with \codeavailability{} \codedigest{} \coderef{}
+        │
+        ▼ link_paper_claims_locked                  ──▶ paper_claim_links_locked.json
+        ▼ claim_evidence_hard_gate_locked (final)   ──▶ evaluation/claim_evidence_hard_gate_locked.json
+        ▼ evidence_grounded_semantic_review_locked (advisory)
+        ▼ render_final_paper (compile the injected .tex ──▶ full_paper.pdf)
+        ▼ lock_paper_build (paper-skill: finalize_paper_build)
+        │                                            ──▶ paper_build.json (PaperBuildV1)
         │
         ▼ ari clone <ref> --expect-sha256 <baked digest>
         ▼
@@ -65,17 +94,19 @@ a non-blocking **evidence-grounded semantic review**, and an
 **anchor-preserving refine/render loop** on top of the existing paper
 stages. The loop links the paper's `% CLAIM` anchors to recorded
 results (`link_paper_claims`), checks them against the experiment data
-(`claim_evidence_hard_gate`, run once on the draft and again on the
-refined paper), threads both the hard gate and the semantic review into
-the merged review, applies suggested revisions while preserving the
-claim anchors (`paper_refine`), and recompiles the refined `.tex`
+(`claim_evidence_hard_gate`, run once on the draft, again on the
+refined paper, and a third time on the exact post-injection TeX that
+`lock_paper_build` locks), threads both the hard gate and the semantic
+review into the merged review, applies suggested revisions while
+preserving the claim anchors (`paper_refine`), and recompiles the refined `.tex`
 (`render_paper`). It is governed by the `claim_gate_policy` block in
-`ari-core/config/workflow.yaml` and is **default-on in `warn`
-(report-only) mode** — the gate records findings but never blocks the
-build. Setting `claim_gate_policy.mode: strict` (or
-`ARI_CLAIM_GATE_MODE=strict`) makes the **FINAL** gate block
-`finalize_paper` on blocking errors (numeric mismatch, unresolved
-operands, missing evidence).
+`ari-core/config/workflow.yaml` and is **default-on in `warn` mode** —
+in `warn` only the objective-integrity `always_block_on` tier can stop
+the build, and only at the **FINAL** phase; every other finding is
+recorded without blocking. Setting `claim_gate_policy.mode: strict` (or
+`ARI_CLAIM_GATE_MODE=strict`) additionally blocks `finalize_paper` on the
+configured `block_on` errors (numeric mismatch, unresolved operands,
+missing evidence). `mode: off` never blocks, in either tier.
 
 Four robustness behaviours keep the loop honest end-to-end:
 
@@ -98,9 +129,12 @@ Four robustness behaviours keep the loop honest end-to-end:
   delta — a negative value means the count *grew* after refine and is
   surfaced as a regression instead of being clamped to zero.
 - **Numeric verification understands scientific notation.** The
-  numeric-mention scanner (mirrored in
-  `ari-skill-paper/src/claim_links.py` and ari-core's
-  `claim_gate/latex.py`) parses mantissa × 10^exp forms
+  numeric-mention scanner is a single implementation,
+  `ari-core/ari/latex_claims.py` — reached by
+  `ari-skill-paper/src/claim_links.py` through `ari.public.latex_claims`
+  and by ari-core's `ari/pipeline/claim_gate/latex.py` compatibility
+  re-export, so the
+  two callers can no longer drift apart. It parses mantissa × 10^exp forms
   (`4.44 \times 10^{-16}`, with `x`/`\times`/`\cdot`) and attached
   e-notation (including sentence-final), keeps digit-bearing tokens,
   and treats `\( \)` as math delimiters when locating a value's unit
@@ -114,24 +148,30 @@ Four robustness behaviours keep the loop honest end-to-end:
   line stamped `% CLAIM:Cw:NCw`) the anchors are disambiguated per
   line so each declaration is verified independently.
 - **The metric contract is minted once.** The first `make_metric_spec`
-  call that produces a claims-bearing contract persists it as
-  `{checkpoint}/metric_contract.json`; every later call returns that
-  file verbatim (the response carries `contract_frozen: true`). LLM
-  naming is not referentially stable — regenerating the contract
-  mid-run changes the evidence vocabulary and hides sibling evidence
-  emitted under earlier names from the exact-match gate (observed on
-  a real run). Per-node spec fields (scoring guide etc.) are still
-  computed per call; scaffold-only contracts (no claims) never
-  freeze.
+  call that resolves an idea-owned Research Contract — or admits a
+  human-reviewed `propose_metric_contract` proposal — persists the
+  projection as `{checkpoint}/metric_contract.json`; every later call
+  reads that file back and returns it (the response carries
+  `contract_frozen: true`), and a re-mint whose `projection_digest`
+  differs is refused outright. LLM naming is not referentially stable —
+  regenerating the contract mid-run changes the evidence vocabulary and
+  hides sibling evidence emitted under earlier names from the
+  exact-match gate (observed on a real run). Per-node spec fields
+  (scoring guide etc.) are still computed per call. With no idea-owned
+  contract and no reviewer, nothing freezes: the response is
+  `contract_frozen: false`, `admission_status: human-review-required`,
+  and the parser output is evidence only, never promoted to a contract.
 
 Artifacts: `paper_claim_links.json` (draft) /
-`paper_claim_links_final.json`, and
-`evaluation/claim_evidence_hard_gate_{draft,final}.json`.
+`paper_claim_links_final.json` / `paper_claim_links_locked.json`, and
+`evaluation/claim_evidence_hard_gate_{draft,final,locked}.json`.
 
 Trust model: the **paper itself is the trust anchor**, not the
 registry. `ari clone` hard-fails on any bundle whose recomputed
 digest does not match `--expect-sha256` (or the `manifest.lock`
-declaration). If a registry vanishes, the same bundle pinned anywhere
+declaration) — but only on the extracting path: with `--no-extract`
+the bundle is copied without being opened, so `--expect-sha256` is
+accepted and never checked. If a registry vanishes, the same bundle pinned anywhere
 else (S3, Zenodo, gh release, local mirror) still verifies. This is
 **bundle integrity** (digest match); the FINAL hard gate adds **claim
 integrity** — it re-derives the numbers reported in the paper from the
@@ -143,7 +183,7 @@ recorded results and flags any that fall outside tolerance.
 |--------|----------|-------|
 | `file://<path>` | local file or directory | offline / mirror |
 | `https://<url>` / `http://<url>` | tarball download | any HTTPS host |
-| `ari://<id>` | ari-registry client | reads `registries.yaml` for endpoint/token. Resolution: `$ARI_REGISTRIES_FILE` → `{checkpoint}/.ari/registries.yaml` → `./.ari/registries.yaml`. The legacy `$HOME/.ari/` location was removed in v0.5.0 and emits a `DeprecationWarning` (fallback dropped in v1.0). |
+| `ari://<id>` | ari-registry client | reads `registries.yaml` for endpoint/token. Resolution: `$ARI_REGISTRIES_FILE` → `{checkpoint}/.ari/registries.yaml` → `./.ari/registries.yaml` → `$HOME/.ari/registries.yaml` (deprecated since v0.5.0: still consulted last, emits a `DeprecationWarning`, dropped in v1.0). With no file anywhere, `$ARI_REGISTRY_URL` / `$ARI_REGISTRY_TOKEN` synthesise a single `default` registry. |
 | `gh:<user>/<repo>` | GitHub repo or release | API + tarball |
 | `doi:<doi>` | Zenodo deposition | DOI → file list → bundle |
 
@@ -160,9 +200,16 @@ meta.json}`. Visibility is monotone: `staged` → `unlisted` / `public`
 
 - **`_run_env.json`** — `ari/agent/run_env.py` writes per-`work_dir`
   hardware metadata (hostname, SLURM job/partition/nodelist, CPU
-  model/threads/MHz/arch, mem_total, compiler versions) from inside
+  model/threads/MHz/arch, mem_total, compiler versions, plus the vendor
+  `toolchain_dirs` that `module avail` does not list and the
+  page/NUMA `memory_system` state) from inside
   the executing process so SLURM jobs (which run on a different node
-  than the agent) report accurate facts. The `node_report` builder
+  than the agent) report accurate facts. Each call OVERWRITES the file:
+  the LAST tool call's environment wins. Its `compilers` are the
+  PRE-module view — the record of what the measurement actually ran
+  under (loaded modules, resolved PATH) is `_exec_env.json`, written by
+  the executing shell and merged in under `execution` by
+  `read_run_env`. The `node_report` builder
   enriches reports with this data; downstream stages recover "ran on
   the compute partition, hostname X, CPU model …" instead of guessing.
 - **Git shim** (`ari/agent/shims/git.sh`) — wired into the

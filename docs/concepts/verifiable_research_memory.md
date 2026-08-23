@@ -4,9 +4,15 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/verified_context.py
     role: implementation
+  - path: ari-core/ari/memory
+    role: implementation
   - path: ari-core/ari/config
     role: config
-last_verified: 2026-06-04
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # ARI Verifiable Research Memory
@@ -81,19 +87,39 @@ write_paper ─▶ reads the path directly, render_grounded_block → system pro
   is the *inheritance* path and is independent of the verifiable layer below.
 - **Typed index / verified context**: the verifiable layer above, gated by
   `consolidation_enabled()` (default ON).
+- **Selective erasure**: a node RQGM logically erased can neither win selection
+  nor ground a claim — core-side `select_best_node` excludes it and
+  `build_verified_context` drops it from the lineage (both on
+  `metrics['_valid_for_frontier'] is False`), and the skill's `context_builder`
+  builds its claim lists from the surviving ancestors only
+  (`erasure.drop_erased` over `{checkpoint}/rqgm_erasure_state.json`).
+  `failure_case` limitations keep the full ancestor set, labelled rather than
+  hidden. Inert on a non-RQGM checkpoint (no rollup file).
 
 ## Components
 
-- `ari-skill-memory`: `schemas.py` (typed records), `provenance.py` (sha256
+- `ari-skill-memory`: `schemas.py` (the `MEMORY_KINDS` / `REPRO_STATUSES`
+  vocabularies plus the pre-hash `ArtifactRef` input helper — the *stored*
+  typed record is `MemoryRecordV1`, exported from `ari.public.memory` and
+  content-addressed, its `record_id` and `record_digest` both being the
+  canonical digest of its own payload), `provenance.py` (sha256
   refs from node_report), `audit.py` (claim↔artifact integrity),
   `writer.py` / `retriever.py` (typed write + kind/scope/artifact-filtered
   read + reproducibility fold), `consolidation.py` (node_report → specs),
-  `context_builder.py` (verified context). Exposed as MCP tools
+  `erasure.py` (the reader for the published erasure rollup: label on the pull
+  path, hard-exclude on the grounding path),
+  `context_builder.py` (verified context), `access_log.py` (append-only
+  telemetry of write/read events to `{ckpt}/memory_access.jsonl` for the
+  dashboard — not the store itself, and tolerant of partial Letta
+  outages). Exposed as MCP tools
   (`add_experiment_result`, `search_research_memory`, `get_verified_context`,
   `consolidate_node_memory`, `audit_memory`, …) — all called by hooks.
 - `ari-core`: `pipeline/verified_context.py` (best-node lineage scoping +
   grounded-block render), the `bfts_loop` node-end consolidation hook, and the
-  write_paper consumption.
+  write_paper consumption. All core-side access to the skill's backend and
+  context builder goes through the `ari/memory/` funnel
+  (`ari.memory.get_backend` / `ari.memory.build_verified_context`) — the only
+  ari-core package allowed to import `ari_skill_memory`.
 
 ## Gating & cost
 

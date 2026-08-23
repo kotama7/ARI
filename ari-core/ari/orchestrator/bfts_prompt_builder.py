@@ -41,7 +41,6 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 # ─────────────────────────────────────────
 @dataclass(frozen=True)
 class _PromptBudget:
-    parent_delta_chars: int = 240
     parent_concern_chars: int = 200
     parent_hint_chars: int = 200
     candidate_summary_select_chars: int = 120

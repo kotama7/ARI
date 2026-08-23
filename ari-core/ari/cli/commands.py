@@ -94,6 +94,13 @@ def cmd_clone(
 
 def _safe_backup(checkpoint_dir: "Path | None") -> None:
     """On-exit backup wrapper — swallow errors so shutdown isn't blocked."""
+    import os as _os
+    if _os.environ.get("ARI_HANDOFF_MEMORY_OFF", "") == "1":
+        # memory_off run: memory writes are gated at the MCP client, so there is
+        # nothing to snapshot but the empty default core_seed. Skip the backup
+        # entirely to keep the run's checkpoint free of memory artifacts. The
+        # manual `ari memory backup` command is unaffected (explicit user intent).
+        return
     try:
         from ari.memory_cli import _do_backup
         _do_backup(Path(checkpoint_dir))
@@ -216,14 +223,22 @@ def settings_cmd(
     if set_key:
         cfg_data.setdefault("llm", {})["api_key"] = set_key
         changed = True
+    # `resources`, not `slurm`: ARIConfig has no top-level `slurm` field and
+    # `load_config` DROPS unknown top-level keys, so everything written under
+    # `slurm:` was silently discarded — `ari settings --partition gpu` looked
+    # like it worked and changed nothing. `resources` is a typed free-form dict
+    # that survives the load and is what the runtime reads.
+    # NOTE: the agent's per-run `slurm_partition` / `slurm_max_cpus` hints are
+    # parsed from the experiment.md header (agent/workflow.py), so a partition
+    # set here is persisted config, not an override of that.
     if set_partition:
-        cfg_data.setdefault("slurm", {})["partition"] = set_partition
+        cfg_data.setdefault("resources", {})["partition"] = set_partition
         changed = True
     if set_cpus:
-        cfg_data.setdefault("slurm", {})["cpus_per_task"] = set_cpus
+        cfg_data.setdefault("resources", {})["cpus"] = set_cpus
         changed = True
     if set_mem:
-        cfg_data.setdefault("slurm", {})["mem_gb"] = set_mem
+        cfg_data.setdefault("resources", {})["mem_gb"] = set_mem
         changed = True
     if changed:
         config.write_text(_yaml.dump(cfg_data, allow_unicode=True))

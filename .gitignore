@@ -30,6 +30,9 @@ slurm-*.out
 # Checkpoint directories (generated at runtime)
 *_ckpt_*/
 checkpoints/
+# Versioned migration fixtures exercise legacy checkpoint readers in CI.
+!/ari-core/tests/fixtures/checkpoints/
+!/ari-core/tests/fixtures/checkpoints/**
 output*/
 results*/
 
@@ -37,10 +40,32 @@ results*/
 experiments/
 benchmarks/
 *.c
+
+# The registered performance harness's frozen scaffolding is CONTENT-ADDRESSED by
+# its manifest and by the driver digest, so a checkout without it cannot verify
+# or reproduce a measurement. The blanket *.c above would drop it silently, which
+# is how the prototype's kernels ended up needing `git add -f` and a memory of
+# having done it.
+!ari-core/ari/assurance/kernels/**/*.c
+!ari-core/ari/assurance/kernels/**/*.h
+# A problem definition is the same case one level out: its scaffolding is what
+# the agent starts from and what the reference is built from, and its digest
+# covers those bytes. Dropping them here would leave a problem that loads on the
+# machine that wrote it and nowhere else.
+!ari-core/config/harnesses/problems/**/*.c
+!ari-core/config/harnesses/problems/**/*.h
 *.cpp
 *.f90
 *.def
 *.sbatch
+# Deterministic source/data fixtures exercised by assurance and RQGM CI.
+!/ari-core/tests/fixtures/assurance/native_reference_candidate.c
+# Knowledge clean-task sources are bound by digest from checked-in evidence, so
+# a checkout missing them fails the registration tests rather than skipping.
+!/ari-core/tests/fixtures/knowledge/*.c
+!/ari-core/tests/fixtures/knowledge/intel_performance_patterns_clean_task.c
+!/ari-core/tests/fixtures/rqgm_eval/metric_gaming/experiments/
+!/ari-core/tests/fixtures/rqgm_eval/metric_gaming/experiments/**
 
 # Dynamic YAML/scripts generated per-experiment
 *_paper.yaml
@@ -49,6 +74,11 @@ benchmarks/
 
 # ── Setup artifacts (environment-specific) ─────────────────────
 .ari_python
+# Runtime job records written by the HPC skill at submission time. They
+# carry the things that must never be published: the compute node's fully
+# qualified hostname, the scheduler partition, and the absolute work_dir
+# with the account name in it.
+.ari-hpc/
 
 # ── Security ────────────────────────────────────────────────────
 .env
@@ -73,8 +103,20 @@ Thumbs.db
 !/containers/README.md
 /ari-core/containers/*
 !/ari-core/containers/README.md
+# Runtime workspaces also hold private scheduler site selectors. Physical
+# cluster/partition/node names stay here; tracked locks contain only a salted
+# site-identity digest. The repository pre-commit hook and promotion commands
+# scan both worktree candidates and staged Git blobs against the ignored site
+# configuration; never use `git add -f` for any file below this directory.
 workspace/
 *.sif
+
+# Materialized Provider runtimes and the environment-specific catalogs built
+# from them.  Every path inside is absolute and machine-local, so none of it is
+# publishable; the reviewed evidence stays tracked under
+# ari-skill-tool-registry/providers/.  The README is kept.
+provider-artifacts/*
+!provider-artifacts/README.md
 
 # Temporary work files
 audit_prompt.txt
@@ -92,7 +134,20 @@ ari-core/checkpoints/
 # ── Runtime / temp files (generated at runtime, never track) ────
 experiment.md
 ari-core/experiment.md
+# The migration contract intentionally contains historical experiment.md.
+!/ari-core/tests/fixtures/checkpoints/v0_7_golden/experiment.md
 tmp*.md
+# Run-environment capture (carries hostname/partition/nodelist — machine info, never track)
+_run_env.json
+*_run_env.json
+# Scratch reports / drafts (local working dir, never track)
+report_temp/
+# Handoff study (Stage 4): the SpMM task fixture is tracked source, not a runtime
+# experiment.md — re-include it despite the rule above.
+!ari-core/ari/evaluator/spmm_kernels/experiment.md
+!ari-core/ari/evaluator/gemm_kernels/experiment.md
+!ari-core/ari/evaluator/erfc_kernels/experiment.md
+!ari-core/ari/evaluator/meshpart_kernels/experiment.md
 GUI_TASK.md
 *_TASK.md
 
@@ -103,6 +158,12 @@ viz.bak/
 # ── Virtual environments ───────────────────────────────────────
 .venv/
 venv/
+# A SECOND VENV, FOR THE OTHER ARCHITECTURE. The repo venv holds x86_64 wheels
+# (`...cpython-311-x86_64-linux-gnu.so`), so on an aarch64 compute node numpy
+# will not import and nothing measured there can run. The arch-specific one is
+# built on that node and is hundreds of MB of binaries; it is a build artifact,
+# not a checkout.
+.venv-*/
 
 # ── Node / Frontend ───────────────────────────────────────────
 node_modules/
@@ -128,3 +189,46 @@ memory/
 docs/node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+
+# BFTS agent artifacts that leak to the repo root (agent writes bench/problem/
+# result files in the process cwd instead of its node work_dir). Redundant with
+# the per-node work_dir copies; ignore so they never get committed.
+/problem.json
+/problem.bin
+/results.json
+/run_bench.sh
+/run_benchmark.sh
+/run_candidate.sh
+/run_test.sh
+/benchmark.sh
+/performance_plot.png
+/Makefile
+/out.bin
+/candidate
+/selftest
+
+# BFTS agent benchmark artifacts (thread-scaling plots/results the agent writes
+# to the process cwd instead of its node work_dir). Cosmetic; scoring reads the
+# isolated ARI_WORK_DIR candidate. Ignore so they never get committed.
+/analyze_results.py
+/results_thread_*.json
+/gflops_*.png
+/speedup_*.png
+/*_thread_plot.png
+/performance_*.png
+/candidate_gemm.c
+/candidate_spmm.c
+/candidate_stencil.c
+/candidate_meshpart.c
+/gemm_main.c
+/spmm_main.c
+/stencil_main.c
+/*.o
+
+# agent-leaked C sources/objects at repo root (fixtures live in evaluator/*_kernels/)
+/*.c
+/*.h
+/*.o
+/*.exe
+/a.out
+/build/

@@ -1,0 +1,66 @@
+{
+  "adapter": {
+    "adapter_digest": "sha256:b530a62bc09364d4a0c529bac8a48128fcc73c75c825a7c78afcd1edef1cfad3",
+    "adapter_id": "ari.tooluniverse-compact",
+    "adapter_version": "1.0.0"
+  },
+  "artifact": {
+    "artifact_kind": "ari-patched-wheel",
+    "build_recipe_digest": "sha256:f6aa1ca94da11ba5621afac1b5e7d3eee67a6ee041ecfbd7014d77cbb24ae643",
+    "dependency_lock_digest": "sha256:dbcc593aeb7fdf14195fb08df68377f23c6df71dbdb3a7a601b920a57c668fec",
+    "package_tree_digest": "sha256:f3ac2d158c9e812158b2ff4496d744e915f129e83e3bdd395a87d608ff848d6b",
+    "patch_digest": "sha256:60405a50587c577a5ba22821baf28d98ce637650484209c250f15d84d1140c23",
+    "upstream_version": "1.3.1",
+    "upstream_wheel_digest": "sha256:a201a8793a0eaa30a085417b07ec4bffaccc4d955f9754dd122914991d0d59c0",
+    "wheel_digest": "sha256:c976866f024d1c77ee476dc1855940949282ea19fd7227349061eaa0fe1d1b7d"
+  },
+  "capability_scope": {
+    "capability_contract_digest": "sha256:d2a6d9235a5f1ca4d121e4e8211ab58acaeabd7526c1362e3bd5b8e99ad2d90d",
+    "capability_ref": "ari.literature.search/v1",
+    "categories": [
+      "pubmed"
+    ],
+    "context_requirement": "run",
+    "credential_scope_ids": [],
+    "determinism": "live-data",
+    "environment_requirements": [
+      "network-read"
+    ],
+    "input_schema_digest": "sha256:89b9b4fa2bf35b9d95cc61e6770071879bb5d885b1f941ee881606aa5935bd78",
+    "leaf_spec_digest": "sha256:2e418135915dcf042cdd3a9236cb63ea03ebcc72b109a7c8cb5b34928452b07c",
+    "output_schema_digest": "sha256:12ae4b3a216d0a01aad762ff34f95ad4d2f879172d119e2702e7856fd72a8c81",
+    "permissions": [
+      "network-read"
+    ],
+    "projected_output_schema_digest": "sha256:3d176c10690f801b07a3ae229207522ca2575b6fffba6d7b1ef227486ff8139e",
+    "resource_type": "network",
+    "result_normalizer": "tooluniverse-pubmed-retrieval/v1",
+    "side_effects": "read-only",
+    "tool_names": [
+      "PubMed_search_articles"
+    ]
+  },
+  "lock_digest": "sha256:4b927b983aea7b51d0ff72dfa49b7c8d34efd11b6f4e546bacaae81de224faf2",
+  "promotion": {
+    "approval_digest": "sha256:4389479a93d331b1c0857d9b9de14f4542b8ee7b3389cf12a85370e88c3c7578",
+    "approval_path": "promotion-approval-v1.json"
+  },
+  "provider_id": "tooluniverse-pubmed",
+  "provider_version": "1.3.1+ari.1",
+  "registration": {
+    "evidence_bundle_digest": "sha256:8cdf2335131ccb3fb0f2ffc8868b1e6e5c14d5682837fe120343bc4f68500054",
+    "evidence_path": "registration-evidence-v1.json",
+    "provider_manifest_digest": "sha256:9cb5c718941b4f746c285dd25e91297676ea540de877292801cd32bba3cf0008",
+    "provider_manifest_path": "provider-manifest-v1.json",
+    "report_digest": "sha256:e33216d0d7b757e6c8096294cf6616a0b82ac52c7cced817c1a906959f42b3a1",
+    "report_path": "registration-report-v1.json"
+  },
+  "runtime_target": {
+    "architecture": "x86_64",
+    "operating_system": "linux",
+    "python_implementation": "CPython",
+    "python_minor": "3.13"
+  },
+  "schema_version": "ari.tooluniverse-verified-lock/v1",
+  "status": "verified"
+}

@@ -4,7 +4,7 @@ sources:
     role: prompt
   - path: ari-skill-paper-re/src/_replicator_agent.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-08-08
 ---
 
 # Compute-node safety conventions (L1–L7)
@@ -13,10 +13,18 @@ last_verified: 2026-05-25
 not on the login node where the agent generated it. The following
 conventions (L1–L7) ensure the script can actually complete there.
 
-The PaperBench replicator agent is prompted with these conventions via
-`ari-skill-paper-re/src/prompts/replicator.md` (look for the
-`COMPUTE-NODE EXECUTION CONVENTIONS` block). They are reproduced here so
-you can audit a generated `reproduce.sh` by hand.
+The PaperBench replicator agent receives these conventions as an ARI-side
+appendix that `_format_hpc_appendix`
+(`ari-skill-paper-re/src/_replicator_agent.py`) appends to the vendored
+PaperBench instructions — look for its `COMPUTE-NODE EXECUTION CONVENTIONS`
+block. That block — like every other HPC-flavoured block in the appendix
+(`EXECUTION PROFILE`, `CLUSTER SHAPE`, `CONVENTIONS`) — is emitted only when
+the rubric's `reproduce_contract.execution_profile` is non-empty, so a non-HPC
+paper's agent never sees it; with only `expected_artifacts` present the
+appendix degrades to its `EXPECTED_ARTIFACTS` block alone.
+`ari-skill-paper-re/src/prompts/replicator.md` holds a fuller
+mirror of the same block, but nothing reads it at run time. They are reproduced
+here so you can audit a generated `reproduce.sh` by hand.
 
 ## L1 — Shared filesystem
 
@@ -25,9 +33,14 @@ All paths in `reproduce.sh` must resolve on **every** allocated node.
 - ✅ `$HOME`, `/work/...`, `/scratch/...`, `/lustre/...`, `/nfs/...`
 - ❌ `/tmp`, `/var/tmp`, `/local`, container-local mount-only paths
 
-ARI warns when the checkpoint dir is on a node-local FS, but it does
-not refuse to run — your job will silently fail on multi-node when
-ranks 1+ cannot see ranks 0's files.
+ARI never probes the filesystem: nothing detects a node-local checkpoint
+dir, so there is no warning — your job will silently fail on multi-node
+when ranks 1+ cannot see rank 0's files. Sharedness is a *declaration*,
+not an observation: `SLURM_MODE=remote` reads `SLURM_SHARED_FILESYSTEM`
+(default `true`) and local mode assumes `true` unconditionally
+(`ari-skill-hpc/ari_skill_hpc/slurm.py`). Declaring it `false` makes the
+scheduler *refuse* — typed outputs and fixed-wrapper terminal evidence
+both raise — rather than warn.
 
 ## L2 — MPI invocation: prefer `srun` over `mpirun`
 
@@ -44,22 +57,15 @@ pip install --user mpi4py
 python -c "from mpi4py import MPI; ..."
 ```
 
-Test with `which srun mpirun` first. The agent prompt instructs the
-replicator to emit this check.
+Test with `which mpirun` first. The agent prompt tells the replicator not
+to assume `mpirun` is on PATH and to check it before using it.
 
-## L3 — GRES probe
+## L3 — GPU resource validation
 
-When the rubric's `execution_profile.gpu_type` is set, ARI checks
-`sinfo -o '%G'` before adding `--gres=gpu:<type>:N` to `sbatch`. If
-GRES is unconfigured ("(null)"), the flag is dropped and a warning is
-logged — `--gpus-per-task` survives.
-
-You can verify the probe interactively:
-
-```python
-from ari_skill_paper_re.server import _slurm_has_gres
-_slurm_has_gres()    # True / False
-```
+ARI compiles GPU count/type into one typed scheduler request and never removes
+it. Check `sinfo -o '%P %G'` before launch. If the selected partition cannot
+satisfy the request, submission fails; fix the scheduler configuration or pick
+a compatible partition rather than changing the experiment to CPU.
 
 ## L4 — Conda / virtualenv activation
 
@@ -110,7 +116,7 @@ srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS ./my_program
 
 Without this, your script uses 1 node regardless of allocation size,
 even if `sbatch --nodes=4` was successful. The agent prompt includes a
-dedicated "MULTI-NODE FAN-OUT" section to remind the replicator.
+dedicated "Multi-node fan-out" section to remind the replicator.
 
 ## L7 — Timeout wrapping
 

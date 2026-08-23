@@ -1,0 +1,15 @@
+{
+  "actor_id": "kotama",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:47d6dd6a91e439a00701066a9a82173fd54e457e56a0d881b7a3a41048d2d501",
+  "approved_date": "2026-08-21",
+  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of the timed control sequence measured on an exclusively allocated node at the placement this manifest pins, not on independent inspection of the artifacts, which are pinned here for that purpose. Re-earned after the network observation was taken off the clock the forgery guard reads, so these timings carry no probe constant.",
+  "evidence_bundle_digest": "sha256:0e9a1705233933623658d0c365fae08decd9df3afd72dd4f8bfbf82b9da30cbe",
+  "from_status": "candidate",
+  "harness_id": "hpc/gemm-performance",
+  "harness_manifest_digest": "sha256:0afb6c8735567e84c6fc3560fc2ba0d8003d9d0b618799dbc6a9b1f90c7116df",
+  "harness_version": "1.0.0",
+  "registration_report_digest": "sha256:750f0381b5e4e23773c9a1187df6c8ac230afb66c103032227fef3bf656d9e45",
+  "schema_version": "ari.harness-promotion-approval/v1",
+  "to_status": "verified"
+}

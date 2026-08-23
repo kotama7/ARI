@@ -1,7 +1,7 @@
 # check_prompts.yaml -- heuristics/config for scripts/check_prompts.py
-# Design: docs/refactoring/009_quality_scripts_plan.md §5.7; prompt context:
-# docs/refactoring/011_prompt_management_plan.md §2/§3/§5.x; subtask
-# docs/refactoring/subtasks/043_add_prompt_checker_script.md §7.2.
+# Design: refactoring plan 009 (quality scripts) §5.7; prompt context:
+# refactoring plan 011 (prompt management) §2/§3/§5.x; subtask 043
+# (add prompt checker script) §7.2.
 # stdlib ast + PyYAML only; no LLM, no network (design principle P2).
 #
 # Every key is optional; omitted keys fall back to the script defaults.

@@ -1,0 +1,78 @@
+{
+  "$id": "https://ari.dev/schemas/tool-registry/tool-cassette-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Self-authenticating record sufficient for credential-free replay.",
+  "properties": {
+    "arguments": {
+      "additionalProperties": true,
+      "title": "Arguments",
+      "type": "object"
+    },
+    "arguments_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Arguments Digest",
+      "type": "string"
+    },
+    "cassette_key": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Cassette Key",
+      "type": "string"
+    },
+    "catalog_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Catalog Digest",
+      "type": "string"
+    },
+    "policy_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Digest",
+      "type": "string"
+    },
+    "raw_response": {
+      "additionalProperties": true,
+      "title": "Raw Response",
+      "type": "object"
+    },
+    "rejected_candidates": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Rejected Candidates",
+      "type": "array"
+    },
+    "result_envelope": {
+      "additionalProperties": true,
+      "title": "Result Envelope",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "ari.tool-cassette/v1",
+      "default": "ari.tool-cassette/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "selection_reason": {
+      "title": "Selection Reason",
+      "type": "string"
+    },
+    "tool_ref": {
+      "title": "Tool Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "cassette_key",
+    "tool_ref",
+    "arguments",
+    "arguments_digest",
+    "catalog_digest",
+    "policy_digest",
+    "selection_reason",
+    "raw_response",
+    "result_envelope"
+  ],
+  "title": "ARI Tool Cassette v1",
+  "type": "object"
+}

@@ -67,8 +67,26 @@ def _api_models() -> dict:
     """Return available LLM providers and their model suggestions."""
     return {
         "providers": [
-            {"id": "openai",    "name": "OpenAI",     "models": ["gpt-5.4", "gpt-5.2", "gpt-4o", "gpt-4o-mini", "o4-mini", "o3", "o3-mini"]},
-            {"id": "anthropic", "name": "Anthropic (Claude)", "models": ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]},
+            # gpt-4o-2024-08-06 is listed beside the alias on purpose. The
+            # unversioned "gpt-4o" routes to whatever snapshot is current, and
+            # projects without access to that one get `missing_scope:
+            # model.request` -- an error that does not mention routing. The
+            # dated id is the fallback out of that, and it only helps if the
+            # operator can see it: a free-text field they must already know to
+            # type is not a fix for a surprise they cannot diagnose.
+            {"id": "openai",    "name": "OpenAI",     "models": ["gpt-5.4", "gpt-5.2", "gpt-4o", "gpt-4o-2024-11-20", "gpt-4o-2024-08-06", "gpt-4o-mini", "o4-mini", "o3", "o3-mini"]},
+            # Current Claude model ids, aliases rather than dated snapshots --
+            # an alias is complete as written and never takes a date suffix.
+            # This list is also the reason the frontend tables have to go: the
+            # Wizard offered claude-haiku-3-5 and Settings claude-3-5-haiku-latest,
+            # both retired in February 2026, so the two screens were handing the
+            # operator model ids that 404 while this list was current.
+            {"id": "anthropic", "name": "Anthropic (Claude)", "models": ["claude-opus-5", "claude-sonnet-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"]},
+            # The Claude Code CLI as a hermetic LLM API
+            # (docs/reference/claude_code_provider.md). Both frontends offered
+            # this provider and the served catalog did not, so switching them to
+            # the catalog would have deleted it from the UI.
+            {"id": "claude_code", "name": "Claude Code (local)", "models": ["claude-opus-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"]},
             {"id": "gemini",    "name": "Google Gemini", "models": ["gemini/gemini-2.5-pro", "gemini/gemini-2.0-flash", "gemini/gemini-1.5-pro"]},
             {"id": "ollama",    "name": "Ollama (Local)", "models": ["ollama_chat/llama3.3", "ollama_chat/qwen3:8b", "ollama_chat/gemma3:9b", "ollama_chat/mistral"]},
             {"id": "cli-shim",  "name": "CLI Shim (claude/codex)", "models": ["claude-cli", "claude-cli-agent", "codex-cli", "codex-cli-agent"]},
@@ -167,10 +185,15 @@ def _api_checkpoints() -> list:
                             info["status"] = "completed"
                     # Fallback score from scientific_score if no review
                     if nodes:
+                        # Best VALID score: RQGM-erased nodes keep their
+                        # stale value for audit but must not display as the
+                        # run's best (consistent with select_best_node).
                         sci_scores = [
                             n.get("metrics", {}).get("_scientific_score")
                             for n in nodes
                             if n.get("metrics", {}).get("_scientific_score") is not None
+                            and n.get("metrics", {}).get(
+                                "_valid_for_frontier", True) is not False
                         ]
                         if sci_scores:
                             info["best_scientific_score"] = round(max(sci_scores), 2)
@@ -183,6 +206,23 @@ def _api_checkpoints() -> list:
                     except Exception:
                         log.debug("review_report.json parse error: %s", d.name, exc_info=True)
                         pass
+                # A review can exist while the immutable build lock blocks
+                # publication, and a strict claim gate can stop the pipeline
+                # before that lock is even minted. Either way the run did not
+                # complete. run_health is the shared precedence rule written so
+                # both API generations answer the same way; /api/v1 already
+                # consults it, and this list reporting "completed" for the same
+                # checkpoint is the disagreement it exists to prevent. Applied
+                # last so it overrides the review-derived status above, and
+                # never over a run still visibly in progress.
+                if info["status"] not in {"running", "unknown"}:
+                    from .run_health import run_terminal_health
+
+                    _terminal, _reasons = run_terminal_health(d)
+                    if _terminal:
+                        info["status"] = _terminal
+                        if _reasons:
+                            info["degraded_reasons"] = _reasons
             except Exception:
                 log.warning("checkpoint listing error: %s", d.name, exc_info=True)
                 pass
@@ -191,7 +231,10 @@ def _api_checkpoints() -> list:
     for _stale_key in list(_st._running_procs.keys()):
         if _stale_key not in _seen_resolved:
             _st._running_procs.pop(_stale_key, None)
-    return ckpt_dirs
+    # Search roots are an implementation detail. Present one global portfolio
+    # ordered by recency so "latest" does not depend on which root happened
+    # to be scanned first.
+    return sorted(ckpt_dirs, key=lambda item: item["mtime"], reverse=True)
 
 
 
@@ -327,4 +370,3 @@ def _api_lineage_decisions(ckpt_id: str) -> dict:
     except OSError as e:
         return {"error": str(e), "records": [], "n": 0}
     return {"records": records, "n": len(records)}
-

@@ -4,14 +4,27 @@ sources:
     role: implementation
   - path: ari-skill-replicate
     role: implementation
-last_verified: 2026-05-25
+  - path: ari-skill-hpc/ari_skill_hpc/scheduler.py
+    role: implementation
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+  - path: ari-core/ari/viz/api_paperbench_worker.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/PaperBench/PaperBenchWizard.tsx
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: report/scripts/paperbench_report.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # PaperBench トラブルシューティング
 
 頻出する障害モードとその対処。 監査実行パイプラインは
-`rubric_path → build_reproduce_sh → run_reproduce → grade_with_simplejudge`
-で、 障害は通常この 4 ステージのいずれかに属する。
+`generate_rubric → audit_rubric → build_reproduce_sh → run_reproduce →
+grade_with_simplejudge` で、 障害は通常このいずれかのステージに属する。
+`audit_rubric` は non-fatal — 監査が失敗してもログに残るだけで run は続く。
 
 ## ルーブリック生成
 
@@ -50,19 +63,28 @@ rubric の `execution_profile.kind` が空の可能性が高い。 確認:
 jq '.reproduce_contract.execution_profile' rubric.json
 ```
 
-空ならルーブリックを再生成 (v0.7.2 の `skeleton.md` プロンプトは
-論文の experimental-setup セクションから `execution_profile` を埋める
-よう LLM に指示する)。
+再生成しても埋まるとは限らない: `skeleton.md` は、論文が並列 / 分散実行の
+性質 (「N MPI ランクで評価した」「M GPU のデータ並列で学習した」など) を
+明示していない限り **`execution_profile` フィールドごと省略せよ** と
+ジェネレータに指示している。 シングルマシン論文 (シングル GPU を含む) では
+プロファイル不在が意図した結果で、 `_format_hpc_appendix` はプロファイルが
+空なら HPC ガイダンスを一切出力しない。 論文が実際に GPU / 並列構成を
+記載していてジェネレータが取りこぼしたなら再生成する。 そうでなければ
+ルーブリックにプロファイルを明示的に書く (`kind` は `cpu_single`、
+`gpu_single`、 `gpu_multi`、 `mpi`、 `mpi_gpu` のいずれか)。
 
 ### Q. MPI 論文なのにエージェントが `srun` を使わなかった
 
 `agent.log` の user message に `COMPUTE-NODE EXECUTION CONVENTIONS`
 block があるか確認。 欠如している場合、 呼出側が `execution_profile`
-を渡していない。 ワイヤリング検証:
+を渡していない。 ワイヤリング検証 — このスキルは `ari_skill_paper_re`
+パッケージではなくフラットなトップレベルモジュール (`_replicator_agent`、
+`server` など) を提供するので、 import には `ari-skill-paper-re/src` を
+`PYTHONPATH` に置く必要がある:
 
 ```bash
-python -c "
-from ari_skill_paper_re._replicator_agent import _format_hpc_appendix
+PYTHONPATH=ari-skill-paper-re/src python -c "
+from _replicator_agent import _format_hpc_appendix
 print(_format_hpc_appendix(
     expected_artifacts=['results.csv'],
     execution_profile={'kind': 'mpi_gpu', 'metric_columns': ['x']},
@@ -76,10 +98,8 @@ print(_format_hpc_appendix(
 
 ### Q. `sbatch: error: Invalid GRES gpu:v100:1`
 
-クラスタが GRES 未設定。 v0.7.2 は `_slurm_has_gres()` 経由で
-flag を自動的に落とす — エラーが残るなら旧ビルド、 または `sinfo`
-が PATH に無い。 ワークアラウンド: ウィザード Step 3 の *実行
-プロファイル上書き* で `gpu_type` を空にする。
+選択partitionが型付きGPU要求を満たせない。`sinfo -o '%P %G'`で確認し、
+対応partitionを選ぶかsiteのGRES設定を修正する。ARIは要求を削除してCPU実行しない。
 
 ### Q. sbatch は成功したが `reproduce.sh` がシングルノードでしか動かない
 
@@ -96,7 +116,8 @@ grep -E 'srun.*-N.*-n' repro_sandbox/reproduce.sh
 ### Q. compute node で `mpirun: command not found`
 
 OpenMPI が compute node 環境にロードされていない。 どちらか:
-- ルーブリックの `module_loads` に `"openmpi/4.1"` (クラスタ名) を追加
+- ルーブリックの `reproduce_contract.execution_profile.module_loads` に
+  `"openmpi/4.1"` (クラスタ名) を追加
 - スクリプトを `srun` に切替 (PMI 統合; ほとんどの SLURM サイトで
   明示的 OpenMPI モジュールなしで動く)
 
@@ -114,20 +135,29 @@ checkpoint を共有 mount (`$HOME`, `/work/...`, `/scratch/...`) に
 
 ## 採点 (`grade_with_simplejudge`)
 
-### Q. `ors_score` がぴったり `0.0` になる
+### Q. 採点レスポンスに `ors_score` がそもそも無い
 
-grader が `reproduce.sh` または expected artefacts をどれも見つけられ
-なかった。 確認:
+`ors_score` / `raw_score` / `score_stddev` は、 grade report の status が
+`failed` でないときにのみ現れる。 検証済みの再現に到達できなかった grader は
+数値を publish しない: `grade_status: "failed"` を `error` / `errors` 付きで
+返し、 保存されるレポートは `ors_score: null` を持つ。
+`grade_with_simplejudge` は `status` が `succeeded` の `ReproductionRunV1`
+を解決できない限り採点を拒否する。 よくある `errors` の値は
+`no verified ReproductionRunV1 is available`、
+`reproduction status is <state>; only succeeded runs are gradable`、
+`judge returned invalid scores for leaves: ...`。
+
+再現レコードはフラットな結果ファイルではなく再現 workspace の下にある:
 
 ```bash
-ls repro_sandbox/                  # reproduce.sh 存在?
-jq '.executed, .exit_code' repro_result.json   # クリーンに走った?
-jq '.missing' repro_result.json    # expected_artifacts の不足?
+ls repro_sandbox/                                  # reproduce.sh 存在?
+jq . repro_sandbox/.ari-reproduction/latest.json   # pointer: status / run パス / executed workspace
+jq '.attempts[-1].status, .attempts[-1].exit_code, .attempts[-1].expected_missing' \
+   repro_sandbox/.ari-reproduction/<plan_digest>/run.json
 ```
 
-よくある原因: エージェントが workspace root ではなく
-`submission/reproduce.sh` を書いた。 v0.7+ は自動 promote するが、
-旧ビルドなら手動で cp。
+grade report 自体は `grade_report_path` が指す grade root 配下の
+`grade-report.json` に書き出される。
 
 ### Q. ネガティブコントロールが pass しない (boilerplate が >5%)
 
@@ -139,25 +169,45 @@ jq '.missing' repro_result.json    # expected_artifacts の不足?
 
 ### Q. ウィザードが「論文がまだ登録されていません」のまま
 
-`~/.ari/paper_registry/manifest.jsonl` の存在と非空を確認。
+`<workspace_root>/paper_registry/manifest.jsonl` の存在と非空を確認。
+レジストリは `PathManager.paper_registry_root` 経由で workspace を
+ルートに解決され、 `~/.ari` 配下のユーザ単位ディレクトリではない
+(ARI は v0.5 以降グローバルなユーザ単位データディレクトリを持たない)。
 `ARI_PAPER_REGISTRY_DIR` を設定しているならパスがそれに従う。
 
 ### Q. 起動ボタンが無効のまま
 
-Step 1 (論文) で 1 件以上選択必要。 `selected_count >= 1` まで無効。
+Step 1 (論文) で 1 件以上選択必要。 Launch ボタンも論文ステップの Next
+ボタンも、 どちらも `selectedIds.size === 0` でガードされている。
 
 ### Q. コスト見積もりが `$0`
 
-Step 3 (再現) で `time_limit_sec` を設定していない。 既定 12 h;
-0 は再現の wall-time 項を消す。
+論文が 1 件も選択されていない。 ウィザードは
+`llm_cost_usd × selectedIds.size` を表示するので、 選択が空なら Step 3 を
+どう設定しても `$0.00` になる。
+
+`time_limit_sec` は原因になり得ない: サーバ側の見積もりは
+`time_limit_sec or 12*3600` を読むので `0` は 12 h の既定に戻り、
+そもそも LLM コスト項は論文 1 件あたりの固定値 (rubric `$0.45` +
+reproduce `$2.00` + judge `$0.10 × n_runs`) で time limit に依存しない —
+依存するのは `wall_time_sec` だけ。 数値が出ないもう一つの経路は見積もり
+リクエスト自体の拒否で、 未知の `rubric_config` キーがあると
+`POST /api/paperbench/cost-estimate` は
+`{"error": "unknown rubric_config fields: ..."}` を返しコストフィールドを
+一切含めない。
 
 ## レポート生成
 
-### Q. `latexmk: command not found`
+### Q. 監査レポートが `.tex` だけで PDF が出ない
 
-監査レポート PDF 出力には XeLaTeX 必要。 `texlive-xetex`
-(Debian/Ubuntu) または `mactex` (macOS) インストール、 あるいは PDF
-スキップして `.tex` ソースのみ出力:
+`latexmk: command not found` というエラーは出ない — PDF ステップは
+`shutil.which("latexmk")` でガードされており、 ツールが無ければ黙って
+スキップされ、 コマンドは `.tex` ソースだけを書いて `ok` で終了する。
+(`latexmk` が*ある*場合でも `check=False` で実行されるため、 LaTeX が
+失敗すると `main.pdf` が残らないだけで例外は上がらない。)
+PDF ターゲットには XeLaTeX が必要: `texlive-xetex`
+(Debian/Ubuntu) または `mactex` (macOS) をインストールする。 意図的に
+`.tex` のみを出力するには:
 
 ```bash
 python -m report.scripts.paperbench_report paper \
@@ -173,34 +223,55 @@ ja/zh ミラーは XeLaTeX + Noto CJK font 必須。 `report/setup_fonts.sh`
 
 ## v0.8.0 アップデート: sandbox / GPU エラー
 
-### Q. `RuntimeError: sandbox_kind=docker requested but docker daemon is not reachable`
+### Q. `"error": "sandbox runtime is unavailable: docker"`、`failure_kind: "sandbox-unavailable"`
 
-docker daemon が起動していないか到達不能。bridge / `run_reproduce` は
-silent fallback を拒否する。docker を起動するか、`sandbox_kind` を
-別の値 (`local` / `apptainer` / `slurm`) に変えるか、または legacy
-fallback を opt-in する: `export ARI_PHASE1_ALLOW_FALLBACK=1`。
-`sandbox_kind=apptainer` の binary 不在、`sandbox_kind=slurm` の sbatch
-不在 / partition 解決失敗 にも同じ対処。
+caller が sandbox kind を明示した場合、`run_reproduce` はホストローカル
+実行への暗黙の fallback を拒否する。例外は上がらない: 拒否は immutable な
+失敗 attempt として記録され、`executed: false`、`error`、`failure_kind`
+(`sandbox-unavailable`、SLURM 経路なら `scheduler-failure`) を持つ dict と
+して返る。呼び出し側で `RuntimeError` を探しても見つからない。
 
-### Q. `RuntimeError: GPU resources requested ... but cluster has no GRES configured`
+チェックは launch 時の `shutil.which(<runtime>)` — 明示的な
+`sandbox_kind=docker` に対して docker *daemon* が probe されることはない
+(`auto` 解決のときだけ) ので、「runtime unavailable」は binary が `PATH`
+に無いという意味。`apptainer` / `singularity` の binary 不在、`slurm` の
+sbatch 不在 / partition 解決失敗 にも同じ fail-closed 規則が効く。
 
-クラスタの SLURM に GPU GRES 設定が無いが、caller が `gpus_per_task` /
-`gpu_type` を指定。bridge は拒否する (36 h queue 待った後 all-CPU 実行
-は最悪の failure mode)。 解決策:
+### Q. `"error": "reproduction plan rejected: ..."`
 
-1. SLURM の GRES 設定を直す
-2. GRES 設定済 partition を選ぶ (`sinfo -o '%P %G'` で確認)
-3. silent drop を opt-in: `export ARI_SLURM_ALLOW_NO_GRES=1`
+attempt が作られる前に plan が拒否されたので、何も実行されていない。
+よくある原因は 3 つ:
+
+1. `sandbox_kind=<container> requires an immutable container image` —
+   `container_image` も `ARI_PHASE1_DOCKER_IMAGE` /
+   `ARI_PHASE1_APPTAINER_IMAGE` も無い。
+2. mutable な image 参照。Docker は完全な `sha256:<image-id>` か
+   `name@sha256:<digest>`、remote Apptainer 参照は `@sha256:<digest>` 必須、
+   ローカル SIF は symlink でない通常ファイルであること。
+3. `sandbox_kind=... cannot prove network denial` — `network_policy` の
+   既定は `deny` で、`local` / `slurm` はコンテナ namespace ではない。
+   `network_policy="inherit"` を明示するか、管理者の attestation を
+   `network_isolation_attested=True` で渡すか、コンテナで実行する。
+
+### Q. GPU を要求したのに GPU 無しで返ってきた
+
+silent downgrade は意図的に存在しない: ARI は型付き要求をそのまま投入する。
+`gpus_per_task` は `#SBATCH --gpus-per-task=[<type>:]<n>`、`gpus_per_node`
+は `#SBATCH --gres=gpu:[<type>:]<n>` として出力され、両者は排他的な分岐で、
+両方指定すると submit 前に "mutually exclusive" で拒否される。scheduler が
+GRES を拒否する場合は、site の GRES 設定を直すか、そのリソースを広告して
+いる partition を選ぶ (`sinfo -o '%P %G'`)。
 
 ### Q. agent が Stage 1 を動かしたが Stage 3 で全 leaf が 0 点
 
 2 つの原因 (v0.8.0 で両方対処済み):
 
-1. **`reproduce.log` 不在** — Stage 2 がスキップされ vendor SimpleJudge
-   の safeguard 「`reproduce.sh` failed to modify or create any files.
-   All result analysis tasks will be graded as 0」 が発火。v0.8.0 で
-   judge が `code_only=True` を自動有効化し rubric を Code Development
-   葉のみに pruning する。
+1. **submission に `reproduce.log` が無い** — Stage 2 がスキップされ、
+   upstream なら vendor SimpleJudge の safeguard 「`reproduce.sh` failed
+   to modify or create any files. All result analysis tasks will be graded
+   as 0」 が発火する状況。ARI は代わりに、再現レコードが無いことを理由に
+   スコアを publish せず拒否する。Stage 2 を実行するか、code-only の
+   study を明示的に選んだうえで検証済みの Stage 2 レコードを作ること。
 2. **`paper_audit_mode` が誤って ON** — paper-audit mode は論文自体を
    採点。`code_only` と排他で、両方 True なら bridge が `ValueError`。
 
@@ -255,16 +326,31 @@ paper 別 credentials は `~/.ari/agent.env` に `KEY=VALUE` 形式で配置 —
 bridge が `agent_env_path=None` 時に auto-discover。 `ARI_AGENT_ENV_PATH`
 で path 上書き可。
 
-## v0.8.0: salvage retries + executed-submission tarball
+## リトライ + executed-submission tarball
 
-`bridge.reproduce_submission(salvage_retries=N, retry_threshold_sec=60)`
-で early-failure (exit≠0 かつ elapsed<threshold) 時に Python 3.11 + venv
-prelude 付き salvage wrapper で N 回 retry。総 wall-clock budget は
-attempts 跨いで honor。
+### Q. Python 3.11 / venv が無くて `reproduce.sh` が即失敗する
 
-毎回 `submission_executed_<UTC>.tar.gz` が `submission_dir` 隣に生成。
-返却 dict の `executed_tarball` キーが絶対パス。`capture_tarball=False`
-で抑止、`tarball_dir=` で出力先上書き。
+salvage wrapper は存在しない。`salvage_retries` と `retry_threshold_sec`
+は `bridge.reproduce_submission` の引数では**ない** — submission の環境を
+書き換えて再実行する vendor の
+`reproduce_on_computer_with_salvaging` 経路に ARI 相当物は無く、
+`test_reproduce_submission_signature_includes_tarball_not_unsafe_salvage`
+がその引数の不在を assert している。`reproduce.sh` 自体 (または container
+image) の中で環境を直したうえで、同じ plan で `reproduce_submission` を
+もう一度呼ぶこと: `run_reproduce` はスクリプトを書き換えるのではなく、
+immutable にリンクされた attempt を追記する。
+
+### Q. executed submission の tarball はどこにあるか
+
+既定では reproduce 呼び出しのたびに `submission_executed_<UTC>.tar.gz` が
+生成されるが、置かれるのは*実行された* submission の隣 — すなわち
+`.ari-reproduction` 配下の非公開 attempt ツリーの中であり、渡した
+`submission_dir` の隣ではない。返却 dict の `executed_tarball` キーが
+絶対パスで、`executed_tarball_digest` と `executed_tarball_size_bytes` が
+併記される。出力先は `tarball_dir=` で上書き、`capture_tarball=False` で
+抑止できる。capture の失敗が run を落とすことはない: ログに出したうえで
+結果の `warnings` リストに追記されるので、`executed_tarball` キーが無く
+`warnings` エントリがある形が探すべきシグネチャ。
 
 ## 関連
 

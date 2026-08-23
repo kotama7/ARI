@@ -31,9 +31,8 @@ def cmd_migrate_node_reports(
 ) -> None:
     """Backfill `node_report.json` for every node in a legacy checkpoint.
 
-    Best-effort: fields we cannot recover (original_direction,
-    delta_vs_parent, next_steps_hints) are nulled, and migration_source is
-    set to "auto" so downstream filters know the report is not first-class.
+    Best-effort: fields we cannot recover (original_direction and
+    next_steps_hints) are nulled.
     """
     from ari.orchestrator import node_report as _nr
 

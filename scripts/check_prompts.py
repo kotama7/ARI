@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Inline-prompt externalization inventory (warning-mode-first).
 
-Design: ``docs/refactoring/009_quality_scripts_plan.md`` §5.7 (checker block),
-§3 (common CLI/JSON contract), §6 (warning-mode-first rollout), §8 (placement +
-``scripts/quality/`` bootstrap); ``docs/refactoring/011_prompt_management_plan.md``
-§2/§3/§5.x (prompt locations + the inline-prompt verdict vocabulary); the subtask
-``docs/refactoring/subtasks/043_add_prompt_checker_script.md``. The frozen
-allowlist is seeded from the Subtask 036 census
-(``docs/refactoring/reports/hardcoded_prompt_inventory.{md,json}``).
+Design: refactoring plan 009 (quality scripts) §5.7 (checker block), §3 (common
+CLI/JSON contract), §6 (warning-mode-first rollout), §8 (placement +
+``scripts/quality/`` bootstrap); refactoring plan 011 (prompt management)
+§2/§3/§5.x (prompt locations + the inline-prompt verdict vocabulary); subtask 043
+(add prompt checker script). Those planning documents have been retired; the
+numbers are kept as provenance. The frozen allowlist is seeded from the Subtask
+036 census, which lives at
+``scripts/quality/baselines/hardcoded_prompt_inventory.{md,json}``.
 
 The **NEW slice** (net-new, 009 §5.7): a deterministic ``ast`` scan for the
 substantial LLM system/instruction prompts still hardcoded as string literals in
@@ -428,6 +429,30 @@ def _verdict_for(cand: Candidate, census: dict[str, tuple[str, str]]) -> tuple[s
     return best if best is not None else ("REVIEW_REQUIRED", "")
 
 
+def _prior_verdict_for(
+    cand: Candidate, previous: dict[str, dict]
+) -> tuple[str, str] | None:
+    """Preserve reviewed classification when only source line numbers move."""
+
+    entry = previous.get(cand.key)
+    if entry is None:
+        matches = [
+            item
+            for item in previous.values()
+            if item.get("file") == cand.file
+            and item.get("name") == cand.name
+            and item.get("lines") == cand.lines
+            and item.get("chars") == cand.chars
+            and item.get("markers") == cand.markers
+        ]
+        entry = matches[0] if len(matches) == 1 else None
+    if entry is None:
+        return None
+    verdict = str(entry.get("verdict") or "REVIEW_REQUIRED")
+    prompt_id = str(entry.get("prompt_id") or "")
+    return verdict, prompt_id
+
+
 # --------------------------------------------------------------------------- findings
 def build_findings(cands: list[Candidate], allow: dict[str, dict]) -> list[dict]:
     findings: list[dict] = []
@@ -557,10 +582,12 @@ def update_baseline(cfg: dict) -> int:
     targets = resolve_targets(None, cfg)
     cands = scan_targets(targets, cfg)
     census = _census_verdicts()
+    previous = load_allow(DEFAULT_ALLOWLIST)
 
     known: list[dict] = []
     for c in cands:
-        verdict, pid = _verdict_for(c, census)
+        prior = _prior_verdict_for(c, previous)
+        verdict, pid = prior or _verdict_for(c, census)
         entry: dict[str, object] = {
             "id": c.key,
             "file": c.file,
@@ -580,7 +607,7 @@ def update_baseline(cfg: dict) -> int:
         "# check_prompts.allow.yaml -- frozen inline-prompt baseline (subtask 043).",
         "# Regenerate: python scripts/check_prompts.py --update-baseline",
         "# Seeded from the Subtask 036 census "
-        "(docs/refactoring/reports/hardcoded_prompt_inventory.{md,json}).",
+        "(scripts/quality/baselines/hardcoded_prompt_inventory.{md,json}).",
         "# Each entry is keyed by id '<file>::<name>' (or '<file>#L<line>' when the",
         "# prompt literal is anonymous). Findings on a known id are reported 'known'",
         "# and never fail --fail-on-regression; NET-NEW role-marked prompts do.",

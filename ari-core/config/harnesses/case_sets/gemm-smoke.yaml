@@ -1,0 +1,15 @@
+# A deliberately CHEAP case set, and a deliberately honest warning.
+#
+# Registered so that a theme wanting a fast loop names something pinned rather
+# than passing a size through a request. But the measurement here is not resolved:
+# on an aarch64 compute node this shape gave a 100x relative spread against
+# 0.095% at the scored size, because a single ~20 ms stall dominates a ~0.2 ms
+# kernel. A harness registered against this set can say "it built and it was
+# right"; it cannot support a regression verdict.
+schema_version: ari.harness-case-set/v1
+revision: native-perf-gemm-cases/v1@smoke
+kind: gemm
+description: Cheap shape for wiring checks. NOT resolved enough for a verdict.
+resolves: false
+cases:
+  - [256, 256, 256]

@@ -57,11 +57,16 @@ EXEMPT_FILES = {
 }
 # matched as a path segment so translations (docs/ja/_archive/...) are covered too.
 # node_modules / .vitepress are VitePress dependency / build artifacts.
-# "refactoring" exempts the docs/refactoring/** planning workspace: subtask plans
-# and reports carry no `sources:` front-matter and are not part of the published
-# VitePress IA, so exempting them keeps a future --require-all promotion safe
-# (subtask 050 §7.1 Option A). Segment-matched so any locale mirror is covered.
-EXEMPT_DIR_SEGMENTS = ("_archive", "node_modules", ".vitepress", "refactoring")
+# "refactoring" was added for the docs/refactoring/** planning workspace: subtask
+# plans and reports carried no `sources:` front-matter and were not part of the
+# published VitePress IA, so exempting them kept a future --require-all promotion
+# safe (subtask 050 §7.1 Option A). That tree has since been retired; the segment
+# is retained because the match is segment-wide (any locale mirror, and any
+# future `refactoring` directory). Retiring it is a policy call, not a doc fix.
+# "plans" exempts docs/plans/**: temporary English-only planning workspaces
+# (same rationale as "refactoring"); they carry no `sources:` front-matter and
+# are not part of the published VitePress IA.
+EXEMPT_DIR_SEGMENTS = ("_archive", "node_modules", ".vitepress", "refactoring", "plans")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

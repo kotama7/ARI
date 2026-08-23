@@ -2,6 +2,1829 @@
 
 All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PATCH`.
 
+## Unreleased — Constitutional ARI-RQGM: opt-in `ari_rqgm` execution mode
+
+- **The native promotion surface now reads its registration evidence off its own runs
+  (`scripts/rqgm_assurance/promote_native_harnesses.py`).** It was the last surface still
+  declaring the seven `HarnessRegistrationEvidenceV1` fields as literal keyword
+  arguments — `clean_control_verdict="pass"`, `negative_control_verdict="fail"`,
+  `official_runner_parity=True`, `result_schema_conformant=True`,
+  `network_isolation="proved"`, `target_write_isolation="proved"`,
+  `oracle_visibility="denied"` — and unlike the re-pin surface beside it, this one
+  genuinely runs four container executions per family. The refusals above the call
+  meant the record happened to be true, which is a different property from being read:
+  weaken one refusal, or add a fifth run, and the seven stay exactly as written.
+
+  **So the repair here is derivation rather than refusal.** The two control verdicts
+  come from the attestations, grouped by the role that also chose which `.so` was
+  staged, through the sibling's `_single` — one field for both, so the group a verdict
+  lands in cannot disagree with the artifact that produced it. The four isolation and
+  schema fields come from `attest_problem_correctness.isolation_findings`, reused
+  rather than reimplemented: it resolves the driver from `manifest.driver.revision`
+  rather than from the family it was written for, so it answers about `NativeHPCDriver`
+  without an edit. Parity comes from this family's own probe result rather than the
+  whole-probe boolean, because the evidence is about one family's manifest.
+
+  Two facts the derivation reads were not being recorded at all, and are now: each
+  execution's record carries the `network` and container identity the reviewed
+  `ExecutionRequest` actually carried (the `container_digest` beside them is copied off
+  the manifest, so it says the same thing whether or not a run honoured the pin), and
+  the candidate's digest is re-read from the workspace after every run. The bundle
+  gains `control_derivation.json`, so the answer is published beside what it rests on —
+  the after-run digest is in no other artifact, and a derived
+  `target_write_isolation` that nothing in the bundle can recompute is only one step
+  better than the literal it replaces. `attestation_digests` was already fed the runs
+  and is unchanged. `ari-core/tests/test_native_promotion_surface.py` pins all of it,
+  including the AST guard the two attesting surfaces already apply to themselves, run
+  against nine mutations of this file — each of the seven fields restored one at a
+  time, the whole declared block restored verbatim, and the whole block deleted — to
+  confirm it discriminates rather than passing on anything.
+
+- **The re-pin surface can no longer declare what it did not observe
+  (`scripts/rqgm_assurance/repin_and_promote_harness.py`).** Its `promote` mode wrote
+  seven `HarnessRegistrationEvidenceV1` fields as literal keyword arguments —
+  `clean_control_verdict="pass"`, `negative_control_verdict="fail"`,
+  `official_runner_parity=True`, `result_schema_conformant=True`,
+  `network_isolation="proved"`, `target_write_isolation="proved"`,
+  `oracle_visibility="denied"` — and pointed `attestation_digests` at its own
+  registration report, so the bundle cited itself as the execution it never performed.
+  Both harnesses that ship no attestations were registered through it, and it stayed
+  reachable after one of them was re-registered on real container executions: it would
+  have minted declared evidence for the next harness to arrive.
+
+  **The repair is a refusal, not a control sequence.** A sequence is
+  per-driver-family — `attest_problem_correctness.CONTROLS` stages the problem's own
+  reference and wrong kernels plus the driver's own extra-symbol transform, and needs
+  the pinned image — while this surface accepts any manifest under `builtin/`. Sharing
+  that machinery would have closed the surface for the family that already has an
+  attesting surface and left it open for `native-perf/v1`, which is the family whose
+  bundle carries the declared seven today; it would also have welded the re-pin to a
+  container image, and a re-pin is what you need precisely when you are somewhere the
+  controls cannot run. So the surface keeps to re-pinning DERIVED manifest fields,
+  reports gates it does not record, and names — per driver family — where the evidence
+  is earned, saying plainly that for the performance family nothing can.
+
+  `promote` remains only to refuse: deleting it would answer an existing invocation
+  with argparse's "invalid choice", and a caller needs to be told where the evidence is
+  earned rather than that a word is gone. `--actor-id` and `--authorization-basis` are
+  no longer required, so a maintainer's real signature reaches that explanation instead
+  of a usage error, and is told that nothing was signed. `check` and `paths` — what the
+  pre-commit gate runs — are untouched and still write nothing.
+
+  **The re-pin capability is intact**: a drifted driver digest is still repairable, and
+  repairing one reproduces the registered manifest byte for byte, `manifest_digest`
+  included. Neither evidence model is imported any more, the module's only filesystem
+  write is the manifest re-pin, and no string constant in it names a directory inside
+  the published Harness tree — properties read off the syntax tree by
+  `ari-core/tests/test_harness_repin_surface.py`, which also applies to this surface the
+  literal-keyword guard the attesting surface's tests apply to themselves, in the
+  stronger form that none of the seven may be written here at all.
+
+- **A problem-correctness Harness can now EARN its attestations
+  (`scripts/rqgm_assurance/attest_problem_correctness.py`).** Five catalog rows carry
+  `status: verified`. Three of them ship four `HarnessAttestationV1` artifacts each,
+  plus `logs/` and `resource_measurements.json`, from `promote_native_harnesses.py`'s
+  four-execution control sequence. The two registered through
+  `repin_and_promote_harness.py` ship none — that surface writes
+  `clean_control_verdict="pass"` and `negative_control_verdict="fail"` into
+  `registration_evidence.json` as literals and points `attestation_digests` at its own
+  registration report. Nothing ran, and the record says something did.
+
+  The gap was structural rather than an oversight: `KIND_CONFIG` names exactly the
+  three ARI-native families, and their control loop is welded to a manifest it also
+  CONSTRUCTS, to a shared library it compiles itself, and to a contract requiring a
+  `reproducibility` property this manifest does not declare. The new surface reads the
+  registered manifest instead of rebuilding it, stages C SOURCE that the verifier
+  compiles inside the container, and derives its contract from the two properties the
+  manifest actually declares — so `resolve_harness_suite` covers all four atoms
+  instead of leaving them unsatisfied.
+
+  **Five labelled executions, not four.** The first four keep the native labels and
+  expected verdicts (`clean-screen`, `clean-certify`, `clean-certify-repeat` →
+  `pass`; `negative-screen` → `fail`). In all four, `interface-conformance` comes back
+  `pass`, including in the negative run, because `wrong_gemm.c` keeps the contract
+  perfectly and only misses the numbers — so registering a conformance claim on them
+  would be the same defect one property smaller. The fifth,
+  `negative-interface-screen`, is the driver's own file-scope-global transform of the
+  problem's own seed candidate, and the object audit refuses it by name.
+
+  **Nothing is declared and nothing was weakened.** Every control is one of the
+  problem's shipped files, unmodified; every verdict written is read back off an
+  attestation minted from a container execution. The sequence refuses unless the
+  observed verdicts match in both directions, each property verdict matches, each
+  negative failed for its own reason — the wrong kernel caught by the residual bound
+  rather than by the build, by the audit or by an element-count check, and the export
+  control caught before any case ran — and no passing run reported nondeterminism.
+  Measured end to end against the registered manifest through the pinned image: five
+  completed executions in ~42 s, clean worst residual ratio 1.4e-3 to 1.6e-3 against a
+  bound of 1.0, the wrong kernel at 7.85e+11x with 3/3 cases failed and every element
+  written, and the export control refused with
+  `candidate kernel exports symbols other than 'gemm'`. The specificity direction — a
+  correct-but-slow kernel must PASS, or the instrument is a stopwatch wearing a
+  correctness label — stays where `register_harness` already gates on it, in
+  `ProblemCorrectnessDriver.parity_probe`.
+
+  `controls` writes the bundle outside the repository and needs no human identity;
+  `promote` earns the gates and signs behind `--actor-id` / `--authorization-basis`,
+  as the two scripts beside it do. The attestations cannot be dropped into the
+  existing evidence bundle: adding them moves `evidence_digest`, hence the catalog
+  row, hence the promotion approval signature, so the run has to be part of a
+  re-registration a maintainer signs.
+
+  `hpc/gemm-performance` is NOT covered, and was not forced. Two contradictions live
+  in the manifest itself, both already strict xfails in
+  `test_harness_applicability.py`: it pins `gemm-c-abi/v1` against
+  `target_kinds: [benchmark-submission]` while the worker takes C source, so the
+  declaration the evaluator mints is inapplicable to it; and it pins
+  `supported_architectures: [x86_64]` against an aarch64 `registered_placement`, which
+  `NativePerfDriver.prepare` enforces as an execution gate rather than a description —
+  so no host satisfies both halves, and an attestation taken off the registered
+  placement is refused rather than merely discouraged. Correcting either means editing
+  a registered manifest, which moves `manifest_digest` and is a re-registration. Two
+  further things would have to be settled first: the regression threshold is a
+  constant in two places that disagree (`parity_probe` reads 0.95, the worker defaults
+  to 1.0) and is derived from no `tolerance_policy_digest`, and nothing plumbs the
+  reference's build flags into a governed argv, though the clean control is only
+  honest when the reference is built the reference's way.
+
+  Both harnesses currently pin a driver digest that no longer resolves, so `prepare`
+  refuses and this path cannot be re-exercised until a maintainer re-registers. That
+  is a consequence of moving the instruments, disclosed where it was moved; the
+  sequence above was measured against the tree state the manifests pin.
+
+- **`hpc/gemm-dense-fp64-problem-correctness` promoted to verified (2026-08-16).**
+  Registered at 15/15 and signed by the maintainer (`kotama`), so the catalog now
+  carries five entries and a pinned-problem run resolves its correctness obligation
+  to the Harness written for that contract — end to end, from the vocabulary's
+  target kind through the declaration to the worker the driver can parse.
+
+  Two things about how it was done, because both were nearly done wrongly. The
+  registration was run in a **clean git worktree at HEAD** rather than by relaxing
+  `allow_dirty`: a concurrent agent works in this repository and the tree never
+  settles, and committing its in-progress files to manufacture a clean tree is not
+  the same thing as having one. The driver digest recomputed from the pinned
+  commit's blobs was checked against the manifest pin and the working tree
+  independently, so the source pin's provenance claim is true rather than merely
+  ancestral.
+
+  And the first bundle **leaked a host path**. `measurement_environment` captures
+  every variable under a prefix set and drops SECRETS by name fragment, but not host
+  PATHS by value — so `ARI_LETTA_SIF=/…/scripts/letta/letta.sif` carried a home
+  directory and a username into a committed, published record. The four shipped
+  bundles are clean only because that variable happened to be unset when they were
+  made, which is luck, not a property. Values are now scrubbed through
+  `scrub_host_identity` at the publication boundary, and the fix was proved by
+  re-running the ceremony with the variable deliberately set: it is still captured,
+  and its value is recorded as `~/ARI/scripts/letta/letta.sif`. Scrubbed there
+  rather than in `measurement_environment`, which sits inside two driver digests —
+  re-pinning them would force another re-registration of the performance harness on
+  the aarch64 node it pins.
+
+- **The problem-correctness manifest's source pin named a commit without the driver
+  (2026-08-16).** `source_full_commit_sha` was copied from the four pre-existing
+  manifests, and `source_revision_digest_pin` only checks ancestry, so it passed while
+  naming `361a85d7`, a commit that contains none of the three files the manifest's
+  `driver.sha256` covers — checking it out raises "instrument files missing from the
+  digest". The field's whole purpose, per that gate's own docstring, is PROVENANCE:
+  where to check out to obtain the digested bytes. It now names the commit that
+  actually holds them, resolved rather than copied, and the manifest author asserts
+  the three files exist there before writing the pin. Verified independently: the
+  driver digest recomputed from that commit's blobs equals the pinned value.
+
+- **`expected_result_schema_digest` was carried into the lock and read by nobody
+  (2026-08-16).** A manifest declares the result schema twice — by version and by
+  digest — and `resolver` copies both into the lock, but no reader ever compared
+  either against the driver or against the file. Both halves were wrong on the
+  shipped catalog and neither was visible. The digest is not arbitrary: all four
+  manifests carry `sha256:6ff46e8f…`, which is exactly the schema file's byte digest
+  at `d303a4c`, the commit they were registered from. The file changed afterwards —
+  the `kind` enum `[gemm, spmm, stencil]` was dropped when families became
+  data-driven — so each of them pins a STRICTER schema than ARI now ships, and
+  nothing could tell. (An earlier note in this file called the value unreproducible;
+  it is reproducible, and stale, which is a different defect with a different fix.)
+
+  `result_schema_digest()` is now the one place that computes it, over the file's
+  bytes — the same rule `load_tolerance_policy` already uses, and for the same
+  reason: a manifest pins the artifact, so hashing a reparsed document would yield a
+  different digest for the identical file and the comparison would silently cover
+  nothing. `result_schema_conformance` now checks that the manifest names the type
+  its driver emits AND pins the file ARI ships, and fails closed when the evidence
+  does not carry both, matching `GateEvidence`'s own rule that absent inputs make
+  gates fail rather than pass. Both manifests that could be corrected were, from that
+  function rather than by hand.
+
+  The three ARI-native correctness manifests are deliberately NOT corrected. Each is
+  registered under a `human-maintainer` approval that signs over
+  `harness_manifest_digest`; editing the manifest voids a signature no automated
+  change may forge. The gate now refuses them, so the drift surfaces at the next
+  registration, where a person is present to decide — and a test pins the set so it
+  cannot grow silently.
+
+- **Three defects repaired in the registered `hpc/gemm-performance` harness
+  (2026-08-16).** (1) The manifest declared `expected_result_schema:
+  ari.native-hpc-verification-report/v1` while `NativePerfDriver` emits
+  `ari.native-perf-report/v1`, so a consumer reading
+  `HarnessRunRequestV1.expected_result_schema` was told to expect a report type that
+  harness never produces; registration's `result_schema_conformance` resolves the
+  schema from the DRIVER's type and so could not see the disagreement. Now corrected,
+  with a digest that is reproducible from the shipped schema file — the four
+  pre-existing manifests all carry the same constant, which matches that file under
+  no computable rule. (2) A candidate whose output contains an infinity made
+  `PerfRepetitionV1.max_rel_error` unserializable and raised "Out of range float
+  values are not JSON compliant" inside the verifier, so a wrong candidate came back
+  as a crashed worker and was recorded as an infrastructure outage rather than as the
+  failure it is; `finite_ratio` now yields `None` for a non-finite oracle answer, and
+  the fix is shared with the problem-correctness verifier rather than duplicated.
+  Measured after the change: an infinity-writing candidate is scored, not fatal.
+  (3) The launch's sandbox record carried `writable_root` — the per-run temporary
+  directory, i.e. a host filesystem path — into a published, digested report, which
+  also made the report digest non-reproducible; it is now filtered to the isolation
+  status the reader actually needs. Both drivers' digests moved, so both manifests
+  were re-pinned; the three ARI-native correctness manifests are untouched, because
+  `native_perf_common.py` is not in their digest.
+
+  `registered_placement` was deliberately NOT changed. Re-targeting a registered
+  harness from its aarch64 evidence to whatever host is at hand is a decision about
+  what the harness asserts, not a repair. The remaining defect — the retained
+  registration report pinning `manifest_digest: sha256:5f964dc3…` when the manifest
+  is now `sha256:10719ecf…`, so the shipped catalog does not load — is only closed by
+  re-registering, and that must happen on the placement the manifest pins.
+
+  That constraint was measured rather than assumed: re-registration attempted on this
+  x86_64 host returns 12/15, `rejected`, failing `clean_control_pass`,
+  `official_runner_parity` and `multiple_run_stability` — the instrument does not
+  resolve here, so the gates refuse to certify noise, which is exactly what they are
+  for. The twelve that pass include `result_schema_conformance` resolving the perf
+  schema and `full_sha256_integrity` accepting the re-pinned driver, so the repairs
+  above are confirmed by the same run that declines to complete the ceremony.
+
+  No spread FIGURE is quoted from those runs, deliberately. This worktree has a
+  concurrent agent running its own test suite, and a timing measurement taken beside
+  it measures the contention, not the machine: a first attempt read a clean-control
+  spread of 0.966 at a load average near six, against the 0.983 / 1.071 / 1.006
+  (~8.7%) that `test_thread_budget_physical_cores` records for an x86 node measured
+  properly. Quoting the contaminated figure as evidence would repeat the mistake this
+  study has already made once, of reading variance as effect. The verdict — x86
+  rejected, aarch64 required — is the same either way, and rests on the clean
+  measurement rather than on ours.
+
+- **The run request could only launch one verifier, and it was the wrong one
+  (2026-08-16).** `build_native_harness_run_request` built a single argv — the
+  ARI-native worker — and derived its `--kind` by string surgery on the harness id,
+  `rsplit('/')[-1].removesuffix('-correctness')`. For
+  `hpc/gemm-dense-fp64-problem-correctness` that yields `--kind
+  gemm-dense-fp64-problem`, which names no registered family, and `--library
+  candidate_gemm.c`, which is C source and not a library. So even once resolution
+  and locking were correct, the request would have launched a verifier whose output
+  the pinned driver cannot parse, and every node would have returned
+  `infrastructure_error` — the same mismatch surfacing as an outage instead of an
+  error, one layer further down. The worker is now chosen from the manifest's pinned
+  driver revision (what the resolver locks and `prepare` re-checks), an unknown
+  revision fails closed rather than falling back, and the evidence reference's media
+  type comes from the declaration instead of a hardcoded `application/x-sharedlib`.
+  Adversarial review of the new instrument also found, and this fixes: a candidate
+  writing infinities crashed the verifier, because the family oracle's `inf`/`nan`
+  answers are not JSON and `worst_residual_ratio` was a bare float — so a wrong
+  candidate escaped its `fail` verdict and was recorded as an infrastructure outage
+  (**the registered `hpc/gemm-performance` harness still has this defect in
+  `PerfRepetitionV1.max_rel_error`; fixing it changes `perf_driver_digest` and needs
+  re-registration on its pinned aarch64 placement**); a NaN residual was published as
+  `worst_residual_ratio: 0.0`, i.e. "exactly zero error", because `max()` returns its
+  accumulator when handed a NaN; unmeasured per-case values were emitted as the
+  loop's initialisers rather than as "not observed"; the report named no candidate,
+  so the frozen reference, the correct-but-slow control and the naive seed produced
+  three byte-identical reports and one `report_digest`, which a manifest pins as
+  `negative_control_report_digest`; the build-failure classifier matched the object
+  audit's wording anywhere in a message that embeds candidate-controlled compiler
+  stderr; and the parity probe read case one's detail rather than the failing case's,
+  then tested it for `"residual bound"` — a substring of `"within the residual
+  bound"`, the sentence that means the candidate was ACCEPTED. The launch's sandbox
+  record is now carried as evidence, filtered to the isolation status: its
+  `writable_root` is a host filesystem path, and including it both wrote machine
+  identity into a published record and made the report digest non-reproducible, which
+  the registration stability gate caught by failing.
+
+- **A pinned-problem run resolved correctness to three verifiers that cannot load
+  its candidate (2026-08-16).** `property_vocabulary.yaml` stamps every correctness
+  atom with one target kind per property — `shared-library` for
+  `numerical-equivalence` and `interface-conformance` — and its own comment records
+  why that was once the whole truth: the three registered correctness harnesses all
+  verify a shared library. It stopped being true the moment a correctness harness
+  verified a candidate against a pinned problem's own C contract, which is a
+  submission. Measured on the shipped catalog: with the atom stamped
+  `shared-library`, a pinned-problem run's correctness obligation resolved to the
+  ARI-native GEMM, SpMM *and* Stencil verifiers — none of which can load a candidate
+  written against the problem's header, all of which would have reported
+  missing-symbol failures as verdicts about the candidate — while
+  `hpc/gemm-dense-fp64-problem-correctness`, written for exactly that contract,
+  was selected zero times. It would have been registered, promoted and never chosen.
+  `build_verification_contract` now takes an optional `artifact_target_kind` that
+  overrides the table for the correctness properties only, and
+  `problem_target_kind(entry_point, family)` derives it from the two pinned facts
+  `declare_target` already reads, so the resolution side and the declaration side
+  cannot come to disagree. A run that names no pinned problem passes nothing and
+  every atom is stamped exactly as before, so the three registered harnesses are
+  untouched. After: the same requirement resolves to one Harness, the one written
+  for the contract in hand.
+
+  `declare_target` now asks the same question in the same order: THE PROBLEM
+  decides which contract a run is verified under, and the artifact only decides
+  whether it keeps it. Asking the built library first looked equivalent and was not
+  — a candidate exporting both the problem's entry point and the family's ABI
+  symbols was declared a `shared-library` while the resolver, which runs before any
+  candidate exists, had already stamped the run's atoms `benchmark-submission`, so
+  the resolved Harness would have been inapplicable to the declared target and the
+  node would have got no verification at all with nothing reporting an error.
+
+- **A correctness Harness that fits a pinned problem (2026-08-14).** Every
+  registered correctness Harness verified the ARI-native ABI out of a shared
+  library, and every pinned problem submits C source against its own header, so
+  nothing verified the second. A governed run over `gemm-dense-fp64` therefore
+  reached the one correctness Harness available to it, could not load its
+  target, and reported 33 failing cases with every error exactly 0.0 — a
+  mismatch dressed as a verdict about the candidate. The two contracts even
+  shared a name: `hpc/gemm-correctness` resolves `ari_gemm_f32`/`ari_gemm_f64`
+  over a 13-argument status-returning ABI in two dtypes, while a candidate
+  written against `gemm_kernel.h` exports `gemm` — six arguments, no status,
+  fp64 only. `hpc/gemm-dense-fp64-problem-correctness` verifies the second, over
+  driver revision `ari.assurance.problem-correctness/v1`, and its interface
+  contract is `problem:gemm-dense-fp64/v1@2026q3` rather than a reused
+  `gemm-c-abi/v1`, so the contract and the `oracle` pin name the same object and
+  cannot come to disagree. The driver carries its OWN content address: placing a
+  problem-shaped verifier inside `native_driver_digest` would have re-registered
+  the three ARI-native Harnesses for a file none of them read, which is the
+  reasoning the performance driver's digest already records. It reuses
+  `native_perf_common`'s build, flag screen, object audit and launch and the
+  FAMILY's oracle — the same residual bound the performance harness credits time
+  behind — so it is that opinion reported on its own rather than only as a
+  precondition for a stopwatch. It carries no anchor, no denominator and no
+  timing, and pins no placement: `NativePerfDriver.prepare` refuses to run off
+  the machine its evidence was taken on because a timed verdict does not
+  transfer, and a residual bound does not depend on the allocation's shape, so
+  this Harness can be registered where a performance Harness cannot. The parity
+  probe runs four controls from the problem's own scaffolding and the third is
+  the one that matters: the frozen reference passes; `wrong_gemm.c` fails on the
+  residual bound at 1.81e12x while still conforming, because it writes the right
+  element count and the wrong numbers; `slow_gemm.c` — the performance probe's
+  negative — must PASS, since an instrument that refused a correct-but-slow
+  kernel would be scoring speed while reporting correctness; and a candidate
+  carrying an extra exported symbol is refused by the object audit, which is what
+  certifies the second declared property rather than leaving
+  `interface-conformance` registered on no evidence. Registration ran 15/15 gates
+  in 18.6s. `declare_target` previously had one contract to offer and correctly
+  refused to declare it once the claim was checked, which left the node with no
+  verifiable target at all; it now falls back to the contract the candidate does
+  keep, checked the same way — the object built from that candidate must export
+  the entry point the problem declares — so a seed candidate declares
+  `benchmark-submission` and exactly one shipped Harness accepts it.
+
+- **Provider promotions re-cut for portability (2026-08-07).** The reviewed
+  PRoot/unsquashfs/worker-Python build links against a newer host glibc than the
+  promoting site provides, so the OpenROAD SLURM CPU profile now pins a
+  digest-pinned clean container instead: `ContainerRequestV1` with
+  `runtime: singularity`, `gpu: false`, `network: none`, `contain_all: true`,
+  `clean_environment: true` replaces `OpenRoadPortableRuntimeV1`. Isolation is
+  stronger — the closure is the SIF alone rather than the SIF plus the host
+  `proot`, `unsquashfs` and worker-interpreter bytes it had to trust. Both
+  substrates remain admitted by the execution contract; which one a site pins is
+  a site property, and that exactly one is pinned is the invariant.
+  `environment_requirements` is now derived from the profile rather than written
+  out, so the promoted SLURM lock lists `cpu`, `exclusive-node`,
+  `singularity-sif`, `slurm`, and `runtime_target` follows the declared
+  substrate (`worker_python: container-provided`,
+  `execution_substrate: singularity-sif`, `network: isolated` because the
+  container declares `network: none`). The retained SIF was re-materialized
+  locally and its digest could not be reproduced: a SIF header carries a random
+  UUID and a wall-clock creation time inside the hashed file, so no container
+  runtime reproduces `retained_sif_digest`. The pinned OCI manifest digest and
+  the inner OpenROAD binary digest matched exactly, so the payload is proven
+  identical while the envelope is not, and the retained image stays the pinned
+  artifact
+  (`sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c`,
+  1,540,308,992 bytes, `singularity` 4.5.0-1.el9). The GPU limitation is now
+  read from the reviewed scheduler snapshot instead of asserting one site's
+  situation everywhere — with no declared GRES types no GPU can be requested at
+  all, and with them the guarantee rests on the allocated node exposing no
+  accelerator — while the profile requests zero GPUs and grants no GPU
+  capability either way. Snapshot verification compares the live controller
+  against the snapshot's *declared* values plus a small set of invariants that
+  are not site characteristics, and refuses a snapshot claiming GPU authority,
+  so the same promotion can run at another scheduler site while drift between
+  snapshot and controller still fails closed. Terminal state comes from the
+  scheduler where it has accounting storage and from the nonce-bound
+  fixed-wrapper record where it does not; either way the job must actually have
+  succeeded. A typed job's `container_digest` must equal exactly what the
+  profile pins, and scheduler handle scopes are recorded relative to the
+  declared work root — a scope escaping that root is refused. The SLURM
+  bundle's materialized profile moved out of `workspace/`, which must stay
+  byte-exactly the declared input set for source admission, and the local-CPU
+  OpenROAD and Qiskit materialized profiles now record bundle-relative paths
+  instead of the promoting host's absolute ones. ToolUniverse leaf identity
+  became install-path independent in the same pass (below). Re-promoted lock
+  digests: OpenROAD local CPU
+  `sha256:22bebd225e7876414d724c8f560c0906acd7f2f45c94b86408e71d1bc34bffc9`,
+  OpenROAD SLURM CPU
+  `sha256:a28d59fe22395717075be9def98469bb49335d28dc539ff5b597aa04a7c81893`,
+  Qiskit local-ideal
+  `sha256:0407982946540409fc37193bd86130d72f86fc1c1447d581ee39dca1da19f220`,
+  ToolUniverse PubMed
+  `sha256:33789b5a02f45bcdb925e8a2ff79a23866674561ad43b4ac51df5d1996f08f21`.
+- **Leaf identity no longer depends on where the wheel is installed.** Upstream
+  ToolUniverse reports a leaf's `source_file` as an absolute installation path,
+  and that path reached `tool_spec_digest`, so the same reviewed wheel produced
+  a different leaf identity on every machine and the promoting host's absolute
+  paths were written into promotion evidence. The adapter now normalizes
+  `source_file` relative to the reviewed package root before both the leaf
+  metadata and the digest; a path outside the reviewed package is replaced with
+  `<outside-reviewed-package>` rather than disclosed. An `ari-patched-wheel`
+  ToolUniverse source may now omit `verified_lock_path`: such a source is
+  collection-wide, carries no leaf promotion, and therefore must not assert
+  `evidence.replay_fixture_digest` or `evidence.scientific_validation_digest`,
+  which require leaf evidence bound to a verified lock. Without a lock the
+  source stays `callable` but cannot reach `reproducible` or
+  `scientifically_admitted`. The retained exact wheel is still required in
+  every case.
+- **ToolUniverse `1.3.1+ari.2` raises the compact-MCP response ceiling.** A new
+  provider version carries the `1.3.1+ari.1` `fitz>=0.0.1.dev2` →
+  `PyMuPDF==1.26.4` metadata fix unchanged and additionally raises
+  `smcp.SMCP` response `max_chars` from 100,000 to 2,000,000 at both
+  serialization sites; unlike `ari.1` it does change source code
+  (`source_code_changes: true`). Upstream caps every compact MCP response at
+  100,000 characters and, when structural trimming cannot fit, falls back to
+  raw string truncation that emits invalid JSON, which makes whole-collection
+  enumeration impossible — `get_tool_info(detail_level=full)` exceeds the
+  ceiling for the largest leaves even at batch size one. Measured over all
+  2,601 loaded leaves the largest single response is 510,904 characters and
+  only two exceed 100,000, so 2,000,000 admits the worst observed batch with
+  roughly threefold headroom while staying well under the 7,103,230-character
+  full-collection dump. Two builds were byte-identical
+  (`sha256:5c2e9a254e353e5941d59f8e279dd7c55777eb46c84457f1eefcaef7aa4a60c9`).
+- **A correctness family declares itself once.** The set of verifiable native
+  HPC kernels used to be written out in five places — a `Literal`, the facade's
+  dispatch dict, the parity probe's reference table, the ABI dispatch dict, and
+  two `argparse` choices tuples — so a family added to four of them was
+  dispatchable, scored and attested while the probe never touched it, and the
+  probe still reported `passed`. New `ari-core/ari/assurance/native_hpc_family.py`
+  is a registry: each family declares itself once where it is defined and supplies
+  `verify` (hidden cases plus oracle), `reference` (the independent
+  implementation, which is also the parity probe's clean control), and
+  `call_shared_library` (the ctypes ABI its candidates are called through).
+  `NativeKind` relaxes from `Literal["gemm","spmm","stencil"]` to `str` — the
+  name still appears in a report because a verdict has to say what it verified;
+  ABI adapters self-register through an `@_abi_adapter` decorator and
+  `abi_adapter_kinds()` is the accepted set for `native_candidate_host --kind`,
+  while `native_worker --kind` validates against `registered_native_families()`;
+  and the parity probe iterates the registry instead of a table.
+  `native_hpc_family.py` joins the native driver digest, because the registry
+  decides which oracle judges a run, and the digest now raises when one of its
+  files is absent instead of letting it drop out silently. This does not make
+  correctness families free the way pinned problems are — adding one is still
+  an ARI change, reviewed like any other, because an oracle a caller could
+  supply is an oracle a caller could weaken; what changed is that the set is
+  declared in one place per family instead of five places per set. **The cost,
+  stated because it is real:** the native driver digest changed, so all three
+  correctness harnesses — `hpc_gemm`, `hpc_spmm`, `hpc_stencil` — now refuse to
+  run with `native Harness driver bytes drifted`. Their manifests were not
+  re-pinned, because a signature covers what was signed and re-pinning would
+  make three human-maintainer attestations describe code nobody approved. They
+  need re-attestation; the refusal and the absence of a re-pin are both asserted
+  by a test so neither can be undone by accident.
+- **The federated tool registry Skill is on by default; the catalog is not.**
+  `ari-skill-tool-registry/skill.yaml` flips `enabled_by_default` to `true`, so
+  the broker is no longer skipped by manifest auto-discovery when a
+  configuration omits its `skills:` section. Enabling the Skill still enables no
+  leaf: only sources present in the selected catalog can execute, and the
+  checked-in `CATALOG.lock` is empty by design because it is
+  the portable default while a populated catalog is machine-specific evidence.
+  A catalog is selected at runtime with `ARI_TOOL_REGISTRY_LOCK` and
+  `ARI_TOOL_REGISTRY_INDEX` (now in
+  `docs/reference/environment_variables.md`). New top-level `provider-artifacts/`
+  holds materialized Capability Provider runtimes and the environment-specific
+  catalogs built from them; it is gitignored except its README, mirroring
+  `containers/`, and nothing in it is portable. Reviewed evidence stays tracked
+  under `ari-skill-tool-registry/providers/<name>/<version>/`; the one exception
+  is the retained ORFS SIF, which the OpenROAD wrapper execs from
+  `${runtime_dir}` and so lives inside the bundle.
+- **Manuscript Complete exploration-to-publication boundary.** Added an
+  independent, default-off `off|audit|enforce` compiler that inventories BFTS
+  or RQGM evidence, preserves negative results, records every omission, builds
+  bounded section briefs, and binds either linear or RQGM-archive authoring to
+  exact source digests. Explicit and enforce-only automatic repair use fixed
+  authority/budget envelopes and the normal research runtime. Publication now
+  requires the logical AND of readiness, claim evidence, applicable assurance,
+  compile, reproduction, and freshness, followed by an immutable PDF/build
+  lock. Added `ari manuscript`, V1 schemas, program evaluation, migration and
+  operator guides, and default-off identity coverage. The final content gate
+  now rejects contextual-negative/forbidden evidence IDs and missing required
+  disclosures for both linear and archive authoring. A closed release manifest
+  runs all four topologies, 13 failure-injection families, migration/rollback,
+  authentic native Harness evidence, and contract/documentation checks, with a
+  revision-bound report retained by dedicated CI.
+- **Knowledge–Capability–Assurance separation (Tasks 16–20).** Added the
+  non-executable, content-addressed `ari.knowledge` registry; the
+  `ari.providers` semantic facade over existing `skill.yaml`, `SKILLS.lock`,
+  and MCP runtime; deterministic `ari.capability_binding`; and independent
+  `ari.assurance` contracts, catalog, suite resolver, fixed runner, native HPC
+  verifiers, and artifact-bound attestations. RQGM now admits/freeze these
+  identities before the first execution epoch, limits Agent tools to the
+  binding lock in enforce mode, separates scientific/debug/uncertified
+  frontiers, admits dedicated Knowledge/Binding/Attestation evidence, and
+  applies `CK-KNW-*`, `CK-CAP-*`, and `CK-HAR-*` integrity rules. Legacy
+  defaults remain `knowledge.off`, `capability_binding.legacy`, and
+  `assurance.off`; `ari-skill-*`, `skill.yaml`, and `SKILLS.lock` remain the
+  single compatible Provider source. Added separate read-only CLI/MCP/
+  dashboard surfaces and orthogonal H/K evaluation families without changing
+  B0–B8.
+- **Pinned external Knowledge import.** `ari knowledge import` now accepts
+  exact Git commits, Open Agent Skills-compatible packages, explicitly
+  configured scientific Skill repositories, and ToolUniverse Knowledge
+  collections. Imports use a temporary bare Git object database without a
+  checkout, reject branches/tags, symlinks, submodules, special files, unsafe
+  protocols, and embedded URL credentials, and mint candidate-only material
+  with source/profile/tree/blob digests. Open Agent `allowed-tools`, scripts,
+  notebooks, and assets remain non-authoritative attachments; ToolUniverse
+  Knowledge identity never activates its MCP Provider identity. Candidate
+  material is now self-contained and can be the checked-in catalog source
+  without duplicating its manifest/body. An explicit `ari-wrapper-v1` adapter
+  quotes Open Agent bodies that lack ARI's required sections inside a fixed,
+  admin-profile-bound authority and assurance boundary. The Intel performance
+  repository is pinned at commit
+  `e9d0b6410fb1ad7a50fb81e0868fd23ae886882c`; `intel.performance-patterns`,
+  `intel.linux-perf`, and `intel.phoronix-test-suite` are separately registered
+  as candidates, with all bundled executable assets retained as
+  `authority: none` and no Provider or Harness activation.
+- **Observed GPU/SLURM admission facts.** Capability admission now derives its
+  environment identity from bounded, shell-free `sinfo`, `nvidia-smi`, and
+  `nvcc` probes. When a GPU is explicitly requested and no login-node device is
+  visible, it performs one bounded `srun` compute-node probe. A device visible
+  on a SLURM node without GPU GRES is recorded as
+  `gpu-observed-on-slurm-node` but is not exposed as a schedulable `gpu`
+  resource unless the existing explicit no-GRES operator override is active.
+  The 2026-08-04 anonymous-node check observed four V100 devices but no GPU GRES, and a
+  separate two-CPU SLURM job passed all three native HPC reference/negative
+  control families.
+- **ToolUniverse substitution is semantic and fail-closed.** Tool Registry
+  category profiles can project only an exact reviewed leaf name to a
+  canonical versioned Capability and exact result normalizer; descriptions,
+  substrings, and nearby names cannot grant that authority. The initial
+  PubMed projection normalizes live ToolUniverse results to the same
+  `ari.retrieval-result/v1` contract used by ARI retrieval Providers. Production
+  source verification now also requires the exact upstream dependency lock,
+  reviewed package tree, and a closed `pip check`. A diagnostic reuses the
+  production Binder twice and records binding and live execution separately.
+  Upstream ToolUniverse 1.3.1 remains `candidate`: its exact lock installs
+  `pathlib==1.0.1`, which prevents compact MCP startup on Python 3.12/3.13.
+  A separate metadata-only `1.3.1+ari.1` wheel replaces the mistaken `fitz`
+  distribution with `PyMuPDF==1.26.4`; two builds were byte-identical, its
+  158-package runtime lock passes `pip check`, and an evidence-bound fifteen-
+  gate lock promotes only anonymous `PubMed_search_articles` as
+  `ari.literature.search/v1`. Formal promotion also binds an explicit human-
+  maintainer approval to the exact manifest, evidence, report, and capability
+  scope; missing or mutated approval fails closed. Other ToolUniverse leaves
+  remain unadmitted.
+  Stdio execution now uses a value-free supervisor whose timeout/cancellation
+  path reaps the full Provider process group. Tool Registry admission now
+  recognizes the ontology's canonical `network-read` permission; an
+  environment-specific one-leaf `CATALOG.lock` consequently reaches
+  `callable` and completes an anonymous broker invocation instead of remaining
+  `discovered` under the older `network`-only policy vocabulary.
+- **Qiskit and OpenROAD exact-scope Provider promotions.** Evidence-bound,
+  human-approved locks now promote only Qiskit MCP 0.3.1 + Aer 0.17.2 seeded
+  local-ideal Bell-state execution as `ari.quantum.sample.local-ideal/v1`, and
+  the OpenROAD MCP 0.6.1 / ORFS 26Q3 x86_64 one-thread local CPU
+  GCD/Nangate45 profile and a separate anonymous exclusive-node SLURM CPU
+  profile as `ari.eda.openroad.place-route/v1`. The SLURM lock binds only a
+  salted site digest, fixed scheduler/runtime identities, zero GPUs, and
+  nonce-bound wrapper completion. IBM Runtime, remote simulator/hardware, GPU,
+  and other OpenROAD design/PDK/image scopes remain candidates rather than
+  inheriting authority. The OpenROAD
+  runtime now compiles reviewed typed commands into a private fixed Tcl file,
+  waits for normal process exit and metric flush, and rejects PTY echo as a
+  completion signal. Promotion is not activation: the compatibility-default
+  `CATALOG.lock` remains empty, and every enabled run must freeze an explicitly
+  materialized Provider and Capability Binding Lock.
+- **External Harness parity cannot be inferred from compatibility tests.** A
+  digest-bound `ExternalHarnessParityReportV1` now requires an actual official
+  invocation/result, ARI-normalized result, reference pass, negative-control
+  fail, schema parity, and exact source/data/container/driver pins before it can
+  pass. PaperBench's vendored upstream API and deterministic aggregation checks
+  pass at commit `51052cede8cc608f95bb00346635e03759013e5a`, but the report
+  remains `not_available` for official end-to-end parity without the pinned
+  dataset/container, permitted model credentials, and official rollout →
+  reproduction → judge controls.
+- **Measured Scientific Assurance cost.** A valid fixed-verifier execution now
+  appends its executor wall interval and declared CPU/accelerator/memory
+  allocation to the canonical `cost_trace.jsonl`, keyed by Harness,
+  execution/attempt, epoch, node, and Attestation digests. Task 20 reports
+  screen/validate/certify resource totals per valid node. Missing scheduler or
+  cloud pricing is explicitly `unpriced`, never `$0`. The 2026-08-04 anonymous-node
+  verifier-core control run measured 1.61 s wall, 0.89 s user CPU, 0.13 s
+  system CPU, and 55,537,664 bytes maximum RSS; it is retained as a
+  non-authoritative cost observation because no verified pinned Harness
+  container was available to issue an Attestation.
+- **Two execution modes; the default is untouched.** ARI now has a master
+  switch `ari.mode` ∈ {`simple_bfts` (default), `ari_rqgm`} plus a redundant
+  `rqgm.enabled` interlock — both must agree, resolved by the pure
+  `ari.rqgm.mode.resolve_effective_mode` (mismatches warn and fall back to
+  `simple_bfts`). Env overrides: `ARI_MODE` / `ARI_RQGM_ENABLED`
+  (validate-before-assign; invalid values warn and are ignored). There is no
+  `--mode` CLI flag; the dashboard can select the mode for a **new** run (see
+  the GUI-refresh entry below), and a run's mode is immutable once it starts.
+  With no `ari:`/`rqgm:` blocks (i.e.
+  every pre-RQGM config), ARI constructs no RQGM object, imports no
+  `ari.rqgm` module, and writes no new checkpoint file — default checkpoints
+  stay byte-identical to pre-RQGM ARI.
+- **New `ari-core/ari/rqgm` package** (internal; never exported via
+  `ari.public.*`, imported lazily only when both switches agree):
+  epoch state/store + hash-chained transition events (`state.py`, `store.py`,
+  `events.py`), the deterministic non-evolving `ConstitutionalKernel` with
+  frozen rule tables in code — never config (`kernel*.py`,
+  `transition_rules.py`), the `RegistryTransitionEngine` as the sole registry
+  status writer over the fixed T1–T21 table — T1–T19 base plus the
+  role-scoped T20/T21 amendments below (`transition_engine.py`,
+  `registry.py`), proposal records/router/generators with an optional
+  default-OFF VirSci generator (`proposals/`,
+  `proposal_router.generators.virsci`), the nine-step epoch-boundary
+  `GovernanceOrchestrator.audit_epoch` with total deterministic fallbacks for
+  every LLM decision (`governance/`), the adversarial
+  attack→defense→adjudication loop + replay pool (`adversarial/`), prompt
+  spec/evolution + the `GovernedPromptLoader` (`prompt_*.py`), clean-room
+  regeneration (`clean_room*.py`), frontier repair + selective erasure
+  (`frontier_repair.py`, `erasure_state.py`), sandboxed meta-agent evolution
+  (`meta_evolution.py`, `meta_rules.py`), and cost control + role-scoped
+  context views (`budget.py`, `context_views.py`, `governance_cache.py`).
+- **Config surface.** New `rqgm.{epoch, kernel, governance, replay,
+  transition, adversarial, shadow, prompt_evolution, clean_room,
+  frontier_repair, meta_evolution, budgets, eval}` and
+  `proposal_router.{record_only, summary_budget_chars, generators}` blocks in
+  `ari-core/ari/configs/defaults.yaml`, typed in `ari.config`. All defaults
+  are inert under `simple_bfts` (the one exception:
+  `proposal_router.record_only` is an opt-in dual-write honored in
+  `simple_bfts`).
+- **Checkpoint artifacts (only under `ari_rqgm`).** `rqgm_state.json` (mode
+  provenance; its absence means a pure `simple_bfts` run),
+  `rqgm_registry.json`, `rqgm_audit.jsonl`, `rqgm_transitions.jsonl` +
+  `epoch_state.json`, `rqgm_erasure_state.json`,
+  `rqgm_adversarial_cases.jsonl`, the `proposals/` store, the
+  `rqgm_prompts/` write-once evolved-template store, and the other `rqgm_*`
+  event logs/snapshots. 20 new JSON Schemas under `ari-core/ari/schemas/`
+  (`rqgm_*`, `proposal_*`, `governance_report`, `epoch_state`,
+  `epoch_transition`, `clean_room_*`, `erasure_state`,
+  `selective_erasure_event`, `frontier_rebuild_event`). New prompt template
+  packs `ari/prompts/rqgm/` and `ari/prompts/governance/`.
+- **Evaluation & ablation harness.** `scripts/rqgm_eval/run_ablation.py`
+  (standalone argparse orchestrator — NOT an `ari` command) expands the B0–B8
+  presets in `ablation_matrix.yaml` into per-run workflow overlays and drives
+  fresh `ari run` checkpoints per condition × seed × experiment; ten
+  deterministic failure injections + clean controls in
+  `failure_injections.yaml`; the thirteen-metric
+  `rqgm_eval_metrics.json` + campaign `ablation_report.{json,md}`;
+  `--dry-run` / offline `--smoke` tiers. Logic lives in
+  `ari.rqgm.evaluation.*` (deterministic, no LLM).
+- **Documentation.** New guides
+  `docs/guides/execution_modes.md` (mode switch + timing policy) and
+  `docs/guides/rqgm_evaluation.md` (harness + metrics), plus
+  `docs/guides/virsci_integration.md`, `docs/guides/rqgm_migration.md`,
+  `docs/guides/dashboard.md`, `docs/guides/configuration_studio.md`,
+  `docs/guides/rqgm_gui.md`, `docs/concepts/rqgm_architecture.md`,
+  `docs/concepts/rqgm_runtime_walkthrough.md`,
+  `docs/reference/rqgm_gui_read_models.md`, and
+  `docs/reference/rqgm_schemas.md`. The trilingual technical report is now a
+  dedicated Constitutional ARI-RQGM account covering the runtime,
+  constitutional transitions, adversarial accountability, utility and prompt
+  co-evolution, and the governed paper archive; execution strategies remain
+  product features but are outside the report's scope.
+- **Governed utility evolution (Task 14) — the score itself is now
+  boundary-rewritable.** `utility_policy` and `policy_mutator` join the
+  `EVOLVABLE_ROLES` set (`ari/rqgm/events.py`); the utility policy
+  (`composite`, `axis_weights`, `frontier_score`, `depth_penalty_lambda`,
+  `ucb_c`) becomes a governed object, and `capture_utility_policy`
+  (`ari/rqgm/state.py`) reads the *adopted* policy (cfg fallback at epoch 0 /
+  `simple_bfts`). A new transition edge **T20** (`active → retired`,
+  `transition_rules.py`, rule `superseded_by_adopted_successor`) is
+  kernel-guarded to `utility_policy` ONLY — behavioural roles keep the
+  sanction-only replacement model — so a validated, shadow-passed successor
+  that scores at least as well displaces the healthy incumbent and retires it
+  under its old `utility_policy_hash`, letting `frontier_repair` invalidate
+  every node scored under the retired policy. `PolicyMutator`
+  (`ari/rqgm/utility_evolution.py`) proposes candidates deterministically
+  (it cannot see the frontier's scores; kernel-validated) and rides the
+  new `rqgm_utility_policy_candidate` schema; invariant **I-11 is repealed**
+  (the policy is frozen per epoch and rewritten at boundaries, not constant
+  per run) and `CONSTITUTION_HASH` was re-pinned. **Honest limit:** at the
+  default config (`axis_mode: dynamic`, empty static `axis_weights`) the
+  "at least as well" gate is vacuous — there is no fixed ordering to compare —
+  so supersession reduces to legality + non-degeneracy; a strict
+  "strictly better" quality gate needs an anchored per-axis basis (the paper
+  phase's anchor), which is the honest Red-Queen posture, not a bug.
+- **Validated-attack target binding (Task 15) — the impeachment chain is
+  wired.** `ValidatedAttackRecord` gains `target_component_id`
+  (`ari/rqgm/adversarial/records.py`), resolved from the implicated ROLE to
+  its epoch-frozen `component_id` at record construction
+  (`ari/rqgm/adversarial/round.py`). The field is serialised ONLY when
+  non-empty, so every pre-existing targetless record stays byte-identical.
+  This closes the validated-attack → `validated_attack_involvement` →
+  `classify_target` → impeachment chain that was dead upstream for all
+  adversaries. The research `generator` is now a registered founding component,
+  and the runtime stamps each node with its producer component, prompt hash,
+  and epoch. The seven exploration adversaries bind only when that immutable
+  provenance matches the epoch-frozen generator; legacy, missing, or mismatched
+  provenance remains targetless rather than being guessed.
+- **Paper-archive mode (`paper.mode`) — governed, co-evolving paper writing.**
+  A new execution axis `paper.mode ∈ {linear (default), rqgm_archive}` plus
+  the `rqgm.paper.enabled` interlock (`ari/rqgm/paper_mode.py`,
+  `resolve_paper_mode`), ORTHOGONAL to `ari.mode` (all 2×2 combinations
+  valid). `linear` is byte-identical to today's paper pipeline — no `ari.rqgm`
+  import on the paper path. `rqgm_archive` runs `PaperArchiveRuntime.run_archive`
+  (`ari/rqgm/paper_runtime.py`): a genuine shallow best-first TREE over draft
+  space via `PaperArchiveStrategy` (`ari/rqgm/paper_archive.py`;
+  `archive.depth` 3, `width` 4, `refine_rounds` 2), with `PaperDraftExecutor`
+  (`ari/rqgm/paper_draft_executor.py`) wrapping `ari-skill-paper` as the dumb
+  "hands" (`write_paper_iterative` seeds, `paper_refine` refine children); the
+  skill is never governed cross-process. Governed founding roles `paper_writer`
+  + `paper_reviewer` (paper-mode-gated so exploration boot stays byte-identical)
+  drive the skill; the 8th adversary type `paper_self_preference` attacks the
+  reviewer's OVER-ACCEPTANCE (pillar P2 — it attacks the evaluation), and a new
+  edge **T21** (`active → shadow`, paper-role-only) demotes the superseded
+  incumbent to shadow standby on an adoption. **Both paper roles are anchored**
+  (`ari/rqgm/paper_anchor.py`): the reviewer to an APReS-equivalent
+  accept/reject corpus, with a machine-enforced `max_bootstrap_label_fraction`
+  cap (degrades to `None`, never raises); the **writer** to the Layer-0
+  claim-evidence hard gate's deterministic faithfulness
+  (`writer_faithfulness_score` folds `execution_grounded_claim_rate` +
+  `numeric_claim_reproducible_rate` + `numeric_coverage_rate`;
+  `WRITER_ANCHOR_DESCRIPTOR` replaces the interim `writer_anchor: None` in
+  `paper_utility_policy`). ARI writes about experiments that were actually run,
+  so its paper writer is the RQGM paper's **coding**-domain shape — a
+  deterministic verifier + a co-evolving reviewer — not the paper's anchor-less
+  writer, and the writer's anchor costs zero extra data. The gate stays Layer-0:
+  `run_hard_gate(write=False)`, read-only, never wrapped or evolved. An
+  over-accepted draft the gate ALSO finds unfaithful has two culpable
+  components, so `paper_self_preference` names both roles and the round emits
+  one validated attack per resolvable role (`round.py:_resolve_bindings`); the
+  sanction opens the writer role and its waiting shadow successor adopts via the
+  EXISTING T6 (no new edge). Proven by execution: the active writer
+  `prompt_hash` moves `f38a15f0f140 → b2c36f9a8232` over 8 rounds, and with
+  faithful drafts the same driver yields zero writer attacks, zero writer
+  motions and a constant hash while the reviewer is still impeached. The
+  best archive draft → `materialize_winner` writes `{ckpt}/full_paper.tex` ONCE
+  → the EXISTING compile + claim-evidence hard gate runs on it unchanged (same
+  contract as `linear`). New checkpoint artifacts: `paper_archive_state.json`,
+  `paper_draft_archive.jsonl`, `paper_anchor_corpus.jsonl`,
+  `paper_self_preference_stat.json`; `target_component_id` is added to the
+  validated-attack schema. `CONSTITUTION_HASH` chain this session:
+  `4fa36f2bd302 → 951a294dc3c4` (T14) `→ 564a204dc694` (paper roles)
+  `→ 6643c12a510e` (T21). **Honest limits:** (a) the writer is replaced only
+  when it REGRESSES on faithfulness (the conservative behavioral-role model) —
+  a better challenger alone never displaces a faithful incumbent, it waits at
+  `shadow`; and the writer's *draft* winners stay epoch-local (ranked by the
+  in-epoch-frozen reviewer); (b) the writer-targeted attack rides the
+  `paper_self_preference` round, which fires only on an over-accepted anchor
+  case, so an unfaithful writer under a reviewer that over-accepts nothing is
+  not sanctioned today (a dedicated writer-adversary type is a separate
+  decision); (c) at the default `rqgm.paper.epoch.rounds: 2` the boundary and
+  impeachment FIRE but the candidate → validated → shadow → probationary_active
+  climb (~5 boundaries) does not COMPLETE an adoption — a run that must witness
+  a changed active hash raises `rounds` (the co-evolution proof tests drive 8);
+  (d) `anchor.enabled` defaults to `false`, so the default `rqgm_archive` is
+  reviewed best-of-N until the user supplies a curated corpus — and since the
+  writer's faithfulness case is landed on that same pool, no pool means no
+  writer sanction either; (e) the in-phase penalty demoting a real over-accepted
+  archive draft is deferred (the round currently demotes a synthetic
+  accountability node) — the accountability / co-evolution channel is the one
+  that fires.
+- **Opt-in agent-as-judge reviewer scoring (`ari/rqgm/paper_judge.py`).**
+  `rqgm.paper.reviewer.agent_as_judge.enabled` (**default `false`**, env
+  `ARI_PAPER_AGENT_AS_JUDGE`, same validate-before-assign posture as
+  `ARI_PAPER_MODE` / `ARI_RQGM_PAPER_ENABLED`) plus
+  `rqgm.paper.reviewer.agent_as_judge.max_tokens` (default 1024). OFF is the
+  deterministic, LLM-free venue-rubric scorer — no live LLM call on the
+  draft-scoring path, so P2 holds. ON injects a real `LLMClient`-backed
+  `reviewer_score_fn` (`ari/cli/paper_dispatch.py`) that scores each archive
+  draft over the SAME rubric axes, weighted by the ACTIVE governed
+  `paper_reviewer` prompt's emphasis — so evolving the reviewer moves best-belief
+  selection — and can read `novelty` / `significance`, the axes no deterministic
+  reader can see, which is what breaks the discrimination ceiling where two
+  mature drafts both saturate the structural rubric and tie. Meaningful only
+  under the effective `rqgm_archive` paper mode. **Fail-open, never a fabricated
+  constant:** an LLM error, an unparseable reply, a reply naming no rubric axis,
+  or one covering <50% of the rubric's total axis weight all degrade to the
+  deterministic rubric, and non-finite values (json accepts a bare `NaN`) are
+  rejected rather than propagated into selection. The score_fn carries
+  `judged` / `degraded` counters that `ari paper` logs after the archive,
+  because a judge score and a fallback score are the same float to every
+  consumer. It resolves the three evidence channels from the checkpoint under
+  exactly the kernel-enforced `PAPER_REVIEWER_FIELDS` whitelist
+  (`draft_manuscript`, `verified_context`, `science_data`,
+  `reference_context`); a channel it cannot fill is logged by name, never
+  silently empty.
+- **`LLMClient.complete` gained an optional `max_tokens`** (off by default, so
+  every existing caller is byte-identical). For cli-shim targets with no key
+  configured and no `OPENAI_API_KEY` it injects a local placeholder key: the
+  shim is a local proxy that ignores auth, but litellm's openai-compatible
+  provider rejects a keyless call, which would have silently degraded the judge
+  on every draft.
+- **`PaperDraftExecutor` now fails loud on MCP failure envelopes.**
+  `MCPClient.call_tool` never raises on tool failure — it RETURNS
+  `{"error": …}` or `{"result": "<non-JSON text>"}` (what a RAISING skill tool
+  becomes), and reading those as "no latex" silently produced K empty drafts.
+  All three shapes plus an empty/missing `latex` now raise `PaperSkillCallError`
+  instead of writing a 0-byte draft, and the executor unwraps the
+  `{"result": "<json-string>"}` envelope it previously did not.
+- **The auto-generated PaperBench rubric is now audited before anything is
+  graded against it.** `audit_rubric` (ari-skill-replicate) shipped complete and
+  tested but had no caller: both the workflow chain and the PaperBench Wizard
+  went straight from `generate_rubric` to reproduction and grading, so the one
+  artifact that defines what "reproduced" means was the only one nobody checked.
+  New `ors_audit_rubric` stage (between `ors_generate_rubric` and the sandbox
+  stages, which now depend on it) plus a non-fatal `rubric_audit` stage in
+  `api_paperbench_worker`. It flags each leaf `vague_qualifier` /
+  `no_paper_evidence` / `duplicate` (deterministic) and `unverifiable` (one LLM
+  call per leaf), rewrites `ors_rubric.json` in place with the flags, and
+  reports `regen_recommended` above a 20% flagged-leaf ratio. A signal, not a
+  gate. `auditor_model` is deliberately not defaulted to the generator's model
+  so `ARI_MODEL_RUBRIC_AUDIT` can point the audit at a different one.
+- **`replay_selector` and `failure_summary_compressor` are governed roles, not
+  vocabulary.** Both sat in `events.EVOLVABLE_ROLES` and the capability matrix
+  with nothing behind them — no founding prompt, no founding component, no
+  invoker — so `MetaEvolutionCoordinator.run_epoch_boundary_step` could never
+  reach them, and the plan-11 §5.2 actions they exist to perform
+  (`emit_replay_recommendation`, `emit_failure_summary`) had no emitter even
+  though the action vocabulary, the output kinds and `_route_output`'s routing
+  for both were already complete. Each now has a founding prompt + template, a
+  founding component declaring ONLY its own emit flag, and a live invoker.
+  The current founding registration totals **32 prompt-or-policy records /
+  20 components** (including the registered research generator)
+  in the base RQGM runtime; paper-archive mode adds 3 prompts and 3 components
+  for **35 / 23**.
+  `CONSTITUTION_HASH` is unchanged (it covers the kernel rule tables, not the
+  founding tables). The two roles' prompts also become PromptMutator targets,
+  which is what displaced `generator_prompt_v2` out of the calm boundary's
+  capped four — the visible proof that they are genuinely evolvable now.
+  - Both invokers are deterministic by default (pure functions of the epoch's
+    abstract failure summaries — no LLM, no clock, no randomness, so a default
+    boundary stays byte-reproducible) and consult the committed template only
+    when an LLM is configured, degrading back to the deterministic answer on a
+    non-conforming reply. The selector recommends breadth-first across
+    `case_type` so the replay cap cannot collapse onto one failure mode; the
+    compressor's `occurrences` is always counted from the bundle, never taken
+    from a model.
+  - `clean_room_request.schema.json`'s `target_role` enum was missing FIVE
+    evolvable roles (`failure_summary_compressor`, `policy_mutator`,
+    `utility_policy`, `paper_writer`, `paper_reviewer`). T17 retirement is
+    status-driven, not role-gated, so any of them could emit a clean-room
+    request that violates the published schema — silently, because the runtime
+    mirror validates against the broader `EVOLVABLE_ROLES`. The enum is now
+    pinned equal to `EVOLVABLE_ROLES` by a test.
+- **`ari-core` carries no inline prompt literals again.** The cli-shim's
+  bare→qualified MCP tool-name note was added inline; it now lives in
+  `ari/prompts/llm/mcp_name_resolution.md` like every other template (and so
+  gains a snapshot, making a wording change reviewable as a diff).
+- **Recorded artifact hashes are now actually checked.** `node_report.json`
+  records a sha256 for every source file a node added or modified
+  (`orchestrator/node_report/builder.py`), and nothing in ARI ever re-verified
+  them: the only verifier, `audit_memory` (ari-skill-memory), had no caller in
+  ari-core, no pipeline stage, and no CLI entry. An artifact rewritten after its
+  hash was recorded was undetectable. New `audit_node_provenance` stage runs at
+  the boundary where node outputs become paper evidence — before `transform_data`,
+  which now depends on it — reporting per artifact `verified` / `mismatch` /
+  `missing` / `unhashed`. Scope is honest: it covers `files_changed` source
+  files; ARI's own metadata (`results.json` et al., excluded by
+  `PathManager.is_meta_file`) and `artifacts` entries with no recorded baseline
+  are reported `unhashed`, never `verified`. A signal, not a gate.
+- **Seven silent-failure defects fixed (H1-H7), each swallowing a real loss.**
+  A hunt over the ~900 silent `except` handlers found 17 that genuinely lose
+  something (≈2%; the rest are benign optional-import/best-effort paths). The
+  seven HIGH cases, each verified against real artifacts and given a regression
+  test:
+  - **H1 (`claim_gate/formula_eval.py`)** — a declared correctness/invariant
+    expression that could not be parsed (`10**-4`, `np.max(...)`, a stray paren)
+    returned `None`, and every caller tested only `if r is False`, so an
+    unevaluable check read exactly like a satisfied one. The gate published
+    `contract_violation_count: 0` for a check that never ran — on LLM-authored
+    expressions with no stated grammar. New `eval_declared` separates "evaluated
+    to None (missing operand)" from "could not evaluate"; the latter emits
+    `contract_expr_unevaluable`, added to `always_block_on`.
+  - **H2 (`orchestrator/node_report/builder.py`)** — a produced file whose
+    sha256 could not be read (foreign-uid container output, an I/O race) was
+    dropped from all four `files_changed` buckets, so a node whose only output
+    was unhashable looked like it changed nothing: the sterile gate logged "no
+    files vs parent" (a positive falsehood) and clamped the score to 0. Now
+    recorded in a `files_changed.unhashable` bucket; the sterile gate treats a
+    non-empty bucket as unknown, not as no-changes.
+  - **H3 (`rqgm/store.py`)** — `append_events` returns `False` on a failed write
+    and never raises; `EpochTransaction.add`/`commit` discarded that bool, so a
+    registry mutation whose write failed was still marked committed and the audit
+    log listed sanctions/retirements that never happened (P4 degrading
+    invisibly). Now raises and aborts, so replay discards the partial tail.
+  - **H4 (`checkpoint.py`)** — the sole writer of `tree.json`/`results.json`
+    logged its failure at DEBUG and returned `None`, so a `force=True` flush (the
+    SIGTERM-safety path) could fail while the run printed "Run complete" and
+    `ari resume` later rebuilt a truncated run from still-valid JSON. Now
+    ERROR-level and returns a bool the caller checks.
+  - **H5 (`ari-skill-plot/src/server.py`)** — when figure generation failed, the
+    rescue glob scanned `out_dir` (which IS the checkpoint dir) and adopted
+    `fig_*.pdf` from an earlier run — including the figures a VLM review had just
+    rejected, since generate_figures is the loop_back_to target — under a
+    fabricated caption, and the non-empty result suppressed the "No figures
+    produced" error. Now snapshots pre-existing figures and declines them,
+    surfacing the refusal. (Also created the plot skill's first test suite.)
+  - **H6 (`ari-skill-paper/src/server.py` merge_reviews)** — a corrupt/truncated
+    hard-gate or semantic-review file had its load error bound to `_`, making it
+    indistinguishable from one never configured (`ok: true`, `status: null`).
+    Now sets `ok: false` and a `load_error:` status, mirroring the VLM path.
+  - **H7 (`ari-skill-paper/src/server.py` paper_refine)** — the review-payload
+    parse was swallowed and the function returned "no actionable
+    suggested_revisions; paper returned unchanged" — asserting the reviewers
+    requested nothing — so a retracted claim shipped unchanged. Now collects
+    parse errors and returns an error when every configured source failed to
+    load; also reads review files with `encoding="utf-8"` (they were read
+    encoding-less while the tex was UTF-8, so a non-ASCII review failed under
+    `LC_ALL=C`).
+  - The `claim_gate/` policy loader's silent fallback (an unreadable
+    `claim_gate_policy.json` reverting a configured `strict` to the default
+    `warn`) was fixed alongside these: it now logs and records
+    `_policy_load_error`.
+- **`run_integrity.json` — the findings finally converge somewhere.** Every
+  integrity check already wrote a finding: the gate emits typed errors,
+  `link_paper_claims` records dropped declarations, `audit_node_provenance`
+  re-hashes artifacts, `paper_refine` now reports inserted sentences. Nothing
+  read them together, and a stage's returned `warnings` were stored in
+  `stage_outputs` and surfaced by NOBODY — so a run could ship a paper
+  containing a fabricated verification claim and print `DONE` eighteen times.
+  Two changes: the pipeline driver now prints and logs any `warnings` a stage
+  returns, and a new `ari/pipeline/integrity.py` collects the artifacts into one
+  report + a console summary at the end of the run. It recomputes nothing (each
+  producer stays authoritative) and reports an ABSENT producer as `null`, never
+  as zero findings — "the check did not run" and "the check found nothing" must
+  not look the same. Run against the real artifacts of the audited run, the
+  4-line summary reproduces what a 44-agent forensic audit had to be run to
+  find: 9 assertions unverified, `numeric_claim_reproducible_rate` 0.0, 1
+  inserted sentence asserting a verification nobody requested, and root ideation
+  with no prior art.
+- **Root ideation can finally be grounded in prior art.** Tracing why a live run
+  produced `papers_analyzed: 0`, an empty gap analysis and `generator=cheap`
+  showed a dead INPUT rather than a dead call: `ctx["survey_refs"]` was READ in
+  exactly one place — `PriorArtDifferentiationGenerator` — and WRITTEN in none,
+  so that generator was reachable from the router table yet structurally unable
+  to ever emit anything. Compounding it, `_EVENT_PRIORITY["initial_exploration"]`
+  listed only `(virsci, cheap)` and virsci is default-OFF, so the FIRST idea —
+  the one every later node descends from — had no literature-grounded path at
+  all and its novelty claim was always the model's own opinion of itself.
+  `_root_survey_refs` now supplies refs from the idea skill's `survey` tool at
+  root ideation, and `prior_art` sits ahead of `cheap` in the initial-exploration
+  row. Both halves are fail-open: no MCP client, a `{"error": ...}` envelope, or
+  an empty result yields `[]`, the generator returns `[]`, and the router falls
+  through to `cheap` exactly as before — but the run now LOGS that the novelty
+  claim is ungrounded instead of silently proceeding.
+- **`CK-SCH-N01` no longer fires on every node of every run.** The per-node
+  kernel hook (wired earlier in this session, from a component that had had no
+  production caller) fed the AUDIT LOG to `per_node_warn_check`, which runs
+  `validate_record_schema` + `validate_hashes` and requires the
+  `rqgm_record_base` envelope at the top level. An audit entry is a different
+  shape entirely (`{event_id, event_type, payload, …}`) and carries none of
+  those fields, so the check reported "missing envelope fields:
+  component_id, created_at, epoch_id, prompt_hash, record_id, role,
+  source_refs, status" for every node, always — a standing false positive on the
+  one code that flags a malformed governed record. It now reads the node's
+  actual RQGM records from the adversarial case log, excluding round MARKERS
+  (idempotency bookkeeping, not governed records). Verified on a real run's
+  artifacts: 2 findings → 0, while a genuinely envelope-less `raw_attack` record
+  is still caught. Wiring a component is not enough — wiring it to the wrong
+  input converts silence into noise.
+- **Structural fixes for the defect CLASS behind the shipped falsehoods (L1-L5).**
+  A root-cause analysis over 17 defects found in one session showed "unwiring"
+  (a component nothing calls) explains 6 of them and ZERO of the ones that put a
+  false sentence or number into a delivered PDF. Those all occurred inside
+  wired, executing paths that produced a wrong value which looked right. Five
+  structural changes, each verified against the artifacts of a real end-to-end
+  run:
+  - **L1 — the formula vocabulary is closed at the LLM ingest boundary.** The
+    closed `FORMULAS` set was hand-mirrored into five places and
+    `grep -c FORMULAS ari-skill-paper/` was 0, so the process that PRODUCES the
+    token could not read the registry; `required_roles()` returned `()` for an
+    unknown name and `gate.py` folded that into `operand_unresolved`, printing
+    "operand 'formula' ({}) did not resolve" — a vocabulary error disguised as a
+    data error. `FORMULAS`/`required_roles` are now exported on
+    `ari.public.claim_gate` (the seam the skill already imports), unknown tokens
+    raise a named `unknown_formula` finding (same `block_on` tier, so the split
+    is severity-preserving), and every parse-time drop is counted in
+    `dropped_declarations` / `suspect_declarations` with its real cause. The
+    hardcoded unresolved-anchor reason that blamed the writer for
+    "referencing an id not present in science_data claims" — while the values
+    were in results.json verbatim — now reports what actually happened.
+  - **L2 — a colliding claim id no longer accuses a correct paper.** The paper
+    writer and the science_data generator mint `C<N>/NC<N>` independently and
+    the gate bound them by id string alone, so a paper anchor about `cfg1`
+    (11.2286 GB/s, correct) was compared against a pre-generated assertion about
+    another node (16.3441) and reported as a `numeric_mismatch`. Collisions on
+    either axis of the subject — metric or node — now raise `claim_id_collision`
+    and skip the comparison. A multi-number anchored sentence whose bound number
+    fails while another number in the SAME sentence reproduces now raises an
+    `ambiguous_span` warning instead of an accusation.
+  - **L3 — a gate that did not run can no longer score a perfect pass.**
+    `paper_gate_pass_rate` scored `status != "failed" and not should_block`, and
+    ari-skill-evaluator returns `{"status": "skipped", "should_block": False,
+    "errors": []}` from both of its defensive except paths — so a CRASHED gate
+    scored **1.0** while a gate that ran and found 9 errors scored **0.0**.
+    RQGM evolves components against these metrics, making that live selection
+    pressure toward disabling the audit. A verdict-less gate is now
+    `applicable: False`.
+  - **L4 — an inserted sentence is no longer invisible.** Every guard on
+    `paper_refine` is an `issubset` PRESERVATION check on anchors, so an
+    anchorless insertion passes all of them by construction, and
+    `full_paper.draft.tex` (written by the tool, the one artifact that makes an
+    insertion trivially detectable) was read by nothing — `difflib` had zero
+    uses repo-wide. The tool now diffs pre/post refine and returns
+    `inserted_sentences` plus `unrequested_process_claims`: sentences asserting
+    a verification/validation that no revision requested. Verified on the real
+    run: 5 insertions, correctly narrowed to the 1 that claimed "we
+    independently re-verified each such figure ... and confirm they agree to
+    within rounding" — a process that never happened, and false (8 figures
+    deviated ~437x the stated rounding budget).
+  - **L5 — the skill suites run in CI.** CI ran `pytest ari-core/tests/` and one
+    prompt test; `scripts/run_all_tests.sh` was invoked by no workflow, so every
+    `ari-skill-*/tests/` directory was dead — including four of the five
+    regression tests written for the bugs above. New `skill-tests.yml` runs the
+    light-dependency skill suites, one pytest process per skill (each ships its
+    server as `src/server.py`, so a shared process lets the first import poison
+    every later `from src.server import ...`).
+- **Nine MEDIUM + one LOW silent-degradation fixes (M1-M9, L1), all same class.**
+  The same hunt that produced H1-H7 turned up ten more `except`/empty-read paths
+  that fail toward the weaker side and return a value indistinguishable from
+  success. Each is fixed and given a regression test:
+  - **M1 (`orchestrator/node_report/builder.py`)** — a parent whose sha256 could
+    not be read fabricated a `modified` entry with `sha256_before: ""`, so a
+    downstream diff read the empty string as the prior content and reported a
+    spurious change. The parent-unreadable case now records into the
+    `files_changed.unhashable` bucket (H2's channel) with a `parent unreadable:`
+    prefix instead of inventing a before-hash.
+  - **M2 (`claim_gate/resolve.py`, `gate.py`)** — a node_report that existed but
+    would not decode returned `{}` from `load_node_report`, byte-identical to a
+    node with no environment recorded, so the gate's environment check passed on
+    a corrupt file. `load_node_report` now returns `{"_unreadable": …}`,
+    `env_signature` propagates it, and the gate raises `environment_unverified`.
+  - **M3 (`evaluator/llm_evaluator.py`)** — a `results.json` that existed but
+    would not decode was swallowed exactly like an absent one (no measurements,
+    no signal). Absent stays silent; a decode error now warns and writes a
+    `results.json.unreadable` sidecar so the loss is inspectable.
+  - **M4 (`rqgm/adversarial/pool.py`)** — the per-case cap/eviction `status`
+    lives ONLY in the snapshot; a snapshot that existed but would not load was
+    treated as "no snapshot", and replaying the JSONL alone resurrects every
+    evicted case as active (an uncapped pool). Reload now detects
+    exists-but-unreadable and flags `_snapshot_degraded`; a degraded pool refuses
+    to overwrite the corrupt file on save (which would destroy the evidence and
+    ship an uncapped-looking snapshot).
+  - **M5/M6 (`cost_tracker.py`)** — a missing/unreadable pricing table was
+    memoized as empty and every subsequent cost lookup silently returned $0, and
+    a throwing usage callback dropped that record with no trace, so a run could
+    report a fraction of its true spend. The loader now logs and sets
+    `PRICING_TABLE_UNAVAILABLE` (and does not memoize empty), the callback counts
+    `dropped_records`, and both surface in the cost summary.
+  - **M7 (`llm/cli_server.py`)** — codex's `-o last_msg_file` is the only carrier
+    of a turn's output; `except OSError: text = ""` made a lost file
+    byte-identical to a genuinely empty reply (HTTP 200, real usage), so the loop
+    burned a react step on "your response was empty". It now recovers the text
+    from the `--json` stdout stream (the sibling claude path already does this)
+    and raises — so `do_POST` returns 502 — when nothing is recoverable.
+  - **M8 (`ari-skill-paper/src/server.py` check_format)** — PDF page counting
+    fell back to `None` silently, so a page-limit check simply did not run. It
+    now tries pypdf → pdfinfo → a regex over the raw bytes and records a format
+    issue when the count cannot be determined at all.
+  - **M9 (`ari-skill-paper/src/server.py`)** — a `science_data` file that would
+    not parse was swallowed, and the paper proceeded with no measured data rather
+    than reporting the load failure. `_load_jsonish` now returns
+    `(value, error)` and a `science_data_load_error` is surfaced.
+  - **L1 (`ari-skill-paper/src/server.py` inject_code_availability)** — a
+    `manifest.lock` / `publish_record.json` that existed but would not parse was
+    caught by a bare `except: pass`, so the Code Availability section shipped
+    without its integrity digest (or was omitted entirely) byte-identically to a
+    genuinely unpublished run — the reader could not tell the digest was lost.
+    Parse failures on present files are now collected and returned as
+    `load_errors` (and logged), while a genuinely absent source stays silent.
+- **A true statistical claim was being rewritten into a false one and shipped.**
+  Found by a forensic audit of the end-to-end run. Chain: the LaTeX numeric
+  extractor's `10^` branch required a ×-multiplier, so a bare power of ten —
+  `$p<10^{-23}$` — matched the base `10` and dropped the exponent, yielding
+  `value=10.0`. The hard gate then raised a phantom
+  `numeric_mismatch reported:10.0 recomputed:0.0`, and `paper_refine`
+  "corrected" the (true) bound into "the p-value underflows to 0.0 in double
+  precision" — false: the recorded p-values are `1.3e-24 / 3.6e-24 / 2.5e-24`,
+  finite normal doubles ~284 orders above the underflow floor. The false text
+  reached the compiled PDF. Both copies of the extractor
+  (`ari/pipeline/claim_gate/latex.py`, `ari-skill-paper/src/claim_links.py`)
+  now parse a bare `base^{exp}` as `base**exp`; `4.44\times10^{-16}`, `1.2e-6`,
+  `4.18 x` and the `10^{4932}` overflow guard are unchanged.
+- **A semantic review that never ran was reporting that it resolved overclaims.**
+  When the post-refine `evidence_grounded_semantic_review` no-ops (LLM
+  unavailable) its scores are empty, but `_finalize` still compared that empty
+  output against the prior REAL review: `_agg_score({}) - 0.72` became
+  `score_delta=-0.7233` (a fabricated regression) and `prev_detected(2) - 0`
+  became `resolved_overclaim_count=2` — for a pass that verified nothing. This
+  is the review that should have re-caught the false p-value above. Both fields
+  are now `None` with a `_delta_skipped_reason` when either side did not run; a
+  real post-refine review still computes real deltas.
+- **An LLM outage silently discarded a node's real measurements.**
+  `results.json` is the authoritative measured ground truth, but its merge sat
+  inside the same `try` as the judge's `json.loads`, so an empty LLM reply
+  ("Expecting value: line 1 column 1") jumped to the `except` and returned
+  `has_real_data=False, metrics={}` — orphaning a node whose experiment had
+  really run (the e2e run's root node lost its measurement sweeps this way, and
+  the paper silently rested on one node instead of two). The merge is now a
+  helper called on BOTH paths; with no `results.json` an LLM failure still
+  correctly reports no real data.
+- **Round-1 references bypassed relevance filtering, and `rounds_used` overstated
+  the work done.** The LLM relevance selector only ran on rounds ≥2, so when
+  Semantic Scholar returned nothing and round 1 fell back to a bare arXiv
+  keyword search, off-topic papers entered the bibliography unfiltered (an
+  "optimization" keyword pulled polynomial-optimization, topology-optimization
+  and proximal-point papers; one was cited in the run's paper). Round 1 now runs
+  the same selector — but FAIL-OPEN, because `_parse_selection_response` cannot
+  distinguish "nothing relevant" from an unparseable reply and an empty
+  bibliography is strictly worse than an imprecise one. The return also carries
+  `productive_rounds` / `s2_available` / `fallback_used`, so `rounds_used=13`
+  no longer reads as productive retrieval when every round no-opped.
+- **The provenance audit no longer reports a phantom `missing` every run.**
+  When a node's real artifacts are fake, `agent/loop.py` substitutes the
+  captured tool stdout as an inline blob `{"type": "result", "stdout": …}` —
+  no file. The node_report builder fabricated a filename from the type
+  (`{"filename": "result", "role": "unknown"}`), which `audit_node_provenance`
+  then resolved to `{work_dir}/result`, found absent, and reported `missing`.
+  A standing false positive on the audit's most severe status trains a reader
+  to ignore it. The builder now marks such entries `inline: true` (additive
+  schema field; the display filename stays to satisfy the required-`filename`
+  contract) and the memory audit skips them — a genuinely deleted artifact
+  carries no marker and is still caught. Found by the end-to-end run
+  (`audit_node_provenance` reported verified 30 / **missing 1**, and the one
+  missing was this placeholder, not a tampered file).
+- **`{{run_id}}` and `{{experiments_root}}` are available to workflow stages.**
+  Not a new convention — `ari.paths` already owned both (`experiments_root` is a
+  first-class property; `node_work_dir` is `experiments/{run_id}/{node_id}`,
+  exactly the layout `audit_checkpoint` reads), and the recovery-from-checkpoint
+  idiom is the one `orchestrator/bfts.py` and `trace_store.py` already run. The
+  driver now resolves and exposes them. `run_id` uses the GUARDED form
+  (`tree.json` first, directory name only as fallback) that `cli/migrate.py` and
+  `viz/api_orchestrator.py` use, because `ari resume` reads the authoritative
+  run_id from `tree.json` and then repoints `checkpoint.dir` at wherever the
+  checkpoint now lives — on a renamed checkpoint the bare directory name names a
+  run whose node dirs do not exist, and `audit_checkpoint` answers a missing run
+  dir with an EMPTY result set, which reads as "clean".
+- **`ari paper --fewshot-mode` is no longer inert.** The CLI and the GUI both
+  set `ARI_FEWSHOT_MODE`, but `fewshot_mode` was read only from the rubric YAML,
+  so nothing read the variable. `resolve_rubric` — the choke point every
+  reviewer entry point passes through, and where `ARI_RUBRIC` is already
+  honoured — now applies it (invalid values warn and keep the rubric default).
+  Dynamic OpenReview retrieval remains a placeholder returning the static
+  examples, so reviews are unchanged; what the mode now genuinely unlocks is
+  `ARI_STRICT_DYNAMIC`, previously unreachable from any CLI invocation.
+- **`ari settings --partition/--cpus/--mem` no longer discards its own writes.**
+  The command wrote a top-level `slurm:` block, but `ARIConfig` has no `slurm`
+  field and `load_config` drops unknown top-level keys — so it reported success
+  and persisted nothing. It now writes the typed `resources` block. (Partition
+  at run time is still resolved from the `experiment.md` header; the setting is
+  persistence, not an override.)
+- **Tests:** 704 new tests in the dedicated `test_rqgm_*.py` suites (plus
+  extensions to the existing contract/prompt/boundary guard suites), all
+  green; `simple_bfts` behaviour is pinned unchanged.
+- **End-of-run epoch-boundary flush.** `_run_loop` now runs one final
+  `ensure_epoch` tick before returning, so an epoch whose Nth node is created
+  in the final loop iteration (after the last outer-loop-head tick) still
+  closes transactionally; trailing epochs below the trigger stay open, and
+  `simple_bfts` is unaffected (the tick is gated on RQGM presence).
+- **cli-shim delegated terminal protocol + isolation hardening.** With the
+  cli-shim MCP-direct backend, one `claude -p` runs the whole tool loop and
+  returns final text only — a run that did real work but signed off in prose
+  used to burn all ReAct steps and fail the node. `LLMClient` now marks
+  delegated responses (`last_request_delegated`) and `AgentLoop` recovers:
+  a bounded corrective nudge for the terminal JSON, then acceptance from the
+  `results*.json` the delegated run verifiably wrote
+  (`result_source="delegated_cli_artifacts"`; inherited lineage files are
+  excluded via a run-start baseline). Strictly inert for every other backend.
+  The shim (`ari/llm/cli_server.py`) now passes `--strict-mcp-config`
+  unconditionally (text mode no longer boots ambient project MCP servers),
+  gains `ARI_CLI_SHIM_CLAUDE_MAX_TURNS` (`--max-turns N`), warns at startup
+  when `CLAUDECODE`/`CLAUDE_CODE_*` are inherited from a parent Claude Code
+  session, and documents the `--bare` subscription-auth caveat.
+- **cli-shim MCP-direct now works with `codex`, at full parity with `claude`.**
+  Previously the MCP-direct delegation path was gated `engine == "claude"`, so a
+  `codex-cli` model silently fell back to the text-catalog protocol and could
+  never run tools through the shim, nor honor ARI detaching MCP/memory. The
+  shim's engine-neutral payload — the SAME `{"mcpServers": {…}}` config +
+  `mcp__server__tool` allowlist `MCPClient.to_claude_mcp_config` already
+  produced — is now translated to codex's CLI surface (verified against
+  `codex-cli 0.145`):
+  - `--ignore-user-config`, applied UNCONDITIONALLY (both plain and MCP-direct)
+    like claude's unconditional `--strict-mcp-config`, so the user's
+    `~/.codex/config.toml` mcp_servers never leak into ANY ARI call. Auth still
+    resolves from `CODEX_HOME`; ARI owns the model via the shim alias (`-m`), so
+    not inheriting the user's codex model default is correct.
+  - `-c features.apps=false`, also unconditional. codex bundles curated apps
+    (GitHub, Google Calendar, Sites, …, ~129 tools) WITH the binary — neither
+    `--ignore-user-config` nor a clean `CODEX_HOME` removes them — so without
+    this an autonomous ARI agent would have ambient external tools (a
+    hermeticity AND safety hole: it could push to GitHub or create calendar
+    events), exactly what claude's `mcp__*` allowlist forbids. Turning them off
+    also cut observed per-call input tokens ~5× (211k → 46k) since their schemas
+    were otherwise injected every turn.
+  - one `-c mcp_servers.<name>.{command,args,env}` per server (BARE key — codex
+    silently fails to register a *quoted* server segment, and splits a dotted
+    name on the interior `.`, so a name that is not a TOML bare key is skipped
+    with a warning rather than corrupting the whole `-c` config) and a per-server
+    `enabled_tools` allowlist. Values are encoded as raw-UTF-8 TOML basic
+    strings (`ensure_ascii=False`) so a non-BMP character — CJK Ext-B, math
+    symbols — is not emitted as a surrogate pair, which TOML rejects.
+  So the exact same caller decision drives both engines: **attach** a server,
+  **detach MCP** entirely (no config → plain mode, and no ambient servers/apps
+  either), **detach memory server-level** (skill at `phase: none` → omitted from
+  `mcpServers` → never spawned), or **detach memory tool-level** (its
+  CoW-guarded write tools filtered from the allowlist → absent from
+  `enabled_tools`) — each honored identically whichever CLI runs. codex's
+  `--json` event stream is persisted to `<cwd>/tool_calls.jsonl` for audit,
+  mirroring the claude path. Empirically confirmed end-to-end through the HTTP
+  shim: codex spawns the supplied MCP server, invokes only the allowed tools, a
+  tool filtered out of `enabled_tools` is not even visible to the model, and no
+  ambient GitHub/Calendar tool appears. The plain (non-MCP) codex path keeps its
+  read-only sandbox and writes no audit file; the claude path is untouched.
+- **codex reasoning effort is controllable for the shim (`ARI_CLI_SHIM_CODEX_REASONING`).**
+  `--ignore-user-config` drops the operator's `model_reasoning_effort`, so codex
+  fell back to a slow reasoning default — and ARI drives many calls per run, so a
+  full paper pipeline hit the 90-min per-stage subprocess cap on iterative
+  citation collection alone. The shim now forwards
+  `-c model_reasoning_effort=<x>` when the env var is set (empty = keep codex's
+  default); `low` makes a full codex-backed ideation→paper run tractable.
+- **The epoch's governed utility_policy now actually drives scoring (the
+  objective co-evolves — RQGM paper claim A).** A paper-fidelity audit found the
+  adopted `EpochState.utility_policy` was captured and hash-stamped but INERT:
+  the `LLMEvaluator` was built once from static `cfg.evaluator` and the frontier
+  read static `cfg.bfts`, so a governed policy change altered only a provenance
+  hash, never a score. `RQGMRuntime.bind_evaluator` (wired in `build_runtime`)
+  plus `_apply_epoch_policy_to_scoring` now re-sync the evaluator's
+  composite/axis-weights and `cfg.bfts` (frontier reads it live) from the
+  epoch's FROZEN policy at each epoch open — so the criterion stays fixed WITHIN
+  an epoch and evolves only at boundaries. An unknown composite is never written
+  (evaluator/cfg keep the last valid one); ari_rqgm-gated (simple_bfts binds no
+  evaluator = no-op). Boundary re-scoring of PAST nodes is now handled by the
+  next entry (#77) — old-policy nodes are re-weighted under the new criterion
+  where possible rather than only retired.
+- **Boundary re-scores the surviving tree under the NEW criterion (#77 — RQGM
+  paper claim A, the CAUSE half completed).** Previously a `utility_policy`
+  retirement INVALIDATED every node scored under the old policy
+  (`frontier_repair`), on the documented rationale that "a rewrite invalidates;
+  it never re-weights an old score in place" — so a criterion change discarded
+  the entire comparable frontier instead of re-ranking it, and the "the whole
+  score is rewritten at each boundary" pillar was only half-true (rewrite =
+  erase). `FrontierRepairEngine.repair` now takes the newly-frozen epoch's
+  sealed `new_utility_policy` (passed from `state.epoch.utility_policy`) and, for
+  each node stamped with the retired policy, RE-WEIGHTS it in place from its
+  stored per-axis raw scores (`_axis_scores` — the judge's policy-INDEPENDENT
+  measurements) under the new policy's `composite` + `axis_weights`, mirroring
+  the live `LLMEvaluator` path, then re-applies the node's existing validated
+  attack penalty (`_scientific_score = max(0, base − penalty)`; attack validity
+  is policy-independent) and re-stamps it. This is a DELIBERATE, scoped reversal
+  of "invalidate never re-weight" for the policy-retirement case ONLY, and only
+  by re-weighting raw axes — never by converting an old composite into a new one.
+  Fail-closed: a node without raw axes, or hard-invalidated for a non-policy
+  reason (its generator/direction was retired), or when the new policy is
+  unusable, STILL falls back to total invalidation — so no stale-criterion score
+  ever survives. Re-scored nodes are cleared of the policy-only invalidation and
+  re-enter the frontier; the count is logged and audited
+  (`policy_rescored_node_ids` on the SelectiveErasureEvent). Empty `axis_weights`
+  is a VALID re-weight, not a fail-closed case: a 6-epoch codex e2e evolved the
+  composite `harmonic_mean → weighted_min` via the PolicyMutator's
+  `composite_swap` (which leaves `axis_weights={}`), and the first cut of
+  `_rescore_node_under_policy` fail-closed every stamped node to invalidation on
+  the empty map — so #77 never fired live. It now accepts an empty/absent weight
+  map (the compose fns fall back to equal per-axis weights, exactly as the live
+  evaluator does when cfg weights are unset), requiring only a registered
+  `composite` + the node's stored `_axis_scores`.
+- **Selective erasure now reaches best-node SELECTION, not just expansion (the
+  plan-10 §3 consumer-filter deferral, settled).** Erasure is logical-only:
+  `FrontierRepairEngine._flag_node` sets `_valid_for_frontier: False` but
+  deliberately retains the node's stale `_scientific_score` (and
+  `has_real_data`), and both persist verbatim through `tree.json`. The only
+  consumer-side readers of the sentinel were the two expansion prune clauses
+  (`BFTS.should_prune`, `PaperArchiveStrategy.should_prune`), so an erased
+  node — its score produced under a retired policy or
+  prompt — could still WIN `verified_context.select_best_node` and become the
+  paper candidate escalated at paper pre-flight (`projects.py`), the persisted
+  archive `seed_node_id` (`paper_dispatch.py`), the paper-archive root
+  (`_run_one_round`), and the `verified_context.json` lineage grounding the
+  paper's claims — including on the default `paper.mode: linear` path of an
+  `ari_rqgm` checkpoint. In the original RQGM paper this cannot happen because
+  erasure is physical deletion ("selection operates only on valid,
+  epoch-current evidence"); switching to logical erasure silently converted
+  that by-construction guarantee into a per-consumer filtering obligation that
+  plan 10 §3 deferred ("not silently dropped") and was then dropped.
+  `select_best_node` now excludes `_valid_for_frontier: False` nodes outright
+  (the `should_prune`/`_sterile` precedent: the key is only ever written by
+  RQGM machinery — `ari_rqgm` exploration or the `rqgm_archive` paper axis —
+  so the clause is inert dead code on the default paths), and
+  returns NO winner when every candidate is erased — contaminated evidence
+  does not become clean by being the only evidence left. All consumers were
+  already `None`-tolerant (escalation skips, `seed_node_id` persists as null,
+  `_make_paper_root` seeds lineage-free, `build_verified_context` returns the
+  empty shape). The two archive-side inline eligibility filters
+  (`paper_runtime.py` cross-round + best-belief) collapse into the shared
+  clause. An adversarial review of the fix closed the same defect class at
+  every other winner-promoting consumer: `write_verified_context` now REMOVES
+  a previously written `verified_context.json` whose `best_node_id` no longer
+  matches the fresh (post-erasure) winner instead of early-returning past it
+  (a stale artifact would otherwise keep grounding the paper on the erased
+  lineage across re-invocations — kept when the winner is unchanged, so a
+  transient memory-backend failure never discards a valid artifact);
+  `build_best_nodes_context` (the linear paper's "Best results" block +
+  `best_metrics`), ari-skill-transform's `_resolve_best_node[_for_synthesis]`
+  (science_data.json guard, EAR/published-code winner), and ari-skill-paper's
+  implementation-details top-5 all filter the sentinel now. Settled in
+  permanent docs (`rqgm_architecture.md` invariant 6;
+  plan-10 §3 annotated; INDEX invariant extended); the `search_memory` half of
+  the deferral remains open.
+- **Paper-candidate escalation is no longer silently non-deterministic, and
+  the node the paper is about can no longer escape its L3 round.** The
+  pre-flight escalation round was believed "observational", but a
+  judge-validated attack applies the bounded utility penalty (plan 06 §5.4 —
+  `_scientific_score` rewritten in place), and `ari paper` re-selects the
+  best node downstream (archive seed, paper root, verified context) over the
+  SAME live node list — so a penalized candidate could be silently replaced
+  by a node that never received its own paper-candidate round, and because
+  the paper process never writes `tree.json` while the §5.3 round marker
+  suppresses re-rounds, a re-invocation reverted the ranking and could crown
+  a DIFFERENT winner (a P2 determinism violation). Three-part fix: (a) the
+  escalation docstrings/comments now state the demotion semantics; (b)
+  selection→escalation runs to a FIXPOINT (`ari.cli.paper_dispatch`
+  `_escalate_paper_candidate_to_fixpoint`: select → escalate → re-select
+  until stable; terminates — each node is escalated at most once, and the
+  round marker makes repeats no-ops), so a demotion-crowned winner gets its
+  own L3 round; (c) `RQGMRuntime.replay_utility_penalties` deterministically
+  re-applies persisted `UtilityRecord` penalties (base/penalty/final stored
+  by value in `rqgm_adversarial_cases.jsonl`) onto freshly loaded nodes at
+  the paper phase's start — idempotent and conservative (applies only when the
+  current score equals the record's base, so recomputed/re-scored values are
+  never clobbered; records chain naturally in log order; records superseded
+  by a frontier-repair recompute are skipped outright, so a penalty the
+  impeachment/repair chain formally REVERSED — a superseding record with
+  penalty 0.0 — is never re-applied to the exonerated node). Re-runs now
+  reproduce the first run's ranking.
+- **`ari run` and `ari resume` finally run the paper-candidate round too —
+  and it is no longer fired before the evidence it attacks exists.** The
+  pre-flight escalation lived privately in `ari paper`, so a one-pass run
+  never ran it, and exploration's own per-node rounds do not cover the gap:
+  the artifacts that round attacks (claim-gate findings,
+  `verified_context.json`, related refs) are written by the paper stages, so
+  before them the pre-signals are empty and the paper-claim adversaries sit
+  on their no-attack floor. That same fact bounds when the round is worth
+  running: its §5.3 marker is one-shot per node and epoch-agnostic, so a
+  round fired against an empty bundle is spent forever and permanently
+  suppresses the artifact-grounded round (`prior_art` / `evidence_gap` /
+  `metric_gaming`) a later invocation could run — which is exactly what a
+  naive hoist would have caused on every fresh `ari run`, and what the
+  adversarial review of the first cut demonstrated (pass 1: 1 attack,
+  penalty 0.3, `overclaim` only; pass 2 with the artifacts present:
+  suppressed). The pre-flight is therefore **gated on the evidence
+  existing**: it runs before the mode branch when a previous pass produced
+  the artifacts (where a demotion can still re-crown this paper's own seed),
+  and otherwise once more AFTER the pipeline has written them, where the
+  penalty reaches selection on the next invocation through the replay above.
+  A pipeline that produced no evidence leaves the marker unspent. The whole
+  pre-flight (penalty replay → escalate-to-fixpoint → re-ideation) is now
+  `run_paper_candidate_preflight`
+  in `ari.cli.paper_dispatch` — the
+  dispatch all three entries already share — so the three agree here as they
+  already do on the paper axis. The pre-pipeline call runs BEFORE the mode
+  branch, keeping the
+  documented 2x2 orthogonality (the round fires on the *exploration* axis,
+  independently of `paper.mode`). Each entry passes its exploration runtime
+  (`rqgm=getattr(bfts, "rqgm", None)`); `simple_bfts` passes `None` and the
+  pre-flight is a dead branch, so `paper_dispatch` keeps its
+  no-`ari.rqgm`-import discipline (the handle is duck-typed, never
+  imported). Fail-open as before: an exploding adversary logs and the paper
+  still runs. A source-level test pins all three call sites passing the
+  handle, mirroring the existing one that pins all three routing through the
+  dispatch, and behavioural tests pin the gate in both directions (defers
+  without evidence, then runs post-pipeline once the pipeline wrote it;
+  stays deferred when nothing was produced). Relatedly,
+  `run_paper_candidate_escalation` no longer calls `ensure_epoch` when an
+  epoch is already open: on the live one-pass runtime that restore was a
+  no-op except for resetting `_last_node_count` to 0 — the value an
+  emergency quarantine stamps as the next epoch's `node_count_at_open`,
+  which would have poisoned the boundary arithmetic on the following resume.
+- **`paper_archive_state.json` no longer records a silently stale seed.**
+  `seed_node_id` is written once at paper-phase start (the file is write-once
+  so a resume can never flip the persisted paper mode), but the live seed is
+  recomputed every round — and three mechanisms landed above exist precisely
+  to move it: selective erasure excluding the recorded seed, an escalation
+  penalty demoting it, and the penalty replay re-applying both before
+  selection. The record was therefore increasingly likely to name a node the
+  run had stopped using, with no trace of the change. A later invocation
+  whose seed differs now APPENDS `seed_journal[]`
+  (`{event: "seed_changed", prior_seed_node_id, seed_node_id}`, chained off
+  the latest entry so repeated invocations stay quiet and two moves record
+  both) instead of rewriting — the `paper_utility_policy_journal` pattern, so
+  the file tells the whole story rather than a stale first line. Ids only:
+  *why* the seed moved is already durable next door in `rqgm_audit.jsonl`
+  (erasure events) and `rqgm_adversarial_cases.jsonl` (validated-attack
+  penalties), and inferring a reason here could only guess. Best-effort —
+  a provenance note never breaks the paper phase.
+- **Selective erasure now covers memory-mediated grounding and steering.**
+  Erasure never propagates to descendants, so a VALID winner can carry an
+  ERASED ancestor — and that ancestor's conclusions still reached the paper
+  and the search: (a) `build_verified_context` now drops known-erased
+  ancestor ids from the winner's lineage before `get_verified_context`
+  (unknown ids are kept — absence of the node is not evidence of
+  contamination); (b) the per-node working-context injection
+  (`agent/loop.py`) drops erased ancestor ids before `get_node_memory` /
+  `search_memory`, via the `rqgm_erasure_state.json` rollup read through the
+  rqgm-import-free checkpoint shim (absence == nothing stale — inert on
+  default paths). This settles the `search_memory` half of the plan-10 §3
+  deferral CALLER-SIDE; the memory skill itself deliberately stays
+  erasure-unaware. **That skill half is now settled too, as annotate-for-pull
+  / hard-exclude-for-push.** `ari-skill-memory` reads the same published
+  rollup (a new `ari_skill_memory.erasure` — no `ari` import, no LLM call,
+  mtime-cached, and absence / malformed content / a newer `schema_version`
+  all degrade to "nothing is stale", so it is inert on every non-RQGM
+  checkpoint). A caller that *deliberately names* an erased node —
+  `get_node_memory`, `search_memory`, `search_research_memory` — receives its
+  entries LABELLED (`erased` / `erasure_event_id` / `erasure_note`) instead
+  of silently emptied: erasure withdraws the STANDING of a judgment (the
+  generator that proposed the direction, or the policy that scored it, was
+  retired), not the measurements an experiment recorded, and an invalidated
+  measurement is still the honest record of what was tried. The marker is
+  written at the top level AND inside `metadata`, because consumers
+  re-project entries to a fixed key set (the pipeline's `nodes_tree.json`
+  enrichment and the viz memory endpoint keep only `{text, metadata, ts}`),
+  and it is applied in the BACKENDS rather than the MCP dispatcher, so the
+  in-process funnel callers see it too. The paths that PUSH memory into a
+  decision keep hard-excluding: `build_verified_context` now filters the
+  erased ancestors out of `claims` / `usable_for_claims` itself — inside the
+  builder, so the tool and the in-process caller filter the same call —
+  while `limitations` deliberately keeps them labelled, since the honest
+  record of a later-invalidated direction is what that section is for. A
+  cross-package contract test pins the `invalid_frontier_node_ids` field
+  name, the rollup's schema version, and the writer's path on both sides, so
+  a rename, a schema bump, or a relocation cannot silently turn the skill's
+  awareness into dead code (the failure shape #79 had). Honest scope: the
+  guarantee is about provenance, not re-authored text — a surviving node
+  that restates a labelled entry in its own summary produces an unmarked
+  record on a clean lineage, and nothing propagates the marker through
+  re-authorship. A
+  previously written `verified_context.json` is also removed when the
+  (erasure-filtered) LINEAGE changed with the winner unchanged — a
+  mid-lineage ancestor erasure would otherwise leave the old artifact, and
+  the paper reads the FILE, not the fresh build.
+- **Erased scores no longer contaminate stagnation detection, lineage
+  decisions, run-best displays, or the escalation's audit record.** The
+  retained stale score of an erased node (a) sat inside the stagnation
+  window and could only WIDEN the range — suppressing a genuine-plateau
+  pivot/re-ideation exactly after an impeachment, when the retired
+  component's nodes are the most recent (`bfts_loop._valid_composites`,
+  `build_lineage_state` recent scores + best-axis table now filter the
+  sentinel); (b) displayed as the run's best score in the GUI cards
+  (`checkpoint_api`, v1 `best_metric` — now "best valid", consistent with
+  `select_best_node`; key-absent trees are untouched, so historical runs
+  render identically); (c) fed `_paper_frontier_scores`, which could only
+  mis-state the recorded `triggers` list (level is forced L3 regardless) —
+  filtered for audit hygiene; and (d) served as the PARENT score in the
+  score-jump trigger (exploration round dispatch and `_paper_parent_score`)
+  — an erased parent's inflated stale score suppressed the jump clause, an
+  audit escape exactly post-impeachment; an erased parent is now treated as
+  no-parent (`parent_score=None`).
+- **CK-REG-101's incumbent comparison is now reachable from the live
+  adoption path (#79 producer half), and the governance judge's
+  self-adjudication recusal is test-pinned (#78a).** The kernel gate and the
+  RTE incumbent-attach existed but no live producer ever emitted capability
+  fields on an adoption entry (`_change` emits a fixed key set), so the
+  authority-non-expansion comparison was structurally unreachable — its
+  tests hand-built the entries and proved the consumer only (the same trap
+  as the #77 empty-weights bug). `_change` now copies the component's
+  declared §6.1 `capabilities` onto SUCCESSION entries — T6 adoption and the
+  T20/T21 supersession edges, the rules that displace a DISTINCT incumbent —
+  when non-empty. Deliberately NOT on the self-shaped activation edges
+  (T7/T8/T12/T14/T18 promotion/re-activation/exoneration): no distinct
+  incumbent exists there, so a capability-carrying entry would hit the
+  gate's conservative deny-all `None` baseline and abort the whole
+  transition — permanently wedging governance for the five founding
+  capability-declaring components (caught by the adversarial review of the
+  first cut, which scoped the copy to all activation shapes). Byte-identical
+  for every current live entry (no non-founding registry entry declares
+  capabilities); `epoch_transition.schema.json` tolerates the additive key.
+  The transient apply-side attachments (`_incumbent_entry`, utility-policy
+  bodies) are now STRIPPED from the `epoch_transition` audit payload — they
+  exist only for the stateless kernel's validation and must not be frozen
+  into the hash-chained audit log. A producer-to-gate test drives
+  `_change` → incumbent attach → kernel and asserts a widening successor is
+  blocked while a narrowing one passes. The #78a recusal branch — the judge
+  never ruling on its own impeachment — previously had ZERO test coverage;
+  a real-producer integration test (two `make_validated_attack_record`
+  attacks targeting `governance_judge_v1` → clear-file motion → recusal
+  degradation, no adjudication outcome) now pins it.
+- **Governance judge recuses on self-adjudication (adjudicator ≠ target).** A
+  motion whose target IS the governance judge was adjudicated by that same
+  judge, letting it dismiss its own impeachment. `governance/_pipeline.py` now
+  recuses such a motion — left unresolved (no outcome, never self-dismissed) and
+  flagged `self_adjudication_recused:<judge>` — since no alternate adjudicator
+  exists. (The deeper gap — the governance judiciary being unregistered and thus
+  unimpeachable — is now closed by the next entry, #78b.)
+- **The governance judiciary is now inside the impeachment net (#78b — P4, no
+  unimpeachable ruler).** The auditor / evidence_clerk / governance_judge that
+  run the impeachment machinery adjudicated everyone else's fate while running
+  on unregistered `*_v0` bootstrap ids — outside the role vocabulary, so a
+  motion or ban targeting them was dropped as "unknown component"
+  (`resolve_transition`) and the judge that rules on every impeachment was
+  itself unimpeachable. They are now FOUNDING COMPONENTS (`auditor_v1` /
+  `evidence_clerk_v1` / `governance_judge_v1` in `FOUNDING_COMPONENT_TABLE`), so
+  `_actor_id` resolves them to real registered ids under any `ari_rqgm` boot and
+  they are sanctionable / retirable / bannable like every other actor. This
+  required a THIRD role category — `events.GOVERNANCE_ACTOR_ROLES` — since the
+  judiciary is neither prompt-evolvable (no meta agent emits governance-actor
+  successors) nor constitutionally fixed (unlike the kernel, it IS impeachable);
+  `events.ROLES` is now `EVOLVABLE + GOVERNANCE_ACTOR + FIXED` and the three
+  `rqgm_role` schema enums were extended to match. `governance_judge` was added
+  to the capability matrix (`kernel_rules._GOVERNANCE_ROLES`, same institutional
+  grants as the other two governance actors) — a constitutional amendment that
+  moves `CONSTITUTION_HASH` `6643c12a510e → 2edf93776904` (re-pinned in
+  `tests/test_rqgm_kernel.py`; the founding COMPONENT rows do NOT ride the hash,
+  they change the registry identity / epoch fingerprint instead). The
+  evidence_clerk is deterministic (no LLM), so its component's `prompt_id` is
+  `None` (schema-nullable); the auditor / governance_judge carry their
+  governance prompt for provenance. Combined with #78a's self-adjudication
+  recusal, the judge can no longer dismiss its own impeachment.
+- **CK-REG-101 (authority non-expansion) now compares candidate vs INCUMBENT on
+  the live adoption path (#79 — invariant 18 enforced, not just cap-checked).**
+  The kernel's transition-time authority gate ran
+  `validate_authority_non_expansion(entry, None)` — a `None` incumbent, so a
+  capability-declaring adoption was only capped against the fixed
+  `CAPABILITY_MATRIX` and the §6.1 flag arithmetic (widened `allowed_targets`,
+  dropped `forbidden_targets`, raised `max_outputs_per_epoch`) was never checked
+  against what the role is CURRENTLY authorized to do. The kernel is stateless,
+  so the `RegistryTransitionEngine` now resolves each capability-declaring
+  adoption's active incumbent (`ComponentRegistry.active_set`, excluding the
+  candidate itself) and attaches it as `entry['_incumbent_entry']`
+  (`_attach_incumbent_capabilities`, the `_attach_utility_policy_bodies`
+  apply-side pattern); the kernel gate reads it and now ALSO fires on
+  flag/target-carrying entries, not only the v1 `declared_capabilities` shape.
+  Best-effort/fail-closed: an unresolvable incumbent degrades to the prior
+  conservative `None` baseline (matrix cap + deny-all flags), so authority is
+  never widened by an incumbent's absence. `meta_rules.has_capability_fields` is
+  now public (the RTE and kernel share one activation predicate).
+- **CK-EPO-001 closed: the founding proposal's prompt is now governed, and the
+  epoch-invariance check uses the COMPLETE active-hash set.** A forensic audit of
+  a codex run found the kernel warning (correctly) that the run-seeding proposal
+  (`prop_000000`, the prior-art generator) was scored under a prompt outside the
+  frozen active set — a pillar-1 gap with two causes. (a) The three
+  `rqgm/proposal_{cheap,mutation,prior_art}` templates the ProposalRouter renders
+  were deliberately left ungoverned ("records carry their own provenance"), so a
+  proposal record's `prompt_hash` was unregistered; they are now in
+  `FOUNDING_PROMPT_TABLE` as `generator`/`evolvable=False` (governed + frozen, not
+  evolution targets), placed before `generator_prompt_v1` so the role incumbent
+  is unchanged. Registering founding prompts does NOT change `CONSTITUTION_HASH`
+  (it hashes the rule tables, not the founding tables). (b) `validate_epoch_invariance`
+  compared records against `active_prompt_hashes().values()` — a role→INCUMBENT
+  rollup that keeps one hash per role, so a governed non-incumbent generator
+  prompt still tripped CK-EPO-001. `EpochState` now freezes the complete
+  `active_prompt_hash_set` (new `registry.active_prompt_hash_set()`), the check
+  uses it (falling back to the rollup for pre-field snapshots), and it is
+  excluded from `epoch_fingerprint` (`registry_version` already identifies it).
+  Verified on the real run's founding-proposal hash (`81d78be59631`): after both
+  changes it is in the frozen set and CK-EPO-001 clears, while a genuinely
+  unregistered hash STILL fires — the detector was strengthened by governing the
+  prompt, not weakened by loosening the check.
+- **`run_integrity` now aggregates the evidence-grounded SEMANTIC review, so an
+  unresolved overclaim in the finalized paper is a run-level concern.** The
+  numeric hard gate is semantically blind — it re-checks anchored numbers but not
+  whether a sentence overclaims — and the run-level summary read only the gate,
+  so a finalized paper with a KNOWN unresolved overclaim
+  (`status="revise"`, `detected_overclaim_count>0`) surfaced clean at the top
+  level (found by a forensic audit of a real codex run: the numeric rate was 1.0
+  while the semantic review still flagged 1 unresolved overclaim). `integrity.py`
+  now reads `evidence_grounded_semantic_review_post_refine.json` (absent → null,
+  not 0) and raises a concern on any unresolved overclaim.
+- **`ari run` can signal a degraded run through its exit code, and always
+  reports run-integrity concerns loudly.** The paper pipeline can finish with
+  FAILED stages (skipping their dependents) or raise outright, yet the process
+  still exited 0 — a caller/CI could not tell a degraded run from a clean one.
+  After the paper phase, `ari run` now prints the run_integrity concerns and,
+  opt-in via `ARI_RUN_STRICT_EXIT=1`, exits non-zero when the pipeline raised or
+  concerns exist — default stays rc=0 so best-effort callers (the ablation
+  harness) are unaffected. Concern reading is a pure, tested helper.
+- **The Code Availability / references bibliography no longer silently drops
+  collected refs.** `_build_bib_content` hard-sliced `related_refs[:15]`, so a
+  collected reference sorting past index 15 (an audit found the single most
+  on-topic paper landed there) was dropped while the reported `count` still said
+  17. Raised to 50 (a runaway guard, not a budget); the collected, already
+  relevance-filtered set now reaches the bibliography intact.
+- **`web_search` (DuckDuckGo) works again, and Semantic Scholar retries on 429.**
+  Two web-skill fixes found while auditing a codex run's bibliography: (1) the
+  DuckDuckGo client package was renamed `duckduckgo-search` → `ddgs`, but the code
+  imported `from ddgs import DDGS` while the declared/installed dep was the old
+  name — so `web_search` silently returned `{"results": [], "error": ...}`. The
+  import now tries `ddgs` then falls back to `duckduckgo_search`, and the dep is
+  updated to `ddgs>=9.0`. (2) `_search_s2_sync` dropped straight to the arXiv
+  fallback on the FIRST HTTP 429, but Semantic Scholar rate-limits the shared
+  egress IP even with a valid key under burst (collect_references fires several
+  queries in quick succession). It now retries on 429 — honoring `Retry-After`,
+  else exponential backoff (1s/2s/4s, capped; attempts/cap env-tunable via
+  `ARI_S2_MAX_ATTEMPTS` / `ARI_S2_BACKOFF_CAP_S`) — so a transient 429 recovers to
+  real S2 results instead of degrading the bibliography; non-429 errors still fail
+  fast, and a persistent 429 still falls back to arXiv.
+- **Round-1 Semantic Scholar hits are relevance-filtered like every other
+  round.** `collect_references_iterative` trusted round-1 S2 results as
+  "high precision" and added them UNFILTERED (only the arXiv fallback and
+  rounds ≥2 ran the selector), so an imprecise keyword query admitted off-topic
+  matches into the bibliography — a real run cited an antenna-"tiling" paper in a
+  stencil-tiling paper. Round-1 S2 hits now go through the same
+  `_llm_select_relevant` selector when an experiment summary is available,
+  fail-open (a selector failure keeps every ref — an empty bibliography is
+  strictly worse than an imprecise one), so it only removes confirmed off-topic
+  matches.
+- **`run_integrity` no longer reports "root ideation saw NO prior art" when the
+  RQGM prior-art generator grounded it.** `novelty_grounded` was keyed solely on
+  the idea-skill's `papers_analyzed` counter, missing the second grounding path —
+  the router's `PriorArtDifferentiationGenerator`, which only fires
+  (`virsci_integration_status == "...prior_art"`) when `_root_survey_refs`
+  supplied non-empty refs. A run whose novelty text cited real prior art was
+  still flagged ungrounded; the check now counts either path.
+- **`temperature` is now dropped for a gpt-5 model reached through a cli-shim
+  alias.** `LLMClient` only omitted `temperature` when `config.model` literally
+  started with `gpt-5`, but a codex shim model is named `codex-cli:gpt-5.6-sol`
+  — so `temperature=0.7` was sent, litellm raised `UnsupportedParamsError`, and
+  every delegated codex react call 502'd (an e2e root node failed with
+  `has_real=False`). A new `_is_gpt5_family` splits the model on `/` and `:` and
+  matches any `gpt-5*` segment, covering the alias and an `openai/gpt-5.1`
+  routing prefix; a non-gpt-5 model (e.g. `claude-cli:sonnet`) still sends
+  `temperature` unchanged.
+- **GUI refresh: a v2 dashboard that runs beside the legacy one, not over it.**
+  New hash routes behind the `gui_v2` server capability (`ARI_GUI_V2`,
+  default on, `0`/`false` reverts to the legacy shell without a rebuild):
+  `#/projects`, `#/overview?run=`, `#/tree2?run=&node=`, `#/ideas2?run=`,
+  `#/results2?run=`, `#/governance?run=`, `#/config?run=`, `#/studio`. Every
+  legacy page, legacy hash URL and legacy `/api/*` endpoint is unchanged and
+  still reachable — three v2 routes (`tree2`/`ideas2`/`results2`) merely take
+  over their legacy sidebar slot via the route registry's `navReplaces` while
+  the legacy URL keeps working, which is what makes the rollback instant.
+  Routes, nav, breadcrumbs and aliases now come from one registry
+  (`frontend/src/app/routeRegistry.ts`) with a frozen parity test.
+- **`/api/v1`: a run-explicit, typed API surface (`ari/viz/v1/`).** 36 paths
+  in the committed `ari/viz/v1/openapi.json` (regenerated deterministically
+  from `router.py` + `dto.py`; `python -m ari.viz.v1.openapi` is a
+  drift gate) — projects, runs (detail/summary/tree/idea/results/EAR/logs),
+  `config/schema`, `config/catalogs/models`, project config GET/PATCH,
+  run-template and run-draft CRUD, `POST /runs`, `secrets/status`,
+  `PUT secrets/{id}`, `POST challenges`, `diagnostics`, and the `rqgm/*`
+  read models. Mutations use `If-Match: "<revision>"` optimistic concurrency
+  (missing → 400, stale → 409 `revision_conflict`); errors are a typed
+  envelope with a `request_id`. Realtime is SSE
+  (`GET /api/v1/events/stream`, ring buffer + `Last-Event-ID` resume), and
+  events are invalidations only — a client always refetches the snapshot,
+  never treats the stream as a source of truth. The legacy port+1 WebSocket
+  and the frozen `/state` facade keep running in parallel (a test pins
+  `/state`'s exact key set so it can neither grow nor shrink before the
+  legacy-removal gate).
+- **Configuration control plane.** `ari/config/field_registry.py` enumerates
+  the 144 config leaves with metadata (level, scope, mutability, sensitivity,
+  env override) and refuses to build if a leaf is uncovered — 100% coverage
+  is an invariant, not a target. `ari/config/resolver.py`
+  (`resolver_version: "legacy-compatible-1"`) explains an existing
+  checkpoint's effective config *and* previews a new run's, with per-leaf
+  provenance; a parity suite asserts the legacy 24-key Settings save+launch
+  path and the new resolver agree per leaf, with an exact two-way allowlist
+  of known divergences. A launch writes the resolved manifest to
+  `{checkpoint}/resolved_config.json`. GUI documents (drafts, templates,
+  launch claims) live in `{workspace_root}/gui_store/`, `0o700`, never inside
+  a checkpoint.
+- **Configuration Studio + canonical idempotent launch.** New
+  `POST /api/v1/runs` resolves and validates a draft **before** touching the
+  filesystem (unknown draft → typed 404, invalid → typed 400 with
+  `details.errors`, zero mutation), issues the run identity itself
+  (`<UTC YYYYMMDDHHMMSS>_<slug>-<uuid4 6hex>` — deterministic slug, no LLM
+  call and no `sinfo` probe before accepting), materializes
+  `experiment.md` / `workflow.yaml` (CoW seed) / `launch_config.json` /
+  `resolved_config.json` / `launch_events.jsonl`
+  (`draft→validating→accepted→spawned`), then spawns the same
+  `python3 -m ari.cli run` subprocess. `idempotency_key` claims
+  `gui_store/launches/{key}.json` create-only *before* the spawn, so a
+  double-click replays the same `run_id` with `idempotent_replay: true` and
+  spawns nothing. The Studio's launch panel drives it end to end —
+  goal → resolve/validate (effective-config diff vs defaults, resolver
+  warnings, secret readiness) → immutable review behind a confirm checkbox
+  that mints exactly one idempotency key → launch → canonical redirect to
+  `#/overview?run=<run_id>`, with no mtime guessing. Legacy `POST /api/launch`
+  and the Wizard are byte-identical and still work.
+- **Execution mode and paper mode are selectable from the GUI — for a new run,
+  and only those two.** The Studio's Execution section offers exactly two
+  controls, one per orthogonal intent: `ari.mode` ∈ {`simple_bfts`,
+  `ari_rqgm`} and `paper.mode` ∈ {`linear`, `rqgm_archive`}. Each control
+  writes **both** keys of its interlock pair (`rqgm.enabled` /
+  `rqgm.paper.enabled`) in one save, so a half-set pair is unconstructible in
+  the UI and a typed 400 `mode_interlock_mismatch` everywhere else (template
+  and draft create/PATCH, and launch — checked on the merged document values,
+  so a two-step edit that ends consistent is fine). A non-default selection is
+  materialized twice — minimal `ari:`/`rqgm:`/`paper:` blocks merged into the
+  run's own `workflow.yaml` copy (never the bundled file) plus the documented
+  `ARI_MODE` / `ARI_RQGM_ENABLED` / `ARI_PAPER_MODE` / `ARI_RQGM_PAPER_ENABLED`
+  env vars — so the checkpoint describes itself. The launch review shows the
+  **resolved** mode, and a request the resolver did not honour is shown as
+  `requested → resolved` with the warning verbatim instead of quietly starting
+  the fallback run. **The honest limits:** the other 96 RQGM governance and
+  tuning parameters (epoch, kernel, adversarial, budgets) stay
+  configuration-file only — visible read-only with their effective values, and
+  still rejected at launch with `mode_locked`; picking a mode is a launch
+  decision, not a governance mutation, and every `rqgm/*` API route is still a
+  GET. **Resume cannot change a mode**: a resumed run keeps the mode persisted
+  in `{checkpoint}/rqgm_state.json` (downgrade-only), and no GUI path writes
+  that file. Leaving the defaults writes and exports nothing — a
+  `simple_bfts` + `linear` launch stays byte-identical to before, and a test
+  pins it.
+- **RQGM governance workspace (read-only).** `#/governance?run=` over
+  `/api/v1/runs/{run_id}/rqgm/{capabilities,overview,registry,transitions,
+  audit,nodes/{id}/lineage,score-rewrites,policies,epochs,epochs/{id},
+  evolution,paper-archive}`. The read model never imports `ari.rqgm`: it
+  parses the committed checkpoint artifacts directly, re-executes no kernel
+  or score-policy decision, ignores a torn JSONL append, and refuses to adopt
+  transition events after an uncommitted `epoch_transaction_prepare`. A
+  broken hash chain or a stale rollup yields HTTP 200 with integrity flags
+  and `degraded_reasons` — corrupt artifacts degrade honestly rather than
+  500ing — and a missing source reads as `None`, never as clean zero. There
+  is no governance mutation endpoint, and a contract snapshot forbids adding
+  one.
+- **Security posture of the dashboard server, with an env kill-switch per
+  change.** Bind is **loopback by default** (`127.0.0.1` + `::1`;
+  `ARI_GUI_BIND='::'` restores the old all-interfaces bind) and CORS echoes
+  only the server's own origin instead of `*` (`ARI_GUI_CORS_ANY=1`).
+  A non-loopback bind now **requires** `Authorization: Bearer
+  <ARI_GUI_TOKEN>` on everything but `/health*` (401 + `WWW-Authenticate`,
+  constant-time compare, `?token=` accepted for SSE/WebSocket since those
+  APIs cannot set headers, token redacted to `***` in `viz_access.jsonl`); if
+  the token is unset the server generates a 32-hex one and prints it once to
+  stderr, so there is no unauthenticated remote start (`ARI_GUI_AUTH=0`).
+  `delete-checkpoint` / `stop` / `gpu-monitor stop` require a single-use,
+  60-second, action+target-bound challenge from `POST /api/v1/challenges`,
+  audited as `challenge_*` lines in `viz_access.jsonl` — without it they
+  answer 428 and do nothing (`ARI_GUI_CHALLENGES=0`). The SPA index and
+  `/static/` send CSP + `nosniff` + `Referrer-Policy` and the jsDelivr d3
+  `<script>` is gone (`ARI_GUI_CSP=0`). `GET /codefile` now compares the
+  **resolved canonical** path against the active checkpoint and the
+  checkpoint search bases, so `..`, symlink escapes and paths that merely
+  contain a `checkpoints` component are 404 — deliberately with no
+  kill-switch. `/api/ollama/*` forwards only five allowlisted paths and only
+  to an explicitly configured host (or the `localhost:11434` default when the
+  backend really is ollama), else 403 without opening a connection.
+  `GET /api/env-keys` no longer returns secret values (`***configured***` +
+  a `"redacted": true` marker); `GET /api/v1/secrets/status` reports
+  `{name, configured, source_class, last_updated}` and structurally has no
+  value field. Workflow writes with no active project are 400 instead of
+  silently rewriting the bundled `workflow.yaml`, and workflow autosave sends
+  a `base_revision` so a concurrent edit is a 409 conflict banner instead of
+  a blind overwrite. New probes: `/health/live`, `/health/ready` (five
+  independent checks, `degraded` as an honest 200, never 500) and
+  `GET /api/v1/diagnostics` (bounded scalars only — SSE subscribers, watcher
+  age, tracked-run *count*; no paths, no secrets) (`ARI_GUI_HEALTH=0`).
+  **Honest limits:** ADR-09 (accepted 2026-07-27) opened exactly two intents
+  for a NEW run — execution mode (`ari.mode` + `rqgm.enabled`) and paper mode
+  (`paper.mode` + `rqgm.paper.enabled`), each selected as one pair (a half-set
+  pair is 400 `mode_interlock_mismatch`), materialized into the
+  per-checkpoint `workflow.yaml` and the documented `ARI_MODE` /
+  `ARI_RQGM_ENABLED` / `ARI_PAPER_MODE` / `ARI_RQGM_PAPER_ENABLED` env vars,
+  with the default `simple_bfts` + `linear` path writing and exporting
+  nothing (byte-identical). Every other `rqgm.*` governance/tuning leaf stays
+  config/env-only and a draft carrying one is still rejected 400
+  `mode_locked`; resume is unchanged (the persisted `rqgm_state.json` mode
+  wins, downgrade-only); the legacy screens,
+  `/state`, and the port+1 WebSocket all still ship and are only removed at
+  the cutover gate; and only the bundle-weight half of the performance
+  budgets is CI-enforced (`scripts/check_bundle_budget.py`) — browser metrics
+  (LCP/INP/CLS) are unmeasurable in the jsdom harness and stay a manual
+  profile. Operator procedure: `docs/guides/gui_cutover_runbook.md`;
+  behaviour changes and their rollback levers:
+  `docs/guides/migration.md` §GUI refresh.
+## Unreleased — Skill-platform P6 removal
+
+- Removed the deprecated web provider aliases, mutable backend selector,
+  iterative LLM collector, and `papers`/`results` retrieval projections. Use
+  `search_papers(provider=...)`, canonical `records`, and explicit broker/workflow
+  composition.
+- Removed coding-skill's flat measurement writer and permissive JSON coercion.
+  `emit_results` now writes only the typed `measurement_set`; the old reader is
+  read-only migration support.
+- Removed replicate-skill's low-coverage single-call generator, prompt, API/env
+  switches, GUI controls, and report field. Rubric generation is always
+  `hierarchical-v2`/`calibrated`, with model-call budgets and repair provenance.
+- Removed the five container-specific HPC public aliases and their compilers.
+  Container work uses `container_submit`. The core-agent `slurm_submit` bridge
+  remains narrowly supported until that agent emits `JobRequestV1` directly.
+- Added the permanent
+  [compatibility support policy](docs/reference/compatibility_support.md) with
+  owners and objective re-evaluation gates for retained readers, deployment
+  paths, PaperBench adaptations, and registry repair.
+- Externalized the remaining paper claim-declaration guidance without changing
+  the bytes sent to the model; prompt and composition digests are regression
+  tested.
+- Removed the completed temporary skill-platform plan set after its
+  architecture, contracts, migration rules, and retained-support decisions were
+  transferred to permanent documentation.
+
+Pre-removal rollback boundary: `c487ea9` (`feat(orchestrator): add durable
+authenticated run control`).
+
 ## v0.9.1 — Contract-preserving refactoring program (73 subtasks) + DONE-verification audit (2026-07-05)
 
 - **73-subtask refactoring program, every contract preserved.** ari-core, the 14
@@ -430,7 +2253,7 @@ Highlights:
   the host-filesystem execution contract explicit.
 
 - **SLURM GPU dispatch correctness fixes** (real-cluster smoke
-  findings on r340 / qc-a100 / ai-l40s):
+  findings on <node> / <partition> / <partition>):
     - `--gpus-per-task` now auto-pairs with `--ntasks 1` when
       neither `ntasks` nor `--gpus` is supplied (SLURM 24.05
       rejects the lone `--gpus-per-task` form).
@@ -553,7 +2376,7 @@ Highlights:
 - **Operational v0.8.0 dogfood pass (SC41406 cuSZ-i, lossy-compression
   kernel).** The deferred full-rollout PaperBench pass on a real
   Supercomputing-2024 target was run (Stage 1→2→3 against `gpt-5-mini` on
-  an R-CCS L40S node) and surfaced + validated four bridge corrections.
+  a single L40S GPU node) and surfaced + validated four bridge corrections.
   Mean replication score rose **1.2% → 11.1%** on the same target after
   the fixes.
     - **Reproduce / judge now run from the agent's real repository
@@ -1130,7 +2953,7 @@ legacy single-CPU papers without `execution_profile` produce the same
   removed. `render_template()` accepts either a `Path` (legacy) or a
   raw string body so the rendering pipeline stays unchanged.
 - **Real PDF build verification** against a synthetic checkpoint,
-  2026-05-13 (TinyTeX + XeLaTeX, /home/t-kotama):
+  2026-05-13 (TinyTeX + XeLaTeX, /home/<user>):
   - en: 7 pages, 90 KB, all 3 figures embedded.
   - ja: 7 pages, 134 KB, pdftohtml extracted 論文メタデータ /
     ルーブリック / カテゴリ内訳 / 実行プロファイル.
@@ -1161,7 +2984,7 @@ legacy single-CPU papers without `execution_profile` produce the same
     instructions, silently dropping the HPC pathway. Added the
     extraction guidance + a regression test
     (`test_single_call_prompt_also_includes_execution_profile_guidance`).
-- **Real-SLURM sbatch smoke** against sx40 partition, 2026-05-13:
+- **Real-SLURM sbatch smoke** against an anonymous partition, 2026-05-13:
   sbatch accepted the new 15+1 flag invocation (`exit_code=0`,
   SLURM_NTASKS / SLURM_JOB_NUM_NODES surfaced to compute node),
   `extra_sbatch_args=['--no-requeue']` pass-through worked.
@@ -1173,7 +2996,7 @@ legacy single-CPU papers without `execution_profile` produce the same
        all three. Regression test:
        `test_gpu_flags_all_dropped_when_cluster_has_no_gres`.
     2. `--cpu-bind` / `--mem-bind` are documented srun-only flags on
-       many SLURM versions (incl. sx40) and produced
+       many SLURM versions (including the tested private cluster) and produced
        "unrecognized option" errors at sbatch time. Added a new
        `_sbatch_supports()` runtime probe that reads
        `sbatch --help` once and silently drops these flags when

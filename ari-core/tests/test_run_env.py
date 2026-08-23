@@ -31,9 +31,9 @@ class TestCaptureEnv:
         # kwargs win — that's the contract for slurm-injected snippets.
         monkeypatch.setenv("SLURM_JOB_ID", "9999")
         info = capture_env(tmp_path, executor="slurm",
-                           slurm_job_id="1274", slurm_partition="sx40")
+                           slurm_job_id="1274", slurm_partition="gpu-private")
         assert info["slurm_job_id"] == "1274"
-        assert info["slurm_partition"] == "sx40"
+        assert info["slurm_partition"] == "gpu-private"
         assert info["executor"] == "slurm"
 
     def test_overwrites_on_repeat(self, tmp_path):
@@ -95,8 +95,11 @@ class TestNodeReportIntegration:
     """End-to-end: capture → node_report includes the new fields."""
 
     def test_node_report_includes_run_env_fields(self, tmp_path):
+        # capture_env still writes _run_env.json, but the builder NO LONGER reads
+        # it — compute-env provenance is now agent-authored (grounded note), and
+        # machine info is never auto-scraped into the deliverable.
         capture_env(tmp_path, executor="slurm",
-                    slurm_job_id="42", slurm_partition="sx40")
+                    slurm_job_id="42", slurm_partition="gpu-private")
 
         from ari.orchestrator.node_report import build_node_report
 
@@ -113,18 +116,26 @@ class TestNodeReportIntegration:
             metrics: dict = {}
             artifacts: list = []
             trace_log = None
+            agent_environment = "Intel Xeon 6142, gcc 11.5.0, AVX-512"
 
         report = build_node_report(
             node=_Node(), work_dir=tmp_path, parent_work_dir=None,
-            eval_result=None, delta_vs_parent="", what_was_done="",
+            eval_result=None, what_was_done="",
         )
         assert report["executor"] == "slurm"
         assert report["slurm_job_id"] == "42"
-        assert report["slurm_partition"] == "sx40"
+        assert report["slurm_partition"] == "gpu-private"
         assert isinstance(report["cpu_info"], dict)
 
     def test_node_report_legacy_run_no_capture(self, tmp_path):
-        """When _run_env.json absent (legacy/dry runs), fields default empty."""
+        """No ``_run_env.json`` (legacy / dry runs): the resource-provenance keys
+        are still PRESENT, carrying empty values.
+
+        Machine provenance is deliberately auto-embedded. The keys are emitted
+        unconditionally so a consumer can tell "nothing was captured" (empty)
+        apart from "this key predates the field" (absent) — an omitted key
+        would make those two indistinguishable.
+        """
         from ari.orchestrator.node_report import build_node_report
 
         class _Node:
@@ -143,8 +154,155 @@ class TestNodeReportIntegration:
 
         report = build_node_report(
             node=_Node(), work_dir=tmp_path, parent_work_dir=None,
-            eval_result=None, delta_vs_parent="", what_was_done="",
+            eval_result=None, what_was_done="",
         )
         assert report["executor"] == ""
         assert report["hostname"] == ""
+        assert report["slurm_partition"] == ""
         assert report["cpu_info"] == {}
+        assert report["partitions_used"]["used"] == []
+        # `environment` stays agent-authored: the builder never synthesises one.
+        assert "environment" not in report
+
+    def test_node_report_records_every_partition_the_run_used(self, tmp_path):
+        """The report names EVERY partition the run touched, not just this node's.
+
+        A run that spreads across a heterogeneous cluster otherwise left no
+        single record of where it had executed, so a cross-node metric
+        comparison could not be checked against the hardware behind it.
+
+        Partition names here are deliberately fictitious.
+        """
+        from ari.orchestrator.node_report import build_node_report
+
+        run_root = tmp_path / "run_1"
+        for node_id, part, nodelist in (
+            ("node_a", "partition-a", "testnode01"),
+            ("node_b", "partition-b", "testnode02"),
+            ("node_c", "partition-a", "testnode03"),
+        ):
+            wd = run_root / node_id
+            wd.mkdir(parents=True)
+            # capture_env takes the nodelist from the environment, as it does
+            # on a real compute node.
+            os.environ["SLURM_JOB_NODELIST"] = nodelist
+            try:
+                capture_env(wd, executor="slurm", slurm_job_id="1",
+                            slurm_partition=part)
+            finally:
+                os.environ.pop("SLURM_JOB_NODELIST", None)
+
+        class _Node:
+            id = "node_a"
+            parent_id = None
+            ancestor_ids: list[str] = []
+            label = "draft"
+            raw_label = "draft"
+            depth = 0
+            status = "success"
+            created_at = ""
+            completed_at = ""
+            metrics: dict = {}
+            artifacts: list = []
+            trace_log = None
+
+        report = build_node_report(
+            node=_Node(), work_dir=run_root / "node_a",
+            parent_work_dir=None, eval_result=None, what_was_done="",
+        )
+        used = report["partitions_used"]
+        # This node's own allocation, and the run-wide set it belongs to.
+        assert used["this_node"] == "partition-a"
+        assert used["used"] == ["partition-a", "partition-b"]
+        # Two nodes ran on partition-a, one on partition-b.
+        assert used["by_partition"]["partition-a"]["node_count"] == 2
+        assert used["by_partition"]["partition-b"]["node_count"] == 1
+        assert used["by_partition"]["partition-a"]["nodelists"] == [
+            "testnode01", "testnode03"]
+
+
+class TestExecutionEnvRecord:
+    """The executing shell's own record of what a measurement ran under.
+
+    `_run_env.json` is written from the ARI process, so its `compilers` are the
+    PRE-module view. Without a record taken inside the command's own shell,
+    two module configurations — the thing loading them exists to compare —
+    are indistinguishable in the report meant to compare them.
+    """
+
+    def _write(self, work_dir, **fields):
+        payload = {
+            "recorded_at": "2026-08-06T00:00:00Z",
+            "loaded_modules": "",
+            "module_path": "",
+            "path": "/usr/bin",
+        }
+        payload.update(fields)
+        (Path(work_dir) / "_exec_env.json").write_text(
+            json.dumps(payload), encoding="utf-8")
+
+    def test_absent_record_leaves_no_execution_key(self, tmp_path):
+        # Absent must stay distinguishable from "ran with nothing loaded".
+        capture_env(tmp_path, executor="local")
+        assert "execution" not in read_run_env(tmp_path)
+
+    def test_loaded_modules_are_split_in_order(self, tmp_path):
+        # Order is meaningful: a later module can override an earlier one's
+        # paths, so the list must not be sorted or de-duplicated.
+        capture_env(tmp_path, executor="local")
+        self._write(tmp_path, loaded_modules="pkg/b:pkg/a:pkg/c")
+        assert read_run_env(tmp_path)["execution"]["loaded_modules"] == [
+            "pkg/b", "pkg/a", "pkg/c"]
+
+    def test_no_modules_loaded_is_an_empty_list_not_a_missing_key(self, tmp_path):
+        capture_env(tmp_path, executor="local")
+        self._write(tmp_path, loaded_modules="")
+        assert read_run_env(tmp_path)["execution"]["loaded_modules"] == []
+
+    def test_unparseable_record_does_not_break_the_read(self, tmp_path):
+        capture_env(tmp_path, executor="local")
+        (tmp_path / "_exec_env.json").write_text("{ not json", encoding="utf-8")
+        info = read_run_env(tmp_path)
+        assert info["executor"] == "local"      # the rest still reads
+        assert "execution" not in info
+
+    def test_record_survives_without_run_env_json(self, tmp_path):
+        # A node whose only tool call was run_bash still has an execution
+        # record, even though capture_env never ran.
+        self._write(tmp_path, loaded_modules="pkg/a")
+        assert read_run_env(tmp_path)["execution"]["loaded_modules"] == ["pkg/a"]
+
+    def test_node_report_carries_the_execution_env(self, tmp_path):
+        from ari.orchestrator.node_report import build_node_report
+
+        capture_env(tmp_path, executor="local")
+        self._write(tmp_path, loaded_modules="pkg/a:pkg/b", path="/opt/pkg/bin:/usr/bin")
+
+        class _Node:
+            id = "node_z"
+            parent_id = None
+            ancestor_ids: list[str] = []
+            label = "draft"
+            raw_label = "draft"
+            depth = 0
+            status = "success"
+            created_at = ""
+            completed_at = ""
+            metrics: dict = {}
+            artifacts: list = []
+            trace_log = None
+
+        report = build_node_report(
+            node=_Node(), work_dir=tmp_path, parent_work_dir=None,
+            eval_result=None, what_was_done="",
+        )
+        assert report["execution_env"]["loaded_modules"] == ["pkg/a", "pkg/b"]
+        assert report["execution_env"]["path"] == "/opt/pkg/bin:/usr/bin"
+
+    def test_execution_record_is_never_inherited_by_a_child(self):
+        # It describes ONE node's execution; an inherited copy would attribute
+        # the parent's modules to a child that never loaded them.
+        from ari.paths import PathManager
+
+        assert PathManager.is_meta_file("_exec_env.json") is True
+        assert PathManager.is_meta_file("_exec_env.json", scope="node") is True

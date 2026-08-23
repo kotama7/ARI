@@ -4,7 +4,27 @@ sources:
     role: implementation
   - path: ari-core/tests/test_public_api_boundary.py
     role: test
-last_verified: 2026-06-10
+  - path: ari-core/ari/result.py
+    role: implementation
+  - path: ari-core/ari/call_context.py
+    role: implementation
+  - path: ari-core/ari/skill_lock.py
+    role: implementation
+  - path: ari-core/ari/skill_manifest.py
+    role: implementation
+  - path: ari-core/ari/container.py
+    role: implementation
+  - path: ari-core/ari/cost_tracker.py
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/ari/llm/client.py
+    role: implementation
+  - path: ari-core/ari/mcp/client.py
+    role: implementation
+  - path: ari-core/ari/async_tools.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # `ari.public` — Stable API for skills
@@ -15,18 +35,45 @@ change without notice.  The package is a thin re-export layer over
 the corresponding `ari.<module>` private implementations so core can
 refactor freely while the skill-facing contract stays put.  It was
 introduced in v0.7.1 (Phase 4 of the v0.7+ refactor) and is enforced
-by `ari-core/tests/test_public_api_boundary.py`.
+by `ari-core/tests/test_public_api_boundary.py` — which fails on *new*
+`from ari.<internal>` imports but grandfathers a file-and-line-pinned
+waiver list of the existing ones, so "only `ari.public`" is the rule the
+test defends going forward, not a property of the current tree.
 
 ## Sub-modules
 
 | Sub-module | What it re-exports | Skills that use it |
 |---|---|---|
+| `ari.public.analysis` | Versioned summary, statistical-test, run-comparison, and analysis-result contracts | analysis providers and scientific consumers |
+| `ari.public.assurance` | Verification Contracts, Harness catalogs/locks, fixed verification, Attestations, and digest-bound external parity reports | read-only Harness/Assurance surfaces |
+| `ari.public.capability_binding` | Capability ontology, deterministic binding/locks, validation, and Provider-substitution diagnostics | governed Provider dispatch and diagnostics |
+| `ari.public.clone` | Digest-verified EAR bundle retrieval and safe extraction (`clone`, `CloneResult`, `CloneError`) | reproduction and bundle-consuming Skills |
 | `ari.public.config_schema` | Pydantic config models (`ARIConfig`, `LLMConfig`, ...) | callers needing typed settings |
 | `ari.public.container` | Container runtime helpers (`ContainerConfig`, `run_in_container`, ...) | `ari-skill-coding` (tests) |
+| `ari.public.execution` | `WorkspaceRefV1`, bounded execution/result records, complete-log artifacts, and `MeasurementSetV1` | execution-producing and measurement-consuming Skills |
+| `ari.public.evaluation` | Immutable metric admission, `GateReportV1`, semantic review, and conservative migration readers | idea, transform, evaluator, paper, offline readers |
+| `ari.public.figures` | Digest-bound figure specification, render manifest, batch, and feedback lineage | plot, VLM, paper |
+| `ari.public.latex_claims` | Canonical lexical LaTeX claim-anchor, number, citation, and figure-reference parser | evaluator and paper |
+| `ari.public.knowledge` | Non-executable Knowledge Skill import, catalog, admission, composition, and provenance | Knowledge read/request surfaces |
+| `ari.public.memory` | Content-addressed memory records, retrievals, events, and backup contracts | memory and verified-context consumers |
+| `ari.public.manuscript` | Immutable Manuscript Complete V1 read contracts, deterministic compiler/evaluator helpers, and publication decision builder | paper, evaluation, and read-only integrations |
+| `ari.public.paper` | `PaperBuildV1`, revision/model-call/compile/review records, parsers, and canonical digest | paper and publication consumers |
+| `ari.public.science_data` | Native raw/derived/interpreted science-data contract and explicit migration reader | transform, evaluator, plot, paper |
+| `ari.public.research_contract` | Immutable survey, idea, metric, retrieval, and evidence hand-off contracts | idea, evaluator, paper |
+| `ari.public.visual_review` | Criteria profiles and artifact-bound, failure-preserving visual review batches | VLM, plot, paper |
 | `ari.public.cost_tracker` | LLM cost recording (`bootstrap_skill`, `record`, ...) | `ari-skill-plot` (LLM call cost) |
 | `ari.public.llm` | `LLMClient` (LiteLLM wrapper with cost integration) | callers that prefer ARI's wrapper |
 | `ari.public.paths` | `PathManager` (checkpoint path resolver) | callers that need scoped paths |
-| `ari.public.claim_gate` | Deterministic claim-evidence hard gate (`run_hard_gate`) + concept→invariant registry (`classify_concept`, `scan_science_data`, `CONCEPT_INVARIANTS`) | `ari-skill-evaluator`, `ari-skill-transform` |
+| `ari.public.node_selection` | deterministic downstream node and source selection | `ari-skill-transform` |
+| `ari.public.lineage` | read-only ancestor checkpoint / idea-pool traversal | `ari-skill-idea` |
+| `ari.public.publish` | staged EAR publish/promote contract | `ari-skill-transform` |
+| `ari.public.providers` | Capability Provider terminology, immutable identity, catalog, and existing Provider-lock facade | Provider read/diagnostic surfaces |
+| `ari.public.run_env` | run-environment capture and shell-export helpers | sandbox and executor Skills |
+| `ari.public.call_context` | `RunContextV1`, `NodeContextV1`, signed tool-context verification helpers | control plane and context-aware Skills |
+| `ari.public.result` | `ResultEnvelopeV1`, content-addressed artifact references, typed errors, call context, provenance | Skill adapters and federated dispatch callers |
+| `ari.public.skill_lock` | `SkillsLockV1`, locked provider/tool records, atomic create-or-verify helpers, typed lock failures | run launchers, federation adapters, replay tooling |
+| `ari.public.skill_manifest` | Versioned Skill manifest models, loader, digest, and safe entrypoint resolver | built-in and federated MCP Skill packages |
+| `ari.public.claim_gate` | Deterministic gate entry point plus evaluation contracts and the concept→invariant registry | `ari-skill-evaluator`, `ari-skill-transform` |
 | `ari.public.verified_context` | Verified-context helpers (`render_grounded_block`, `write_verified_context`, `build_verified_context`) | `ari-skill-paper` |
 
 ## `ari.public.config_schema`
@@ -57,16 +104,157 @@ Re-exports the container runtime from `ari.container`:
 
 | Symbol | Purpose |
 |---|---|
-| `ContainerConfig` | Dataclass: `mode`, `image`, `bind_paths`, `gpu`, ... |
-| `detect_runtime()` | Returns `"singularity"` / `"apptainer"` / `"docker"` / `"none"` based on `which` lookups |
-| `config_from_env()` | Builds a `ContainerConfig` from `ARI_CONTAINER_*` env vars (returns `None` when unset) |
-| `pull_image(cfg)` | Pulls / builds the image referenced by `cfg` |
-| `run_in_container(cfg, cmd, ...)` | Runs a process inside the container, returning exit code + captured streams |
-| `run_shell_in_container(cfg, script, ...)` | Same, but takes a bash script string |
+| `ContainerConfig` | Dataclass: `image`, `mode` (`auto`/`docker`/`singularity`/`apptainer`/`none`), `pull` (`always`/`on_start`/`never`), `extra_args` |
+| `detect_runtime()` | Returns `"docker"` / `"apptainer"` / `"singularity"` / `"none"`; each candidate must be on `PATH` *and* answer a probe (`docker info`, `<rt> --version`). Apptainer/Singularity are preferred over Docker when `SLURM_JOB_ID` is set |
+| `config_from_env()` | Builds a `ContainerConfig` from `ARI_CONTAINER_IMAGE` and `ARI_CONTAINER_MODE` (default `auto`); returns `None` when no image is set. `pull` and `extra_args` are *not* read from the environment |
+| `pull_image(cfg)` | Pulls the image referenced by `cfg` (`docker pull` / `<rt> pull`); returns `True` on success |
+| `run_in_container(cfg, cmd, ...)` | Starts `cmd` inside the container (or directly when no image / `mode: none`) and returns the `subprocess.Popen` handle |
+| `run_shell_in_container(cfg, script, ...)` | Blocking variant taking a shell command string; returns a `subprocess.CompletedProcess`, with process-group kill on timeout |
 | `list_images()` | Inventory of available images in the active runtime |
-| `get_container_info()` | Diagnostic dict with runtime + image health |
+| `get_container_info()` | Diagnostic dict for the GUI: `runtime`, `version`, `available` |
 
 Source: `ari-core/ari/container.py` → `ari-core/ari/public/container.py`.
+
+## `ari.public.execution`
+
+This module owns closed-workspace path handling, exact execution identity,
+process-group timeout/cancellation, minimal environments, kernel-limit reports,
+complete content-addressed logs, and typed measurement records. Its migration
+parser validates canonical documents and treats old flat files as read-only
+migration input.
+See [Execution and measurement contracts](execution_contract.md) for the
+normative behavior and schema list.
+
+## `ari.public.analysis`
+
+This module fixes provider-neutral `AnalysisRequestV1`,
+`StatisticalTestRequestV1`, `RunComparisonRequestV1`, and `AnalysisResultV1`
+boundaries. The contracts require explicit units, pairing/missing/multiplicity
+policies, immutable source and environment digests, effect sizes, confidence
+intervals, assumption diagnostics, and library versions. See the
+[deterministic analysis contract](analysis_contract.md) for the normative
+behavior and schema list.
+
+## Scientific publication contracts
+
+`ari.public.science_data`, `ari.public.figures`, `ari.public.visual_review`,
+`ari.public.latex_claims`, and `ari.public.paper` form the stable transform →
+figure → review → publication boundary. Producers and consumers exchange
+strict, digest-bound models rather than schema-less dictionaries. The
+[ScienceData contract](science_data_contract.md),
+[figure and visual-review contract](figure_visual_contract.md), and
+[PaperBuild contract](paper_build_contract.md) are normative.
+
+`ari.public.manuscript` adds the exploration-to-authoring completeness layer:
+profiles, snapshots, contexts, omissions, readiness, briefs, bindings, repair
+plans, publication decisions/locks, and labelled-program evaluation. Mutable
+state/coordinator internals remain private. See the
+[Manuscript Complete contract reference](manuscript_complete_contracts.md).
+
+## `ari.public.skill_manifest`
+
+`skill.yaml` is the canonical package contract. Consumers load it through the
+public API instead of parsing YAML or scraping `server.py` directly:
+
+```python
+from ari.public.skill_manifest import load_skill_manifest, manifest_digest
+
+manifest = load_skill_manifest("ari-skill-coding/skill.yaml")
+tool = manifest.tool("run_code")  # package defaults already resolved
+identity = manifest_digest(manifest)
+```
+
+`SkillManifestV1` validates package identity, a package-relative Python stdio
+entrypoint, exhaustive ordinary environment declarations, disjoint named
+`CredentialScopeV1` declarations, unique tool names, capability references,
+phases, side effects, determinism, timeout class, permissions, and result schema.
+`TimeoutBudgetV1` makes any caller-controlled timeout argument explicit and
+bounded. `AsyncLifecycleV1` names the semantic lifecycle capabilities of a tool
+whose `timeout_class` is `async` — `status` is required, `result` and `cancel`
+are optional. Manifest validation only checks that the block is present exactly
+when `timeout_class` is `async`; whether each named capability resolves is
+decided later, at dispatch. A lifecycle `capability_ref` that matches anything
+other than exactly one runtime tool of that Skill yields a `protocol` error
+envelope in place of the async handle, so an ambiguous lifecycle passes manifest
+load and fails the submission.
+`environment_policy=complete` is required for built-in production Skills.
+Each resolved tool also declares `context_requirement` as `none`, `run`, or
+`node`; dispatch fails closed when the caller does not supply that structured
+context.
+`looks_like_credential_environment_name()` is the shared fail-closed classifier
+used by manifest admission and runtime environment construction.
+Legacy unversioned manifests are always rejected by this public runtime loader.
+Offline migration code may use the internal, read-only
+`ari.migrations.skill_manifest.load_legacy_skill_manifest()` converter; its
+output is default-off and is never admitted implicitly.
+
+## `ari.public.call_context` and `ari.public.result`
+
+New dispatch code uses the typed result contract; the historical dictionary API
+remains a lossless compatibility projection:
+
+```python
+from ari.public.call_context import ToolCallContextV1
+
+tool = client.list_tools()[0]
+envelope = client.call_tool_envelope(
+    tool["tool_ref"],
+    {"query": "example"},
+    context=ToolCallContextV1.for_node(
+        run_id="run-1",
+        node_id="node-1",
+        parent_node_id="root",
+        ancestor_node_ids=["root"],
+        phase="bfts",
+    ),
+)
+```
+
+`RunContextV1` binds a logical run to `run_scope_digest`. `NodeContextV1`
+binds self, parent, and the ordered root-to-parent chain to
+`lineage_digest`. `MCPClient` turns the public context into a tool-bound,
+per-connection HMAC capability; Skills verify it through
+`verify_tool_context`. Signing keys are transport-owned and are never part of
+this public data contract. The normative context schema is
+`ari-core/ari/schemas/call_context_v1.schema.json`.
+
+`ResultEnvelopeV1` records status, structured content, typed error information,
+immutable `tool_ref`, run/node/phase context, selection reason, timing, and a
+SHA-256 response digest. Provenance also records the IDs of active credential
+scopes, never their values. With a checkpoint-backed `ArtifactStore`, raw content
+over 4,000 characters is stored under a deterministic content address and the
+inline field becomes a bounded preview. `materialize_content(store)` verifies
+both digest and byte size before returning the full response. `MCPClient.call_tool`
+passes through the same normalization path and then returns the former
+`{"result": text}` / `{"error": message}` shape for existing callers.
+
+The normative result contract is
+`ari-core/ari/schemas/result_envelope_v1.schema.json`.
+
+Async submissions add an `AsyncToolHandleV1` whose lifecycle endpoints are
+immutable `tool_ref` values resolved from the reviewed manifest capabilities.
+The handle can be serialized and passed to `MCPClient.get_async_status()`,
+`get_async_result()`, `cancel_async()`, or `wait_for_async()` without a bare-name
+lookup. Its normative schema is
+`ari-core/ari/schemas/async_tool_handle_v1.schema.json`.
+
+## `ari.public.skill_lock`
+
+`SKILLS.lock` is the deterministic checkpoint-level snapshot created after the
+live MCP handshake. `SkillsLockV1` binds canonical manifests to exact live
+input/output schemas and phase-specific admitted `tool_ref` sets. Callers may use
+`load_skills_lock()` to verify the document and its self-authenticating registry
+digest; `write_or_verify_skills_lock()` atomically creates the first snapshot and
+requires byte-equivalent semantics thereafter. Drift and corruption are distinct
+typed failures (`SkillLockMismatchError` and `SkillLockCorruptError`).
+
+`LockedCredentialScopeV1` records only scope identity and declared/present
+environment names; a reconnect that changes that authority is rejected before
+provider I/O.
+
+The normative machine-readable contract is
+`ari-core/ari/schemas/skills_lock_v1.schema.json`. Credential values are never
+members of this contract.
 
 ## `ari.public.cost_tracker`
 
@@ -74,11 +262,11 @@ Re-exports the LLM cost tracker from `ari.cost_tracker`:
 
 | Symbol | Purpose |
 |---|---|
-| `CostTracker` | Aggregator instance written to `cost_log.jsonl` |
-| `CallRecord` | Per-call dataclass (`model`, `prompt_tokens`, `completion_tokens`, `cost_usd`, `metadata`) |
+| `CostTracker` | Aggregator instance written to `cost_trace.jsonl` |
+| `CallRecord` | Per-call dataclass (`model`, `prompt_tokens`, `completion_tokens`, `estimated_cost_usd`, plus skill/phase/node tags and execution-identity fields) |
 | `init(log_dir)` | Initialise the global tracker rooted at `log_dir` |
 | `init_from_env()` | Initialise using `ARI_CHECKPOINT_DIR` automatically (most callers want this) |
-| `bootstrap_skill(skill_name, phase=None)` | Convenience wrapper for skills — initialises + tags every record |
+| `bootstrap_skill(skill, phase=None)` | Convenience wrapper for skills — initialises + tags every record |
 | `record(**kwargs)` | Append a manual `CallRecord` (used when not going through LiteLLM callback) |
 | `set_default_metadata(**kwargs)` | Tag every subsequent record with extra metadata |
 | `get()` | Get the current tracker (or `None`) |
@@ -89,13 +277,15 @@ callback handles the rest.  Source:
 
 ## `ari.public.llm`
 
-Re-exports `LLMClient` from `ari.llm.client`:
+Re-exports `LLMClient` from `ari.llm.client`.  The constructor takes an
+`LLMConfig`, and `complete()` is synchronous:
 
 ```python
+from ari.public.config_schema import LLMConfig
 from ari.public.llm import LLMClient
 
-client = LLMClient(model="ollama/qwen3:32b")
-resp = await client.complete([{"role": "user", "content": "..."}])
+client = LLMClient(LLMConfig(model="ollama/qwen3:32b"))
+resp = client.complete([{"role": "user", "content": "..."}])
 ```
 
 Use this in preference to calling LiteLLM directly — `LLMClient`
@@ -110,21 +300,27 @@ Re-exports `PathManager` from `ari.paths`:
 from ari.public.paths import PathManager
 
 paths = PathManager.from_env()        # honours ARI_CHECKPOINT_DIR
-nodes_json = paths.checkpoint / "nodes_tree.json"
+run_id = PathManager.checkpoint_dir_from_env().name
+nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 ```
 
 `PathManager` is the central resolver — never read `ARI_CHECKPOINT_DIR`
 directly from a skill.  Source: `ari-core/ari/paths.py` →
 `ari-core/ari/public/paths.py`.
 
-## `ari.public.claim_gate`
+## `ari.public.evaluation` and `ari.public.claim_gate`
 
-Re-exports the deterministic claim-evidence hard gate and its
-concept→invariant registry from `ari.pipeline.claim_gate`:
+`ari.public.evaluation` exports the canonical `MetricGateContractV1`,
+`MetricContractProposalV1`, `MetricAdmissionDecisionV1`, `GateReportV1`, and
+`SemanticReviewV1` models, their digest-verifying parsers, and conservative
+pre-v1 readers. `ari.public.claim_gate` additionally exports the deterministic
+gate and concept→invariant registry:
 
 | Symbol | Purpose |
 |---|---|
 | `run_hard_gate` | The gate entry point — blocks claims whose evidence fails the deterministic checks |
+| `parse_gate_report` | Verifies a canonical gate report and its payload digest |
+| `migrate_legacy_gate_report` | Reads a pre-v1 report without inventing missing provenance |
 | `classify_concept` | Maps a concept to its universal-invariant family |
 | `scan_science_data` | Scans science data against the registered invariants |
 | `CONCEPT_INVARIANTS` | The domain-general concept→invariant registry (single source of truth) |
@@ -167,6 +363,7 @@ checkpoint-scoped path, and make a cost-tracked LLM call.
 
 ```python
 from ari.public import cost_tracker
+from ari.public.config_schema import LLMConfig
 from ari.public.paths import PathManager
 from ari.public.llm import LLMClient
 
@@ -175,11 +372,12 @@ cost_tracker.bootstrap_skill("ari-skill-example", phase="bfts")
 
 # 2. Resolve paths through PathManager — never read ARI_CHECKPOINT_DIR directly.
 paths = PathManager.from_env()
-nodes_json = paths.checkpoint / "nodes_tree.json"
+run_id = PathManager.checkpoint_dir_from_env().name
+nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 
 # 3. LLM call goes through ARI's wrapper, so the cost is recorded automatically.
-client = LLMClient(model="ollama/qwen3:32b")
-resp = await client.complete([{"role": "user", "content": "Summarise: ..."}])
+client = LLMClient(LLMConfig(model="ollama/qwen3:32b"))
+resp = client.complete([{"role": "user", "content": "Summarise: ..."}])
 ```
 
 The call's tokens and USD cost land in the checkpoint's `cost_trace.jsonl`
@@ -199,10 +397,11 @@ internal-import boundaries through the public layer.
 
 ## See also
 
-- `ari-core/ari/public/__init__.py` — module-level docstring with
-  the canonical sub-module list.
+- `ari-core/ari/public/__init__.py` — module-level docstring with the
+  sub-module list and the rationale for each; it currently omits
+  `ari.public.latex_claims` and `ari.public.paper`, so the table above is
+  the complete inventory.
 - `docs/guides/extension_guide.md` — how to write a new skill that depends
   only on `ari.public`.
 - `CONTRIBUTING.md::Software-engineering discipline §3` — public-API
   rule (skills only see `ari.public.*`).
-- `docs/_archive/refactor_audit.md` (§4) — historical Phase 4 inventory.

@@ -1,0 +1,40 @@
+{
+  "clean_task": {
+    "artifact_digests": {
+      "evidence/hpc_spmm_optimization.clean_task.json": "sha256:7d87c0b4591e954556e56e3ab5ff2795fdd8aa10ba19d5ef969be5caf7d12059"
+    },
+    "detail": "An independently authored CSR SpMM task ran through the typed container Provider in the digest-pinned gcc 13.2.0 image under an exclusive allocation. The generated matrix passed CSR structural validation, the register-blocked candidate reproduced its own baseline exactly, undefined-behaviour/bounds and address sanitizer runs passed, and four alternating warm replays beat the baseline by 3.087x or more against a 1.05x gate. No imported attachment executed.",
+    "methods": [
+      "benchmark-comparison",
+      "csr-validation",
+      "differential-testing",
+      "repeated-execution",
+      "sanitizer"
+    ],
+    "status": "pass"
+  },
+  "environment_digest": "sha256:77bf7484d2c47dc8864564dcfa2b9aac0ff714c372bd24d923357aeaa4361a4e",
+  "evidence_digest": "sha256:3b0d11e7449ae62efa726db261831a9e1e98f26cde7b989e95a318a2a2fc33d3",
+  "provider_portability": {
+    "abstraction_report_digest": "sha256:de636b2f5b1cc9334dc5867217b6a85ca558c1df7124224465a7c9dcdaab8200",
+    "binding_lock_digests": [
+      "sha256:41457cdc2b9e6043d1563f185f8a8a9390288078b185c40e5d3c5477255795f8",
+      "sha256:fb28aa7150f83c8df84c206a562d4758cf99db53efbc4962de86ea9bfaeb7a79"
+    ],
+    "compatible_provider_ids": [
+      "ari.provider.coding"
+    ],
+    "detail": "Provider independence was established by withdrawing the incumbent ari.provider.coding and re-offering the identical capability contracts under the reserved stand-in identity ari.provider.synthetic-substitute. All 4 capabilities the incumbent had won rebound, deterministically, and none stayed bound to the incumbent. No second implementation was executed, so this is not cross-Provider portability: it shows only that the requirement set names capabilities rather than a Provider. The report is stored beside this file as evidence/hpc_spmm_optimization.abstraction.json.",
+    "method": "synthetic-substitution",
+    "provider_catalog_digest": "sha256:dd8c35c5ffa6f61df5dbaca6f9a59ae68a2b98ddf96ee3b0b226163817bc4ac3",
+    "status": "pass"
+  },
+  "schema_version": "ari.knowledge-skill-registration-evidence/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:2d6a37bb790b1a7db413e5d7f34ac422c7d7a9836414cd045a135778f77e6094",
+    "id": "hpc.spmm.optimization",
+    "manifest_sha256": "sha256:a2454a7e3b5456359894e63516885fdb82cf26131467f2e83741c2197b6aab29",
+    "version": "1.0.0"
+  },
+  "source_full_commit_sha": "ec220484edcbdb72b9abad7337f65871254d0c73"
+}

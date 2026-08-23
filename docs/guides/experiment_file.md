@@ -4,7 +4,25 @@ sources:
     role: implementation
   - path: ari-skill-evaluator
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/agent/workflow.py
+    role: implementation
+  - path: ari-core/ari/agent/guidance.py
+    role: implementation
+  - path: ari-core/ari/orchestrator/lineage_decision.py
+    role: implementation
+  - path: ari-core/ari/lineage.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-skill-paper/src/rubric.py
+    role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+last_verified: 2026-08-16
 ---
 
 # Writing Experiment Files
@@ -41,16 +59,32 @@ ARI does not require any specific section structure — the file is read
 as plain Markdown — but the following headings are conventional and
 some are consumed by deterministic helpers:
 
-### `Metrics:` line (required)
+### `Metrics:` line (optional, recommended)
 
 ```markdown
 Metrics: GB/s, GFlops/s
 ```
 
-`parse_metric_from_experiment_md` (`ari-core/ari/pipeline/experiment_md.py:31`)
+`parse_metric_from_experiment_md` (`ari-core/ari/pipeline/experiment_md.py:30`)
 extracts the first token (`GB/s` here) and stores it as
 `evaluation_criteria.json:primary_metric` when no idea has fixed one
-yet.  Plain prose with the words "metric" or "metrics" works too.
+yet.  Nothing enforces it: with no such line the function returns `""`
+and the run proceeds.  The line must *start* with `Metric` or `Metrics`
+(case-insensitive) followed by `:` or `-` — the word buried in a prose
+sentence does not match.
+
+### `## Success Metrics` section (optional)
+
+```markdown
+## Success Metrics
+- gflops_per_second: sustained throughput
+- l2_hit_rate: cache behaviour
+```
+
+The evaluator skill's `_parse_success_metrics` reads this section
+**before** the inline `Metrics:` line and takes every `- name:` bullet as
+a declared metric, so a `## Success Metrics` section overrides the
+`Metrics:` line rather than adding to it.
 
 ### `## Research Goal` (optional, recommended)
 
@@ -65,21 +99,44 @@ sequencing.  Most users let the agent decide and skip this section.
 
 ### `## Hardware Limits` / `## Rules` (optional)
 
-Hard constraints in bullet form.  The agent reads these as part of the
-system context; the planner respects them when choosing partitions,
-compilers, etc.
+Hard constraints in bullet form.  No helper parses these *headings* —
+they reach the LLM as prose like the rest of the file.  What **is**
+parsed deterministically, from anywhere in the document and only when
+HPC is enabled, are two free-standing patterns picked up by
+`ari/agent/workflow.py`:
+
+```markdown
+Partition: <partition-name>
+Max CPUs: 64
+```
+
+`Partition:` sets `hints.slurm_partition` (otherwise
+`ARI_SLURM_PARTITION`, otherwise the first `up` partition `sinfo`
+reports); `Max CPUs:` sets the CPU ceiling shown to the LLM (otherwise
+`ARI_SLURM_CPUS`).
+
+### `## Provided Files` / `## Local Files` (optional)
+
+Paths, one per line or as a bullet list, are copied by basename into
+**every** node's work dir at batch start.  `## 提供ファイル`,
+`## 提供文件` and a bare `## Files` are accepted as aliases; a line only
+counts when it contains a path separator, and a trailing `# comment` is
+stripped.  Two silent skips: a file whose basename is a checkpoint
+meta-file (e.g. `results.json`) is never copied, and an existing
+destination is never overwritten.
 
 ### `## SLURM Script Template` (optional)
 
 A baseline script the LLM is allowed to mutate.  Only useful if the
-benchmark's launch protocol is unusual.
+benchmark's launch protocol is unusual.  Like `## Rules`, no
+deterministic helper reads it — it is context for the LLM.
 
 ### Magic comments (parsed by helpers)
 
 | Comment | Purpose |
 |---------|---------|
-| `<!-- min_expected_metric: N -->` | Soft floor used by reviewers |
-| `<!-- metric_keyword: NAME -->`   | Hint for the metric extractor |
+| `<!-- min_expected_metric: N -->` | **Hard** floor in the agent loop, not a reviewer hint: when more than one value is extracted and `max(values) < N`, `guidance.py` calls `node.mark_failed()`. Watch the parse — `ari/agent/workflow.py` matches `([\d]+)`, so `2.5` is read as `2`, while the evaluator skill's own parser accepts the decimal. |
+| `<!-- metric_keyword: NAME -->`   | Hint for the metric extractor; also the fallback source of `expected_metrics` when no `Metrics:` line or `## Success Metrics` section is present |
 
 ## v0.6 / v0.7 additions
 
@@ -87,9 +144,13 @@ benchmark's launch protocol is unusual.
 
 `experiment.md` is the **plan**; the **venue** lives in
 `ari-core/config/reviewer_rubrics/<id>.yaml` and is selected via the
-`ARI_RUBRIC` environment variable.  The rubric supplies the dimensions
-the BFTS judge scores against and the criteria the published review
-uses — switching `ARI_RUBRIC` changes both at once.  See
+`ARI_RUBRIC` environment variable (default `neurips`).  The rubric
+supplies the dimensions the BFTS judge scores against.  The **published
+review** is a separate knob: `review_paper` takes its `rubric_id` from
+`paper_rubric` in `workflow.yaml` (default `generic_conference`) and
+never reads `ARI_RUBRIC`, so switching `ARI_RUBRIC` alone leaves the
+review on the generic rubric — set both to judge search and review
+against the same venue.  See
 `docs/concepts/architecture.md#plan--venue-contract-v070` for the full
 two-file contract.
 
@@ -100,18 +161,25 @@ into the checkpoint's `experiment.md`:
 
 ```markdown
 <!-- AUTO-APPENDED BY VirSci (idea.json) — DO NOT EDIT -->
-## Selected idea
+## Selected research idea
 ...
-## Plan §-tags
+## Plan sections (full text in idea.json)
 ...
-## Alternatives considered
+## Alternatives considered (not pursued in this run)
 ...
 <!-- END AUTO-APPENDED -->
 ```
 
-The block is idempotent (it is rewritten on every promote, never
-duplicated).  Edit only the prose **above** the marker; everything
-between `BEGIN`/`END` markers is owned by the auto-append helper.
+The middle heading follows `workflow.yaml:plan_promote` (default
+`index_only`, as shown); `full` emits `## Detailed experiment plan` with
+the §-bodies inline, and `off` writes nothing.
+
+The block is written **once**: `_promote_plan_to_experiment_md` returns
+immediately when the `AUTO-APPENDED` marker is already present, so a
+later promote does not refresh a stale block — delete the marker if you
+want it regenerated.  Edit only the prose **above** the marker;
+everything between the begin/end markers is owned by the auto-append
+helper.
 
 ### Lineage-decision recording (v0.7)
 
@@ -153,9 +221,13 @@ artefact list.
 
 ARI looks for the file in this order:
 
-1. The active checkpoint's root: `$ARI_CHECKPOINT_DIR/experiment.md`.
+1. The active checkpoint's root: `$ARI_CHECKPOINT_DIR/experiment.md` —
+   preferred on resume, because the path recorded in `tree.json` may be
+   stale.
 2. The argument to `ari run experiment.md` (copied into the checkpoint
-   on first launch).
+   on first launch).  It is a required positional argument: `ari run`
+   exits 1 when the path is not a file, so a fresh run never falls back
+   to (1).
 
 There is no global default and no `$HOME/.ari/` lookup — the v0.5.0
 refactor scoped every input file to the checkpoint.

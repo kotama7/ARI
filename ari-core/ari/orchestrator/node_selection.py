@@ -24,13 +24,24 @@ logger = logging.getLogger(__name__)
 Criteria = Literal["for_synthesis", "for_code", "for_narrative"]
 
 
+def _report_measurement_valid(report: dict | None) -> bool:
+    """Current objective validity with compatibility for legacy reports."""
+    if not report:
+        return False
+    current = report.get("measurement_valid")
+    if isinstance(current, bool):
+        return current
+    legacy = (report.get("self_assessment") or {}).get("succeeded")
+    return bool(legacy) if isinstance(legacy, bool) else False
+
+
 # ── per-criterion predicates ─────────────────────────────────────────────
 
 def is_relevant_for_synthesis(node: dict, report: dict | None) -> bool:
     """Should this node be passed into `nodes_to_science_data`'s LLM prompt?"""
     if node.get("has_real_data") and node.get("metrics"):
         return True
-    if report and report.get("self_assessment", {}).get("succeeded"):
+    if _report_measurement_valid(report):
         return True
     if report:
         fc = report.get("files_changed") or {}
@@ -48,10 +59,6 @@ def contributes_code(node: dict, report: dict | None) -> bool:
     """
     if not report:
         return True  # legacy fallback — be conservative.
-    if report.get("migration_source") == "auto":
-        # Auto-reconstructed reports are not trustworthy enough to *exclude*
-        # nodes; treat as conservative-include (FR-NS-FALLBACK-2).
-        return True
     fc = report.get("files_changed") or {}
     return bool(fc.get("added") or fc.get("modified"))
 
@@ -154,7 +161,7 @@ def _explain_exclusion(criteria: Criteria, node: dict, report: dict | None) -> s
         return "filter declined"
     if criteria == "for_synthesis":
         if not node.get("has_real_data"):
-            return "has_real_data=false and self_assessment did not certify success"
+            return "has_real_data=false and node_report measurement_valid is not true"
         if not node.get("metrics"):
             return "metrics empty"
         return "filter declined"

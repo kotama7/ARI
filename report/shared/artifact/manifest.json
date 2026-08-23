@@ -1,0 +1,135 @@
+{
+  "artifact": "constitutional-ari-rqgm-local-reproduction",
+  "schema_version": 1,
+  "generated_at": "2026-08-07T06:35:23.645468+00:00",
+  "publication_status": "local-unpublished",
+  "git": {
+    "commit": "3d0e3b391a0cff02a87b63b5962b2838cb0ffdae",
+    "branch": "bfts_compare",
+    "working_tree_dirty": true
+  },
+  "source_manifest_sha256": "c86b754e257b149e1f7d679c3207de0a1412cdb42561767ba5c81d5506e991ec",
+  "source_file_count": 9773,
+  "requirements_lock_sha256": "2c64d0124ed8be0c10e55658eb1bebd1ae227d9a9bf315b215f768c1b7a706f2",
+  "runtime": {
+    "python": "3.11.13 (main, Jun  1 2026, 00:00:00) [GCC 11.5.0 20240719 (Red Hat 11.5.0-14)]",
+    "executable": ".venv/bin/python",
+    "platform": "Linux-5.14.0-687.31.1.el9_8.x86_64-x86_64-with-glibc2.34",
+    "machine": "x86_64",
+    "pythonhashseed": "0",
+    "pip_freeze_returncode": 0,
+    "python_packages_sha256": "14a485e989c433921ed762577635c7f5a31330db4a404b10b1b5cb5951eb1532"
+  },
+  "authority_matrix": {
+    "command": [
+      ".venv/bin/python",
+      "-m",
+      "ari.rqgm.authority_manifest"
+    ],
+    "returncode": 0,
+    "sha256": "4689b9db119bbe782da5dadbd3cc8921aa8a218161788dad053fcf70baa96678"
+  },
+  "collection": {
+    "focused": {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "tests/test_claim_gate_contract.py",
+        "tests/test_claim_gate_invariants.py",
+        "tests/test_claim_gate_v1.py",
+        "tests/test_rqgm_adversarial.py",
+        "tests/test_rqgm_clean_room.py",
+        "tests/test_rqgm_context_views.py",
+        "tests/test_rqgm_cost_budget.py",
+        "tests/test_rqgm_epoch_state.py",
+        "tests/test_rqgm_eval_conditions.py",
+        "tests/test_rqgm_eval_detection_fixture.py",
+        "tests/test_rqgm_eval_doubles.py",
+        "tests/test_rqgm_eval_injection.py",
+        "tests/test_rqgm_eval_kca_conditions.py",
+        "tests/test_rqgm_eval_kca_injection.py",
+        "tests/test_rqgm_eval_kca_isolation.py",
+        "tests/test_rqgm_eval_kca_metrics.py",
+        "tests/test_rqgm_eval_kca_probe.py",
+        "tests/test_rqgm_eval_metrics.py",
+        "tests/test_rqgm_eval_smoke.py",
+        "tests/test_rqgm_founding_bootstrap.py",
+        "tests/test_rqgm_frontier_repair.py",
+        "tests/test_rqgm_governance.py",
+        "tests/test_rqgm_kernel.py",
+        "tests/test_rqgm_meta_evolution.py",
+        "tests/test_rqgm_mode.py",
+        "tests/test_rqgm_paper_candidate.py",
+        "tests/test_rqgm_paper_cost.py",
+        "tests/test_rqgm_paper_eval.py",
+        "tests/test_rqgm_paper_roles.py",
+        "tests/test_rqgm_prompt_boundary_evolution.py",
+        "tests/test_rqgm_prompt_evolution_records.py",
+        "tests/test_rqgm_prompt_lifecycle.py",
+        "tests/test_rqgm_prompt_loader.py",
+        "tests/test_rqgm_prompt_spec.py",
+        "tests/test_rqgm_prompt_validation.py",
+        "tests/test_rqgm_proposals.py",
+        "tests/test_rqgm_state_store.py",
+        "tests/test_rqgm_transition_engine.py",
+        "tests/test_rqgm_utility_boundary.py",
+        "tests/test_rqgm_utility_evolution.py",
+        "tests/test_rqgm_virsci_adapter.py",
+        "--collect-only",
+        "-q"
+      ],
+      "returncode": 0,
+      "collected_test_ids": 1413,
+      "list_sha256": "594981886b2168df3df900999a3b6820ade60128f53d1aa5993a501276c43884",
+      "log_sha256": "116ffae40ccbb19e84413663904c7da286dc6b4b84c5aac25b68849a26106388"
+    },
+    "full": {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "tests/",
+        "-rxX",
+        "--ignore=tests/skills",
+        "--collect-only",
+        "-q"
+      ],
+      "returncode": 0,
+      "collected_test_ids": 6080,
+      "list_sha256": "bfb947512f9ce417841dca2ba7ac320e30d4d0aaf11e1bb7f7bf42305f6ad329",
+      "log_sha256": "c40c5048789d7e1ed36282fa50570769f561b055da0ce91e3007d8c5c6102988"
+    }
+  },
+  "execution": {
+    "full": {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "tests/",
+        "-q",
+        "-rxX",
+        "--ignore=tests/skills"
+      ],
+      "returncode": 1,
+      "log_sha256": "73a94d25d85e22ae85a5d41c0c0af2d98313ce52b02fd902c22e312f0b20acb3",
+      "summary_tail": [
+        "  .venv/lib64/python3.11/site-packages/uvicorn/protocols/websockets/websockets_impl.py:17: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated",
+        "    from websockets.server import WebSocketServerProtocol",
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "=========================== short test summary info ============================",
+        "XFAIL tests/test_core_viz_direction.py::test_lineage_does_not_import_viz - B7 core->viz inversion at ari/cli/lineage.py (imports ari.viz.api_orchestrator._api_launch_sub_experiment) — fixed by subtask 011/012; remove this marker when the launcher is inverted behind an injected hook.",
+        "XFAIL tests/test_evaluator_independence.py::test_evaluator_does_not_call_litellm_directly - B5/B6 provider leak: ari/evaluator/llm_evaluator.py imports litellm directly and calls litellm.acompletion, bypassing LLMClient/resolve_litellm_model — fixed by subtask 008/009; remove this marker when the evaluator routes through the model backend.",
+        "6 failed, 6056 passed, 21 skipped, 2 xfailed, 4 warnings in 1223.48s (0:20:23)"
+      ]
+    }
+  },
+  "limitations": [
+    "This directory is not an immutable public tag or DOI archive.",
+    "A dirty tree is identified by content hashes, not by Git SHA alone.",
+    "No model calls or scientific-quality experiments are run here.",
+    "Recorded locations are repo-relative; a path outside this checkout is replaced rather than disclosed, and credential-shaped strings in captured output are redacted."
+  ]
+}

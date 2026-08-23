@@ -1,0 +1,99 @@
+{
+  "decision": "eligible-for-verified",
+  "gates": [
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:c90137a28c89f7a8240a493f36141498734fa352da6a981857f45f3db06a48a6",
+      "gate_id": "manifest_schema",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:c208ec361281600a08777d72fa5feae91fdd82cad7a8809b16799bd51c35481b",
+      "gate_id": "source_package_digest_pin",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:9d262f05f56a3381009edd60c978a9beb4a829a4c821e9f3a9706351c673e554",
+      "gate_id": "live_tools_list_parity",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:d55a2863dddf204b438886f8da3e15ec1fcd2f70fe2684f45355c77037cf5b21",
+      "gate_id": "schema_digest_pin",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:abef811133c8b017e5f49b822f5650d2d17af2645b5561381c63bb0a2ee34ca9",
+      "gate_id": "capability_contract_conformance",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:c5a025bb9ab77183d2712c5f48cf173d8d6293ffbdd229162aebc42e7c23011b",
+      "gate_id": "side_effect_declaration",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:8842e341859405b481a5e505270d4c96a9c99c9920287e33905cc5d95bc0dc3c",
+      "gate_id": "credential_scope",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:4405ee90fc3897009d7aa8b92d05c4c3b8e1c57cfd8d290e87e514471f54ced2",
+      "gate_id": "environment_allowlist",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:600725510ec753a6e5c6c174a5df1fedb15465cf088df81f9b005fc9e7b1bc94",
+      "gate_id": "timeout_cancellation_process_group",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:764cb834987b6ef269a94c4e504ad531e4501f478f60f22efe577490af79f369",
+      "gate_id": "result_schema",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:147bd664ba3a411705de22ff6a67113c32ef39f65a59f8de5f1ba6a54bd352ee",
+      "gate_id": "malicious_description_boundary",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:25cfe133fa07c3463b057b01751e8910f7ab9750a9f9e33d546924360f776e8f",
+      "gate_id": "workspace_isolation",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:2c7d4a5bc3f9cf7cd8d22275a43c1df868054ea04835b1928db631587d726f9c",
+      "gate_id": "revocation_behavior",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:2e9393a5588442439d9386bbdc26112c22f7ad764fe26626c07a1bd9eece3b07",
+      "gate_id": "schema_drift_detection",
+      "passed": true
+    },
+    {
+      "detail": "closed registration evidence passed",
+      "evidence_digest": "sha256:4388ee67ba818bc02b3773fac2c6eae13f37b7261195040ba29c89f3929f8642",
+      "gate_id": "unbound_invocation_rejection",
+      "passed": true
+    }
+  ],
+  "manifest_sha256": "sha256:9cb5c718941b4f746c285dd25e91297676ea540de877292801cd32bba3cf0008",
+  "provider_id": "tooluniverse-pubmed",
+  "report_digest": "sha256:e33216d0d7b757e6c8096294cf6616a0b82ac52c7cced817c1a906959f42b3a1",
+  "schema_version": "ari.capability-provider-registration-report/v1"
+}

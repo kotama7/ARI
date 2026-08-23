@@ -1,9 +1,9 @@
 # check_dead_code.yaml -- classification config for scripts/check_dead_code.py
 # (subtask 055 -- add_dead_code_candidate_checker).
 #
-# Design: docs/refactoring/013_reference_graph_and_dead_code_plan.md §7 (the
+# Design: refactoring plan 013 (reference graph and dead code) §7 (the
 # precedence table this file parameterizes) / §8.3 (checker role);
-# docs/refactoring/009_quality_scripts_plan.md §3/§5.10/§8 (common contract,
+# refactoring plan 009 (quality scripts) §3/§5.10/§8 (common contract,
 # scripts/quality/ placement). stdlib + PyYAML + ruff CLI only; no LLM, no
 # network (design principle P2 + 013 §6.4 determinism).
 #
@@ -91,7 +91,7 @@ under_traced_seam_paths:
   - ari-skill-benchmark/src/
   - ari-skill-coding/src/
   - ari-skill-evaluator/src/
-  - ari-skill-hpc/src/
+  - ari-skill-hpc/ari_skill_hpc/
   - ari-skill-idea/src/
   - ari-skill-memory/src/
   - ari-skill-orchestrator/src/

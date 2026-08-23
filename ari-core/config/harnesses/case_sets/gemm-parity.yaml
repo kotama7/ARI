@@ -1,0 +1,12 @@
+# The case set the REGISTRATION parity probe measures at.
+#
+# Separate from the scored set so a probe can be cheap without silently changing
+# what a scored run measures. One shape, at the size where the measurement is
+# actually resolved: at 256^3 the probe's clean control would be indistinguishable
+# from its negative controls inside the noise.
+schema_version: ari.harness-case-set/v1
+revision: native-perf-gemm-cases/v1@parity
+kind: gemm
+description: One scored-size shape, for the registration parity probe.
+cases:
+  - [1000, 1000, 1000]

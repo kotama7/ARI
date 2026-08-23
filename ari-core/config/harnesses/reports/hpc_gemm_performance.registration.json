@@ -1,0 +1,99 @@
+{
+  "decision": "eligible-for-verified",
+  "gates": [
+    {
+      "detail": "clean control verdict 'pass'",
+      "evidence_digest": "sha256:b77783132c3529e61d5fba6b731203bf69328b04dcf6b3eb2779c6c8b1e9fc11",
+      "gate_id": "reference_oracle_pass",
+      "passed": true
+    },
+    {
+      "detail": "2 negative control(s) failed, for different reasons",
+      "evidence_digest": "sha256:5d94cf8e92bf1afc12e0d98dd244344719a58d8bc44ed0cdd2a5df4f5e0dd246",
+      "gate_id": "negative_control_fail",
+      "passed": true
+    },
+    {
+      "detail": "passed at spread 0.009906141707241141",
+      "evidence_digest": "sha256:ff6530a015ac696c13e214f15b39ef0c8588178d1fd8e86e1a90a3651ef680d4",
+      "gate_id": "clean_control_pass",
+      "passed": true
+    },
+    {
+      "detail": "probe passed against this driver",
+      "evidence_digest": "sha256:db16305bde516c505607d0061d1de798abbb72e1b7a5461eb7a2f22f98fa6869",
+      "gate_id": "official_runner_parity",
+      "passed": true
+    },
+    {
+      "detail": "hidden_test_policy 'verifier-only' (structural check only; the answer is the approval)",
+      "evidence_digest": "sha256:f0be3986139d37616f43a219c44482b052656baa3130651f4fe49ae2cfba7f31",
+      "gate_id": "target_oracle_test_isolation",
+      "passed": true
+    },
+    {
+      "detail": "scorer 'deterministic', nondeterminism 'none'",
+      "evidence_digest": "sha256:2f7d0ce7e5a435fccc633fc5bd3079807ce22e72b842923ab659f56118287651",
+      "gate_id": "determinism_declaration",
+      "passed": true
+    },
+    {
+      "detail": "an outage produces no ranking metric",
+      "evidence_digest": "sha256:6cb41cd5e84724c69e363848ed0fd181bab555a8e1d56c96e384a7997d31c697",
+      "gate_id": "infrastructure_failure_separation",
+      "passed": true
+    },
+    {
+      "detail": "timeout pinned at 900s",
+      "evidence_digest": "sha256:b29a5dd945180dad65e447fc4fdddff69e96b415804d45c0f1944695cc9a654a",
+      "gate_id": "timeout_resource_enforcement",
+      "passed": true
+    },
+    {
+      "detail": "all four pinned assets licensed",
+      "evidence_digest": "sha256:85d89835bfbdfe304dd48e94af38059224f9f32cddaf189e3ac9730e54f4855e",
+      "gate_id": "license_completeness",
+      "passed": true
+    },
+    {
+      "detail": "pinned at c30019a18f36, an ancestor of 8791cb6fa8a8",
+      "evidence_digest": "sha256:9079e7f1d43ceac47f1214b3cb2678a1c2e1086e88627af252baebf03f2c2d7b",
+      "gate_id": "source_revision_digest_pin",
+      "passed": true
+    },
+    {
+      "detail": "hidden_test_policy 'verifier-only' (structural check only; the answer is the approval)",
+      "evidence_digest": "sha256:6d871c8a460fbf934d37c46a7c671f2956e1e8f264178c63a78f938a802b25b0",
+      "gate_id": "hidden_test_isolation",
+      "passed": true
+    },
+    {
+      "detail": "spread 0.002288 over 3 runs",
+      "evidence_digest": "sha256:2bc7e3063f4168c55a39a987ff36e42b729f5c3daf2f4131ebc9fa24949ab51e",
+      "gate_id": "multiple_run_stability",
+      "passed": true
+    },
+    {
+      "detail": "schema declares 26 properties, named and pinned by the manifest",
+      "evidence_digest": "sha256:01b2a0fe5150c2e218266bec66e23cf7da8d11501b82d229eab6fb1c6e69c103",
+      "gate_id": "result_schema_conformance",
+      "passed": true
+    },
+    {
+      "detail": "4 pinned digests are full sha256",
+      "evidence_digest": "sha256:f0215d75d7d64799b2aae87708959addfbcec47506c697caa9469c2a355097d2",
+      "gate_id": "full_sha256_integrity",
+      "passed": true
+    },
+    {
+      "detail": "network 'deny', credentials 'none' (structural check only; the answer is the approval)",
+      "evidence_digest": "sha256:d2f28b74aa8342f262781bffc145edf6ed8bbd35ddf980f5e427f018eff64f01",
+      "gate_id": "malicious_harness_sandbox",
+      "passed": true
+    }
+  ],
+  "harness_id": "hpc/gemm-performance",
+  "manifest_digest": "sha256:0afb6c8735567e84c6fc3560fc2ba0d8003d9d0b618799dbc6a9b1f90c7116df",
+  "report_digest": "sha256:750f0381b5e4e23773c9a1187df6c8ac230afb66c103032227fef3bf656d9e45",
+  "schema_version": "ari.harness-registration-report/v1"
+}

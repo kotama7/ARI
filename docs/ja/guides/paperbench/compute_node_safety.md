@@ -4,7 +4,7 @@ sources:
     role: prompt
   - path: ari-skill-paper-re/src/_replicator_agent.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-08-08
 ---
 
 # 計算ノード安全規約 (L1–L7)
@@ -13,9 +13,17 @@ last_verified: 2026-05-25
 エージェントが生成した login node 上ではない。 以下 7 規約 (L1–L7)
 は compute node で完走するために必要。
 
-PaperBench レプリケータエージェントは
-`ari-skill-paper-re/src/prompts/replicator.md` の
-`COMPUTE-NODE EXECUTION CONVENTIONS` block 経由でこれらを指示される
+PaperBench レプリケータエージェントは、`_format_hpc_appendix`
+(`ari-skill-paper-re/src/_replicator_agent.py`) が vendor 版 PaperBench の
+instruction に付加する ARI 側 appendix の
+`COMPUTE-NODE EXECUTION CONVENTIONS` block 経由でこれらを指示される。
+この block は appendix 内の他の HPC 系 block (`EXECUTION PROFILE`,
+`CLUSTER SHAPE`, `CONVENTIONS`) と同様、rubric の
+`reproduce_contract.execution_profile` が非空のときだけ出力されるため、
+非 HPC 論文のエージェントは受け取らない。`expected_artifacts` だけが
+ある場合、appendix は `EXPECTED_ARTIFACTS` block のみに縮退する。
+`ari-skill-paper-re/src/prompts/replicator.md` は同じ block のより詳しい
+mirror を持つが、実行時に読み込まれることはない
 (本ドキュメントは reproduce.sh を手 audit するための reference)。
 
 ## L1 — 共有 FS
@@ -26,8 +34,13 @@ PaperBench レプリケータエージェントは
 - ✅ `$HOME`, `/work/...`, `/scratch/...`, `/lustre/...`, `/nfs/...`
 - ❌ `/tmp`, `/var/tmp`, `/local`, container-local mount のみのパス
 
-ARI は checkpoint dir がノードローカル FS の場合に警告するが、 run
-は止めない — rank 1+ が rank 0 のファイルを見えず silent fail する。
+ARI は filesystem を probe しない。checkpoint dir がノードローカル FS で
+あっても検知せず、警告も出ない — rank 1+ が rank 0 のファイルを見えず
+silent fail する。共有かどうかは観測ではなく *宣言* で、`SLURM_MODE=remote`
+は `SLURM_SHARED_FILESYSTEM` (既定 `true`) を読み、local mode は無条件に
+`true` とみなす (`ari-skill-hpc/ari_skill_hpc/slurm.py`)。`false` と宣言した
+場合は警告ではなく *拒否* で、typed outputs と fixed-wrapper terminal
+evidence の双方が raise する。
 
 ## L2 — MPI 起動: `mpirun` より `srun` を優先
 
@@ -44,22 +57,15 @@ pip install --user mpi4py
 python -c "from mpi4py import MPI; ..."
 ```
 
-先に `which srun mpirun` でテストする。 エージェントプロンプトは
-レプリケータにこのチェックを emit するよう指示する。
+先に `which mpirun` でテストする。 エージェントプロンプトは
+レプリケータに `mpirun` が PATH にある前提を置かず、使う前に確認する
+よう指示する。
 
-## L3 — GRES プローブ
+## L3 — GPU resource検証
 
-rubric の `execution_profile.gpu_type` が設定されている場合、 ARI は
-`sbatch` に `--gres=gpu:<type>:N` を加える前に `sinfo -o '%G'` を確認
-する。 GRES 未設定 (`(null)`) なら flag を落とし、 警告を log。
-`--gpus-per-task` は残る。
-
-対話的に確認:
-
-```python
-from ari_skill_paper_re.server import _slurm_has_gres
-_slurm_has_gres()    # True / False
-```
+ARIはGPU count/typeを一つの型付きscheduler requestへ変換し、削除しない。
+launch前に`sinfo -o '%P %G'`を確認する。partitionが満たせなければsubmitを
+失敗させ、cluster設定を直すか対応partitionを選ぶ。
 
 ## L4 — Conda / virtualenv activation
 
@@ -108,7 +114,7 @@ srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS ./my_program
 ```
 
 これがないと `sbatch --nodes=4` 成功でもスクリプトは 1 node しか使わ
-ない。 エージェントプロンプトの "MULTI-NODE FAN-OUT" 節がレプリケータ
+ない。 エージェントプロンプトの "Multi-node fan-out" 節がレプリケータ
 に念押しする。
 
 ## L7 — Timeout 包み

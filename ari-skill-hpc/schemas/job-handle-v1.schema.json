@@ -1,0 +1,84 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "artifact_scope": {
+      "title": "Artifact Scope",
+      "type": "string"
+    },
+    "backend": {
+      "const": "slurm",
+      "default": "slurm",
+      "title": "Backend",
+      "type": "string"
+    },
+    "cluster_identity": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Cluster Identity",
+      "type": "string"
+    },
+    "handle_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+      "title": "Handle Id",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^[0-9]+(?:_[0-9]+)?$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "request_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Request Digest",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.hpc.job-handle/v1",
+      "default": "ari.hpc.job-handle/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "state": {
+      "const": "submitted",
+      "default": "submitted",
+      "title": "State",
+      "type": "string"
+    },
+    "status": {
+      "const": "submitted",
+      "default": "submitted",
+      "title": "Status",
+      "type": "string"
+    },
+    "submission_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Submission Digest",
+      "type": "string"
+    },
+    "submitted_at": {
+      "title": "Submitted At",
+      "type": "string"
+    },
+    "workspace_scope": {
+      "title": "Workspace Scope",
+      "type": "string"
+    }
+  },
+  "required": [
+    "handle_id",
+    "request_id",
+    "request_digest",
+    "cluster_identity",
+    "job_id",
+    "submission_digest",
+    "workspace_scope",
+    "artifact_scope",
+    "submitted_at"
+  ],
+  "title": "JobHandleV1",
+  "type": "object"
+}

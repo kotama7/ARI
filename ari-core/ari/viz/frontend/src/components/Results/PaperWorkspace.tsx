@@ -15,6 +15,7 @@ import { Button } from '../common/Button';
 import { LoadingState } from '../common';
 import type { CheckpointSummary } from '../../types';
 import type { CheckpointFile } from '../../services/api';
+import { PdfPreview } from './PdfPreview';
 
   // File icon helper
   const fileIcon = (ext: string) => {
@@ -112,7 +113,7 @@ export function renderPaper({
   setCollapsedDirs: (updater: (prev: Set<string>) => Set<string>) => void;
   activeAbsPath: string;
   setActiveAbsPath: (v: string) => void;
-  uploadRef: React.RefObject<HTMLInputElement>;
+  uploadRef: React.RefObject<HTMLInputElement | null>;
   openFile: (filename: string) => void;
   handleSave: () => void;
   handleUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -332,9 +333,10 @@ export function renderPaper({
         </div>
 
         {/* Main content: sidebar + viewer/editor */}
-        <div style={{ display: 'flex', gap: 0, minHeight: 500 }}>
+        <div className="paper-workspace-layout">
           {/* File tree sidebar */}
           <div
+            className="paper-file-sidebar"
             style={{
               width: 220,
               minWidth: 220,
@@ -357,12 +359,11 @@ export function renderPaper({
           </div>
 
           {/* Viewer / Editor panel */}
-          <div style={{ flex: 1, minWidth: 0, paddingLeft: 12 }}>
+          <div className="paper-viewer-panel">
             {/* Main paper PDF view */}
             {paperView === 'pdf' && summary.has_pdf && (
-              <iframe
-                src={`/api/checkpoint/${encodeURIComponent(selectedId)}/paper.pdf`}
-                style={{ width: '100%', height: 580, border: 'none', borderRadius: 6 }}
+              <PdfPreview
+                url={`/api/checkpoint/${encodeURIComponent(selectedId)}/paper.pdf`}
                 title="Paper PDF"
               />
             )}
@@ -408,9 +409,8 @@ export function renderPaper({
                 <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: 6, fontFamily: 'monospace' }}>
                   {activeFile}
                 </div>
-                <iframe
-                  src={codefileUrl(activeAbsPath)}
-                  style={{ width: '100%', height: 540, border: 'none', borderRadius: 6 }}
+                <PdfPreview
+                  url={codefileUrl(activeAbsPath)}
                   title={activeFile}
                 />
               </div>

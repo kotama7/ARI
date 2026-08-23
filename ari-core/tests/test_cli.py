@@ -89,7 +89,7 @@ def test_skills_list_empty():
 
 def test_migrate_node_reports_legacy_checkpoint(tmp_path: Path):
     """`ari migrate node-reports <checkpoint>` writes a node_report.json
-    next to each node's work_dir, with migration_source=auto."""
+    next to each node's work_dir, reconstructed from the legacy tree."""
     workspace = tmp_path / "workspace"
     checkpoint = workspace / "checkpoints" / "exp123"
     checkpoint.mkdir(parents=True)
@@ -146,8 +146,8 @@ def test_migrate_node_reports_legacy_checkpoint(tmp_path: Path):
 
     rep_a = json.loads((exp_root / "node_root" / "node_report.json").read_text())
     rep_b = json.loads((exp_root / "node_b" / "node_report.json").read_text())
-    assert rep_a["migration_source"] == "auto"
-    assert rep_b["migration_source"] == "auto"
+    assert rep_a["schema_version"] == 1
+    assert rep_b["schema_version"] == 1
     # node_b should show x.py as modified vs node_root.
     modified = {m["path"] for m in rep_b["files_changed"]["modified"]}
     assert "x.py" in modified
@@ -187,4 +187,4 @@ def test_migrate_node_reports_skips_existing(tmp_path: Path):
     assert result2.exit_code == 0
     rep2 = json.loads(existing.read_text())
     assert rep2.get("preserved") is None
-    assert rep2.get("migration_source") == "auto"
+    assert rep2.get("schema_version") == 1

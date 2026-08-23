@@ -13,17 +13,54 @@ contract (Phase 1-4):
     coding skill's emit_results can warn the agent (with the gate's OWN presence
     semantics) the moment evidence is missing, instead of the paper silently
     blocking at finalize long after the node is gone.
+  - ``FORMULAS`` / ``required_roles`` — the CLOSED formula vocabulary the gate
+    recomputes with. Re-exported because the process that PRODUCES the token
+    (ari-skill-paper's writer prompt + claim_links) previously could not see the
+    registry at all: the list was hand-mirrored into five places, and a writer
+    that emitted an unlisted name (``percent_change``) had every one of its
+    numeric assertions silently fall out of verification. A producer that cannot
+    read the vocabulary cannot be held to it.
 """
 
 from ari.pipeline.claim_gate import run_hard_gate  # noqa: F401
+from ari.claim_gate_contract import (  # noqa: F401
+    ClaimGateContractError,
+    GateFindingV1,
+    GateFormulaProvenanceV1,
+    GateReportV1,
+    MetricAdmissionDecisionV1,
+    MetricClaimV1,
+    MetricContractProposalV1,
+    MetricGateContractV1,
+    SemanticFindingV1,
+    SemanticReviewV1,
+    SemanticRevisionV1,
+    admit_metric_contract_proposal,
+    migrate_legacy_gate_report,
+    migrate_legacy_metric_gate_contract,
+    parse_gate_report,
+    parse_metric_gate_contract,
+    parse_semantic_review,
+)
 from ari.pipeline.claim_gate.contract import check_emission  # noqa: F401
 from ari.pipeline.claim_gate.invariants import (  # noqa: F401
     CONCEPT_INVARIANTS,
     classify_concept,
     scan_science_data,
 )
+from ari.pipeline.claim_gate.numeric import (  # noqa: F401
+    FORMULAS,
+    required_roles,
+)
 
 __all__ = [
     "run_hard_gate", "check_emission", "classify_concept", "scan_science_data",
-    "CONCEPT_INVARIANTS",
+    "CONCEPT_INVARIANTS", "ClaimGateContractError", "GateFindingV1",
+    "GateFormulaProvenanceV1", "GateReportV1", "MetricAdmissionDecisionV1",
+    "MetricClaimV1", "MetricContractProposalV1", "MetricGateContractV1",
+    "SemanticFindingV1", "SemanticReviewV1", "SemanticRevisionV1",
+    "admit_metric_contract_proposal", "migrate_legacy_metric_gate_contract",
+    "migrate_legacy_gate_report",
+    "parse_gate_report", "parse_metric_gate_contract", "parse_semantic_review",
+    "FORMULAS", "required_roles",
 ]

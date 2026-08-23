@@ -1,17 +1,16 @@
-from __future__ import annotations
 """ARI viz: api_experiment — launch, run stages, log streaming."""
 
+from __future__ import annotations
+
 import json
+import logging
 import os
 import re
 import subprocess
-import threading
-import time
 from pathlib import Path
 
 from . import state as _st
 
-import logging
 log = logging.getLogger(__name__)
 
 
@@ -51,17 +50,27 @@ def _api_run_stage(body: bytes) -> dict:
             Path.home() / ".env",
         ]
         from .services.launch_service import load_dotenv_files
-        load_dotenv_files(proc_env, _env_candidates, strip_quotes=True, swallow_errors=True)
-        # Inject API key from settings if not already in env
+        _dotenv_keys = load_dotenv_files(
+            proc_env, _env_candidates, strip_quotes=True, swallow_errors=True
+        )
+        # Inject API key from settings if not already in env. A key an operator
+        # exported outranks Settings; a key that merely sat in some .env on disk
+        # does not, or a stale file silently wins over what was just configured.
+        def _held_by_operator(name: str) -> bool:
+            return bool(proc_env.get(name)) and name not in _dotenv_keys
+
         from .api_settings import _api_get_settings
         saved = _api_get_settings()
         _api_key = saved.get("api_key", "") or saved.get("llm_api_key", "")
         _provider = saved.get("llm_provider", "") or saved.get("llm_backend", "")
         _model = saved.get("llm_model", "")
         if _api_key and len(_api_key) >= 20 and "test" not in _api_key:
-            if _provider == "openai" and not proc_env.get("OPENAI_API_KEY"):
+            if _provider == "openai" and not _held_by_operator("OPENAI_API_KEY"):
                 proc_env["OPENAI_API_KEY"] = _api_key
-            elif _provider == "anthropic" and not proc_env.get("ANTHROPIC_API_KEY"):
+            elif _provider in ("anthropic", "claude_code", "claude-code") \
+                    and not _held_by_operator("ANTHROPIC_API_KEY"):
+                # claude_code: key optional (OAuth works); when present it
+                # enables the provider's hermetic --bare profile.
                 proc_env["ANTHROPIC_API_KEY"] = _api_key
         # Inject LLM model/provider from launch_config or settings
         _lc_path = Path(ckpt) / "launch_config.json"
@@ -137,6 +146,34 @@ def _api_launch(body: bytes) -> dict:
         data = json.loads(body)
     except (json.JSONDecodeError, TypeError, ValueError) as e:
         return {"ok": False, "error": f"Invalid request body: {e}"}
+    requested_retrieval = data.get("retrieval_backend")
+    if requested_retrieval and requested_retrieval not in {
+        "semantic_scholar",
+        "arxiv",
+        "alphaxiv",
+    }:
+        return {
+            "ok": False,
+            "error": "retrieval_backend must select one pinned provider",
+        }
+    if not requested_retrieval:
+        settings_path = _st._settings_path
+        if settings_path is not None and settings_path.is_file():
+            try:
+                saved_retrieval = json.loads(settings_path.read_text()).get(
+                    "retrieval_backend"
+                )
+            except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                return {"ok": False, "error": f"Invalid project settings: {exc}"}
+            if saved_retrieval and saved_retrieval not in {
+                "semantic_scholar",
+                "arxiv",
+                "alphaxiv",
+            }:
+                return {
+                    "ok": False,
+                    "error": "saved retrieval_backend must select one pinned provider",
+                }
     profile = data.get("profile", "")
     experiment_md = data.get("experiment_md", "")
     # ── Trace: log received experiment_md from GUI ──────────────────
@@ -247,7 +284,13 @@ def _api_launch(body: bytes) -> dict:
         if _st._checkpoint_dir:
             _env_candidates.insert(0, _st._checkpoint_dir / ".env")
         from .services.launch_service import load_dotenv_files
-        load_dotenv_files(proc_env, _env_candidates, strip_quotes=False, swallow_errors=False)
+        _dotenv_keys = load_dotenv_files(
+            proc_env, _env_candidates, strip_quotes=False, swallow_errors=False
+        )
+
+        def _held_by_operator(name: str) -> bool:
+            return bool(proc_env.get(name)) and name not in _dotenv_keys
+
         # Inject model from saved Settings.  Project-scoped only — when the
         # checkpoint has no settings.json the launch falls back to defaults
         # already baked into the CLI / config layer.
@@ -262,15 +305,19 @@ def _api_launch(body: bytes) -> dict:
                     proc_env["ARI_LLM_MODEL"] = llm_model
                 if llm_provider:
                     proc_env["ARI_BACKEND"] = llm_provider
-                # API keys: prefer .env / os.environ (already in proc_env).
-                # Only use settings.json key as last resort if no key exists at all,
-                # AND it looks like a real key (not a placeholder/test value).
+                # API keys: prefer a key the operator exported (already in
+                # proc_env before any .env was read). A key that only came from
+                # a .env file does not outrank settings.json — otherwise a stale
+                # file silently wins over the key that was just configured.
+                # Use settings.json only when it looks like a real key
+                # (not a placeholder/test value).
                 _api_key = saved.get("api_key", "") or saved.get("llm_api_key", "")
                 _is_placeholder = not _api_key or "test" in _api_key or len(_api_key) < 20
                 if not _is_placeholder:
-                    if llm_provider == "openai" and not proc_env.get("OPENAI_API_KEY"):
+                    if llm_provider == "openai" and not _held_by_operator("OPENAI_API_KEY"):
                         proc_env["OPENAI_API_KEY"] = _api_key
-                    elif llm_provider == "anthropic" and not proc_env.get("ANTHROPIC_API_KEY"):
+                    elif llm_provider in ("anthropic", "claude_code", "claude-code") \
+                            and not _held_by_operator("ANTHROPIC_API_KEY"):
                         proc_env["ANTHROPIC_API_KEY"] = _api_key
                 if llm_provider == "ollama":
                     # Pass the real Ollama URL directly — ollama SDK strips path from OLLAMA_HOST
@@ -298,6 +345,12 @@ def _api_launch(body: bytes) -> dict:
                     val = saved.get(f"model_{skill}", "")
                     if val:
                         proc_env[f"ARI_MODEL_{skill.upper()}"] = val
+                        if skill == "eval":
+                            # The GUI keeps one evaluator-model field for
+                            # compatibility, but the evaluator Skill has two
+                            # independently addressable LLM operations.
+                            proc_env["ARI_MODEL_METRIC_PROPOSAL"] = val
+                            proc_env["ARI_MODEL_SEMANTIC_REVIEW"] = val
                 # VLM review model from settings
                 _vlm_model = saved.get("vlm_review_model", "")
                 if _vlm_model:
@@ -499,8 +552,6 @@ def _api_launch(body: bytes) -> dict:
                 proc_env["ARI_RUBRIC_GEN_TARGET_LEAVES"] = str(int(wiz_ors["rubric_gen_target_leaves"]))
             if wiz_ors.get("rubric_gen_temperature") is not None:
                 proc_env["ARI_RUBRIC_GEN_TEMPERATURE"] = str(float(wiz_ors["rubric_gen_temperature"]))
-            if wiz_ors.get("rubric_gen_two_stage") is not None:
-                proc_env["ARI_RUBRIC_GEN_TWO_STAGE"] = "1" if wiz_ors["rubric_gen_two_stage"] else "0"
             if wiz_ors.get("judge_n_runs") is not None:
                 proc_env["ARI_JUDGE_N_RUNS"] = str(int(wiz_ors["judge_n_runs"]))
             # Replicator agent (v0.7+) — wall-clock budget and BasicAgent vs
@@ -535,6 +586,8 @@ def _api_launch(body: bytes) -> dict:
             _provider_defaults = {
                 "openai": "gpt-4o",
                 "anthropic": "claude-sonnet-4-5",
+                "claude_code": "claude-sonnet-5",
+                "claude-code": "claude-sonnet-5",
                 "ollama": "qwen3:8b",
                 "cli-shim": "claude-cli",
                 "cli_shim": "claude-cli",
@@ -625,7 +678,8 @@ def _api_launch(body: bytes) -> dict:
         if isinstance(wiz_ors, dict) and wiz_ors:
             _launch_cfg["ors"] = {k: v for k, v in wiz_ors.items()}
         _st._launch_config = _launch_cfg
-        import time, shutil
+        import shutil
+        import time
         # Write log and launch_config.json inside pre-created checkpoint
         log_path = _pre_ckpt / f"ari_run_{int(time.time())}.log"
         _st._last_log_path = log_path
@@ -910,5 +964,3 @@ def _api_logs_sse(wfile) -> None:
             break
         time.sleep(1)
     _emit({"msg": "[end of log]"})
-
-

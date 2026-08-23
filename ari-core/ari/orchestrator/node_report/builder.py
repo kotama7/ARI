@@ -44,6 +44,41 @@ _FILES_CHANGED_BLOCKLIST_NAMES: frozenset[str] = frozenset({
     "eval_scores.json",
     ".DS_Store",
     "Thumbs.db",
+    # RQGM epoch-governance files (docs/reference/file_formats.md, "RQGM
+    # epoch-governance files (opt-in `ari_rqgm` mode)") — ARI internal state,
+    # never a node-produced source file.
+    "rqgm_transitions.jsonl",
+    "rqgm_audit.jsonl",
+    "epoch_state.json",
+    "rqgm_registry.json",
+    # RQGM proposal store files (docs/reference/file_formats.md, the
+    # `proposals/` section).
+    "proposal_records.jsonl",
+    "proposal_index.json",
+    # RQGM adversarial-loop files (docs/reference/file_formats.md, the
+    # `rqgm_adversarial_cases.jsonl` and `rqgm/adversarial_replay_pool.json`
+    # sections).
+    "rqgm_adversarial_cases.jsonl",
+    "adversarial_replay_pool.json",
+    # Paper-archive self-preference statistic (docs/reference/rqgm_schemas.md,
+    # the `rqgm/paper_self_preference_stat.json` section).
+    "paper_self_preference_stat.json",
+    # Paper-archive P1 pinned-panel report (docs/guides/rqgm_evaluation.md,
+    # "Paper metrics P1–P5").
+    "panel_review_report.json",
+    # RQGM prompt-evolution files (docs/reference/file_formats.md, the
+    # `prompt_evolution.jsonl` and `prompt_specs.json` sections).
+    "prompt_evolution.jsonl",
+    "prompt_specs.json",
+    # RQGM clean-room regeneration files (docs/reference/file_formats.md, the
+    # `rqgm_cleanroom.jsonl` section).
+    "rqgm_cleanroom.jsonl",
+    # RQGM selective-erasure state (docs/reference/file_formats.md, the
+    # `rqgm_erasure_state.json` section).
+    "rqgm_erasure_state.json",
+    # RQGM governance result cache (docs/reference/file_formats.md, the
+    # `rqgm_governance_cache.jsonl` section).
+    "rqgm_governance_cache.jsonl",
 })
 
 _FILES_CHANGED_BLOCKLIST_DIRS: frozenset[str] = frozenset({
@@ -61,6 +96,15 @@ _FILES_CHANGED_BLOCKLIST_DIRS: frozenset[str] = frozenset({
     ".tox",
     ".mypy_cache",
     ".ruff_cache",
+    # RQGM proposal archive (docs/reference/file_formats.md, the `proposals/`
+    # section): checkpoint-scoped ARI state
+    # ({ckpt}/proposals/archive/<record_id>/…), never a node-produced source
+    # tree.
+    "proposals",
+    # RQGM evolved prompt bodies (docs/reference/file_formats.md, the
+    # `rqgm_prompts/` section): {ckpt}/rqgm_prompts/<prompt_id>.md — ARI
+    # prompt state, never a node-produced source tree.
+    "rqgm_prompts",
 })
 
 _BUILD_KEYWORDS = (
@@ -104,7 +148,9 @@ def _is_blocklisted(path: Path, *, root: Path) -> bool:
         return True
     if rel.name in _FILES_CHANGED_BLOCKLIST_NAMES:
         return True
-    if PathManager.is_meta_file(rel.name):
+    # node scope: *root* is the node's work_dir (see the caller), so the
+    # agent's results.json / *.log belong in files_changed.
+    if PathManager.is_meta_file(rel.name, scope="node"):
         return True
     for part in rel.parts[:-1]:
         if part in _FILES_CHANGED_BLOCKLIST_DIRS:
@@ -144,8 +190,9 @@ def compute_files_changed(
     """
     added: list[dict] = []
     modified: list[dict] = []
-    deleted: list[str] = []
+    deleted: list[dict] = []
     inherited: list[dict] = []
+    unhashable: list[dict] = []
 
     child_root = Path(child_work_dir)
     parent_root = Path(parent_work_dir) if parent_work_dir else None
@@ -162,7 +209,18 @@ def compute_files_changed(
     for rel, child_path in sorted(child_files.items()):
         try:
             child_sha = _sha256_file(child_path)
-        except OSError:
+        except OSError as exc:
+            # A file the node PRODUCED whose hash cannot be read (foreign-uid
+            # container output, an ENOENT race, an I/O error). Dropping it left
+            # it absent from all four buckets, so a node whose only output was
+            # unhashable looked like a node that changed nothing: the sterile
+            # gate then logged "no files added/modified/deleted vs parent" — a
+            # positive assertion of something false — and clamped the score to
+            # 0 with has_real_data=False, while the provenance audit built no
+            # ArtifactRef for it and the run read as fully audited.
+            unhashable.append({"path": rel, "error": f"{type(exc).__name__}: {exc}"})
+            logger.warning("node_report: cannot hash produced file %s (%s); "
+                        "recorded as unhashable, NOT as unchanged", rel, exc)
             continue
         parent_path = parent_files.get(rel)
         if parent_path is None:
@@ -170,10 +228,19 @@ def compute_files_changed(
             continue
         try:
             parent_sha = _sha256_file(parent_path)
-        except OSError:
-            modified.append({"path": rel,
-                             "sha256_before": "",
-                             "sha256_after": child_sha})
+        except OSError as exc:
+            # The inverse of the produced-file case above: if the PARENT copy
+            # cannot be read we do NOT know whether the file changed. Emitting a
+            # `modified` entry with sha256_before="" fabricated a diff — even
+            # when child and parent are byte-identical — so a reader saw "this
+            # node modified kernel.c from <unknown> to 7febc7b" for a change
+            # that provably never happened, and the provenance audit minted an
+            # ArtifactRef claiming this node authored an unchanged file. Record
+            # it as unhashable (unknown), never as a change.
+            unhashable.append({"path": rel,
+                               "error": f"parent unreadable: {type(exc).__name__}: {exc}"})
+            logger.warning("node_report: cannot hash PARENT of %s (%s); recorded "
+                        "as unhashable, NOT as a modification", rel, exc)
             continue
         if parent_sha == child_sha:
             inherited.append({"path": rel, "sha256": child_sha})
@@ -184,14 +251,20 @@ def compute_files_changed(
 
     for rel in sorted(parent_files):
         if rel not in child_files:
-            deleted.append(rel)
+            deleted.append({"path": rel})
 
-    return {
+    out = {
         "added": added,
         "modified": modified,
         "deleted": deleted,
         "inherited_unchanged": inherited,
     }
+    if unhashable:
+        # Additive: only present when something could not be hashed, so a clean
+        # report is byte-identical to before. Consumers that decide "this node
+        # produced nothing" MUST treat a non-empty list as UNKNOWN, not as no.
+        out["unhashable"] = unhashable
+    return out
 
 
 # ── build/run command extraction ──────────────────────────────────────────
@@ -228,13 +301,48 @@ def _looks_like_shebang_or_directive(line: str) -> bool:
         or s.startswith("shopt ")
     ):
         return True
-    # Bare variable assignment, e.g. ``CXX=${CXX:-g++}``, ``CXXFLAGS="..."``.
-    # Without this, lines that merely set up env vars but happen to contain
-    # build keywords like ``g++`` get mis-classified as build_command and
-    # the actual compile + execute lines are skipped (Bug 3b).
-    if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", s):
+    # Bare variable assignment, e.g. ``CXX=${CXX:-g++}``, ``CXXFLAGS="..."``, and
+    # Makefile-style ``CC ?= cc`` / ``CFLAGS := ...`` / ``X += ...``. Without this,
+    # such lines (which merely set env/Make vars) get mis-classified as the build
+    # or run command and the actual command is skipped (Bug 3b / the ``CC ?= cc``
+    # run_command bug).
+    if re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*[:?+]?=", s):
         return True
     return False
+
+
+def _extract_from_makefile(text: str) -> tuple[str, str]:
+    """Extract (build, run) as ``make <target>`` invocations from a Makefile.
+
+    A Makefile is NOT a shell script: variable assignments (``CC ?= cc``),
+    target headers (``candidate: dep``) and TAB-indented recipes are not
+    standalone commands. We collect the phony/build targets and express build/run
+    as ``make <target>`` — e.g. build ``make candidate``, run ``make check``.
+    """
+    targets: list[str] = []
+    for raw in text.splitlines():
+        if not raw or raw[0] in ("\t", " ", "#"):  # recipe / indented / comment
+            continue
+        # ``name:`` target header, but NOT ``name :=`` (a Make assignment).
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_.\-]*)\s*:(?!=)", raw)
+        if m:
+            t = m.group(1)
+            if not t.startswith(".") and t not in targets:
+                targets.append(t)
+    if not targets:
+        return ("", "")
+
+    def _pick(prefs: tuple[str, ...]) -> str:
+        for p in prefs:
+            if p in targets:
+                return p
+        return ""
+
+    build_t = _pick(("candidate", "all", "build")) or targets[0]
+    run_t = _pick(("run", "check", "selftest"))
+    build = f"make {build_t}" if build_t else ""
+    run = f"make {run_t}" if run_t else ""
+    return (build, run)
 
 
 def extract_build_run_commands(work_dir: Path) -> tuple[str, str]:
@@ -262,6 +370,17 @@ def extract_build_run_commands(work_dir: Path) -> tuple[str, str]:
     for path in candidates:
         text = _read_text_safe(path)
         if not text:
+            continue
+        # A Makefile is parsed structurally (targets -> ``make <target>``), not
+        # line-by-line: its variable assignments and recipes are not commands.
+        if path.name.lower() in ("makefile", "gnumakefile"):
+            _mb, _mr = _extract_from_makefile(text)
+            if not build and _mb:
+                build = _mb
+            if not run and _mr:
+                run = _mr
+            if build and run:
+                break
             continue
         for raw in text.splitlines():
             line = raw.strip()
@@ -301,6 +420,25 @@ _INTERNAL_JSON_NAMES = {
     "launch_config.json", "evaluation_criteria.json",
     # Prompt-provenance rollup (subtask 044) — ARI internal, not a data output.
     "prompt_versions.json",
+    # RQGM mode provenance (Task 01) — ARI internal, not a data output.
+    "rqgm_state.json",
+    # RQGM epoch-governance snapshots (Task 02) — ARI internal.
+    "epoch_state.json",
+    "rqgm_registry.json",
+    # RQGM proposal index (Task 03) — ARI internal.
+    "proposal_index.json",
+    # RQGM evaluation harness (Task 13) — ARI internal, not data outputs.
+    "rqgm_eval_metrics.json",
+    "rqgm_injection_provenance.json",
+    # Paper-archive mode provenance (paper-archive Task 01) — ARI internal.
+    "paper_archive_state.json",
+    # Paper-archive self-preference statistic (docs/reference/rqgm_schemas.md,
+    # the `rqgm/paper_self_preference_stat.json` section) — ARI internal, not
+    # a data output.
+    "paper_self_preference_stat.json",
+    # Paper-archive P1 pinned-panel report (docs/guides/rqgm_evaluation.md,
+    # "Paper metrics P1–P5") — ARI internal eval artifact, not a data output.
+    "panel_review_report.json",
 }
 
 
@@ -350,7 +488,6 @@ def derive_self_assessment_from_evaluator(
     - 0.4 <= axis_score < 0.7 → next_steps_hints
     - axis_score >= 0.7 → not surfaced (high-rated axes aren't "improve me")
     """
-    succeeded = bool(getattr(node, "has_real_data", False))
     headline = ""
     concerns: list[str] = []
     next_steps: list[str] = []
@@ -386,7 +523,6 @@ def derive_self_assessment_from_evaluator(
 
     return (
         {
-            "succeeded": succeeded,
             "headline": headline,
             "concerns": concerns,
         },
@@ -426,11 +562,17 @@ def _artifact_to_record(artifact: Any, work_dir: Path) -> dict | None:
             or ""
         )
         if not name:
-            # Inline result blob with no filename — represent as an unknown
-            # placeholder so downstream code sees something.
+            # Inline result blob (e.g. the captured tool stdout agent/loop.py
+            # substitutes for fake artifacts) — there is NO file on disk. The
+            # schema requires ``filename``, so we keep the type there for
+            # display, but mark the entry ``inline`` so the memory audit does
+            # not resolve ``{work_dir}/result``, find it absent, and report a
+            # phantom ``missing`` on every run. A genuinely deleted artifact
+            # carries no ``inline`` marker and is still caught.
             return {
                 "filename": str(artifact.get("type", "result")),
                 "role": "unknown",
+                "inline": True,
             }
         rec = {
             "filename": name,
@@ -480,13 +622,168 @@ class NodeReportInputs:
     trace_log: list[str]
 
 
+
+def _compute_env_block(run_env: dict, parent_work_dir) -> dict:
+    """The ``compute_env`` block, with an env-signature comparison vs the parent.
+
+    The resource provenance (executor / hostname / cpu_info / mem_total_kb /
+    compilers) was already captured, but nothing ever assembled it into the
+    ``compute_env`` key the metric-gaming adversary reads
+    (``engine._pre_metric_gaming``), so that detector's second half — "this
+    node's metrics were produced in a DIFFERENT environment from its parent's,
+    so comparing them is not sound" — could never fire.
+
+    ``env_signature_mismatch`` is only set when BOTH signatures are known: an
+    absent parent signature is unknown, not a mismatch, and must never be
+    reported as one.
+    """
+    sig_src = {
+        "executor": str(run_env.get("executor", "") or ""),
+        "cpu_info": dict(run_env.get("cpu_info") or {}),
+        "mem_total_kb": int(run_env.get("mem_total_kb") or 0) or 0,
+        "compilers": dict(run_env.get("compilers") or {}),
+    }
+    known = any(bool(v) for v in sig_src.values())
+    signature = (
+        hashlib.sha256(
+            json.dumps(sig_src, sort_keys=True, ensure_ascii=False).encode()
+        ).hexdigest()[:12]
+        if known else ""
+    )
+    parent_signature = ""
+    try:
+        if parent_work_dir:
+            p = Path(parent_work_dir) / "node_report.json"
+            if p.is_file():
+                parent = json.loads(p.read_text(encoding="utf-8"))
+                parent_signature = str(
+                    ((parent or {}).get("compute_env") or {}).get(
+                        "env_signature", ""
+                    ) or ""
+                )
+    except Exception:
+        parent_signature = ""
+    return {
+        **sig_src,
+        "hostname": str(run_env.get("hostname", "") or ""),
+        "env_signature": signature,
+        "parent_env_signature": parent_signature,
+        "env_signature_mismatch": bool(
+            signature and parent_signature and signature != parent_signature
+        ),
+    }
+
+
+class _NotARunNodeDir(Exception):
+    """work_dir is not ``experiments/{run_id}/{node_id}`` — do not scan siblings."""
+
+
+def _partitions_used_block(work_dir, run_env: dict, node_id: str = "") -> dict:
+    """Every scheduler partition this EXPERIMENT ran on, not just this node's.
+
+    A node_report used to name only the partition of its own allocation, so a
+    run that spread across a heterogeneous cluster left no single record of
+    where it had actually executed — and a cross-node metric comparison could
+    not be checked against the hardware it came from.
+
+    Two independent sources, because they answer different questions:
+
+    - ``used``: scanned from every sibling node's ``_run_env.json`` under the
+      same run. This is where work REALLY ran (observed, not configured).
+    - ``catalog``: the per-partition probe from ``heterogeneous_env.json``.
+      This is what each partition IS. Probed partitions that never ran a node
+      still appear here, which is what makes "we could have used X but did
+      not" answerable.
+
+    The catalog is deliberately compacted to the identifying fields: the raw
+    ``module avail`` / ``lscpu`` dumps run to ~30 KB per partition and already
+    live once at the checkpoint root, so ``catalog_path`` points there rather
+    than copying them into every node's report.
+    """
+    block: dict = {
+        "this_node": str(run_env.get("slurm_partition", "") or ""),
+        "used": [],
+        "by_partition": {},
+        "catalog": {},
+        "catalog_path": "",
+    }
+    # ── observed: sibling node dirs of this run (experiments/{run_id}/{node_id})
+    #
+    # Only scan siblings when this work_dir really is a node dir of a run, i.e.
+    # its basename is the node id. Otherwise the "siblings" are some unrelated
+    # directory's children and any `_run_env.json` down there would be counted
+    # as part of THIS experiment — a wrong answer, not a missing one.
+    try:
+        wd = Path(work_dir)
+        if not node_id or wd.name != str(node_id):
+            raise _NotARunNodeDir
+        run_root = wd.parent
+        seen: dict[str, dict] = {}
+        for idx, node_dir in enumerate(sorted(run_root.iterdir())):
+            if idx >= 2000:  # runaway guard; runs are far smaller than this
+                break
+            if not node_dir.is_dir():
+                continue
+            env_file = node_dir / "_run_env.json"
+            if not env_file.is_file():
+                continue
+            try:
+                d = json.loads(env_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            part = str((d or {}).get("slurm_partition", "") or "")
+            if not part:
+                continue
+            rec = seen.setdefault(
+                part, {"node_count": 0, "nodelists": set(), "hostnames": set()})
+            rec["node_count"] += 1
+            for key, field in (("nodelists", "slurm_nodelist"),
+                               ("hostnames", "hostname")):
+                val = str((d or {}).get(field, "") or "")
+                if val:
+                    rec[key].add(val)
+        block["used"] = sorted(seen)
+        block["by_partition"] = {
+            p: {
+                "node_count": r["node_count"],
+                "nodelists": sorted(r["nodelists"]),
+                "hostnames": sorted(r["hostnames"]),
+            }
+            for p, r in sorted(seen.items())
+        }
+    except Exception:
+        pass
+    # ── catalog: the per-partition probe written once per checkpoint
+    try:
+        from ari.paths import PathManager as _PM
+
+        ckpt = _PM.checkpoint_dir_from_env()
+        if ckpt is not None:
+            cat_path = Path(ckpt) / "heterogeneous_env.json"
+            if cat_path.is_file():
+                cat = json.loads(cat_path.read_text(encoding="utf-8"))
+                block["catalog_path"] = str(cat_path)
+                for label, env in ((cat or {}).get("nodes") or {}).items():
+                    if not isinstance(env, dict):
+                        continue
+                    block["catalog"][str(label)] = {
+                        k: env.get(k)
+                        for k in ("arch", "cpu_model", "threads",
+                                  "mem_total_kb", "gpus", "compilers",
+                                  "cache_measured")
+                        if env.get(k) not in (None, "", [], {})
+                    }
+    except Exception:
+        pass
+    return block
+
+
 def build_node_report(
     *,
     node: Any,
     work_dir: Path,
     parent_work_dir: Path | None,
     eval_result: dict | None = None,
-    delta_vs_parent: str | None = None,
     what_was_done: str | None = None,
     migration_source: str = "fresh",
 ) -> dict:
@@ -497,6 +794,15 @@ def build_node_report(
     data becomes empty/null in the returned dict so the schema remains valid.
     """
     work_dir = Path(work_dir)
+
+    # Populated by ari.agent.run_env (writes _run_env.json from inside the
+    # executing process — slurm_submit on the compute node, run_bash locally).
+    # Empty dict means no skill captured anything (older runs, dry-run, etc.).
+    try:
+        from ari.agent.run_env import read_run_env as _read_run_env
+        run_env = _read_run_env(work_dir) or {}
+    except Exception:
+        run_env = {}
 
     label_value = getattr(node, "label", "")
     if hasattr(label_value, "value"):
@@ -509,10 +815,34 @@ def build_node_report(
     status_value = str(status_value or "")
 
     files_changed = compute_files_changed(parent_work_dir, work_dir)
+    # Attach the agent's own light per-file explanation (finish JSON ``file_notes``)
+    # to each changed entry, matched by path. Best-effort: files the agent did not
+    # note simply carry no ``note`` (the diff itself is authoritative).
+    _file_notes = getattr(node, "file_notes", None) or {}
+    if _file_notes:
+        for _bucket in ("added", "modified", "deleted"):
+            for _entry in files_changed.get(_bucket, []):
+                _note = _file_notes.get(_entry.get("path"))
+                if isinstance(_note, str) and _note.strip():
+                    _entry["note"] = _note.strip()
 
     self_assessment, next_steps = derive_self_assessment_from_evaluator(
         eval_result or {}, node,
     )
+    # Prefer the agent's OWN self-reviewed next steps (LLM self-review). Under the
+    # deterministic scorer the evaluator emits no graded axes, so the axis-derived
+    # ``next_steps`` above is empty; the agent's self-review is the real source.
+    _agent_next = [str(s).strip() for s in (getattr(node, "agent_next_steps", []) or []) if str(s).strip()]
+    if _agent_next:
+        next_steps = _agent_next
+    # self_assessment is only the node's OWN assessment (LLM self-review):
+    # headline = the agent's summary; concerns = its self-flagged caveats.
+    # Objective validity is a separate top-level ``measurement_valid`` field.
+    # The evaluator's terse reason lives in ``evaluator_reason``.
+    self_assessment["headline"] = (getattr(node, "agent_summary", "") or "").strip()
+    _agent_concerns = [str(c).strip() for c in (getattr(node, "agent_concerns", []) or []) if str(c).strip()]
+    if _agent_concerns:
+        self_assessment["concerns"] = _agent_concerns
 
     artifacts_in = list(getattr(node, "artifacts", []) or [])
     artifacts_out: list[dict] = []
@@ -521,17 +851,43 @@ def build_node_report(
         if rec is not None:
             artifacts_out.append(rec)
 
-    build_cmd, run_cmd = extract_build_run_commands(work_dir)
-
-    # Run-environment capture: where did this node's tool calls actually run?
-    # Populated by ari.agent.run_env (writes _run_env.json from inside the
-    # executing process — slurm_submit on the compute node, run_bash locally).
-    # Empty dict means no skill captured anything (older runs, dry-run, etc.).
+    # Auto-capture PRODUCED output files from the work_dir. The agent rarely
+    # DECLARES its outputs, so ``artifacts`` was empty even when e.g.
+    # ``selftest_out.txt`` / ``*.csv`` / plots existed on disk. Include only
+    # produced-OUTPUT roles (data_output / log / figure) so scaffolding source
+    # (.c/.h/Makefile/.md -> "unknown"), compiled binaries, ``.o`` build junk,
+    # and ARI-internal JSON (node_report/results/... -> "unknown") are all
+    # excluded. Top-level only (skips the uploads/ subdir); deduped against the
+    # agent-declared list.
+    _declared = {r.get("filename") for r in artifacts_out if isinstance(r, dict)}
     try:
-        from ari.agent.run_env import read_run_env as _read_run_env
-        run_env = _read_run_env(work_dir) or {}
-    except Exception:
-        run_env = {}
+        for _f in sorted(work_dir.iterdir()):
+            if not _f.is_file():
+                continue
+            _nm = _f.name
+            # Skip dot-files and ARI-internal ``_``-prefixed files (e.g.
+            # _run_env.json) as well as declared/meta files. ``scope="node"``:
+            # work_dir is this node's dir, so results.json / *.log here are the
+            # agent's own outputs, not ARI metadata.
+            if (_nm in _declared or _nm.startswith(".") or _nm.startswith("_")
+                    or PathManager.is_meta_file(_nm, scope="node")):
+                continue
+            if classify_artifact_role(_nm, work_dir) not in (
+                "data_output", "log", "figure"):
+                continue
+            _rec = {"filename": _nm,
+                    "role": classify_artifact_role(_nm, work_dir)}
+            try:
+                _rec["size"] = _f.stat().st_size
+                _rec["sha256"] = _sha256_file(_f)
+            except OSError:
+                pass
+            artifacts_out.append(_rec)
+            _declared.add(_nm)
+    except OSError:
+        pass
+
+    build_cmd, run_cmd = extract_build_run_commands(work_dir)
 
     metrics = dict(getattr(node, "metrics", {}) or {})
     if eval_result:
@@ -545,7 +901,32 @@ def build_node_report(
     if eval_result:
         evaluator_reason = (eval_result.get("reason") or "").strip()
     if not evaluator_reason:
-        evaluator_reason = (getattr(node, "eval_summary", "") or "").strip()
+        # ``eval_summary`` is legacy dual-use state and may still contain the
+        # LLM planner's direction when no evaluator ran. Evidence must never
+        # relabel that text as an objective evaluator reason.
+        evaluator_reason = (
+            getattr(node, "evaluator_reason", "") or "").strip()
+    evaluation_cases = dict(getattr(node, "evaluation_cases", {}) or {})
+    if eval_result and isinstance(eval_result.get("evaluation_cases"), dict):
+        evaluation_cases = dict(eval_result["evaluation_cases"])
+    measurement_valid = bool(getattr(node, "has_real_data", False))
+    if eval_result and isinstance(eval_result.get("has_real_data"), bool):
+        measurement_valid = eval_result["has_real_data"]
+    evaluation_status = str(getattr(node, "evaluation_status", "") or "")
+    if eval_result and eval_result.get("evaluation_status"):
+        evaluation_status = str(eval_result["evaluation_status"])
+    if not evaluation_status:
+        evaluation_status = "valid" if measurement_valid else "candidate_invalid"
+    measurement_audit = dict(getattr(node, "measurement_audit", {}) or {})
+    if eval_result and isinstance(eval_result.get("measurement_audit"), dict):
+        measurement_audit = dict(eval_result["measurement_audit"])
+    measurement_audit = {
+        "effective_candidate_compile_flags": list(
+            measurement_audit.get("effective_candidate_compile_flags") or []),
+        "rejected_candidate_compile_flags": list(
+            measurement_audit.get("rejected_candidate_compile_flags") or []),
+        "cases": dict(measurement_audit.get("cases") or {}),
+    }
 
     started_at = getattr(node, "created_at", "") or ""
     completed_at = getattr(node, "completed_at", "") or _utc_now_iso()
@@ -561,14 +942,20 @@ def build_node_report(
         "status": status_value,
         "started_at": started_at,
         "completed_at": completed_at,
-        "original_direction": getattr(node, "original_direction", None)
-            or (eval_result.get("original_direction") if eval_result else None),
         "files_changed": files_changed,
         "what_was_done": what_was_done or "",
-        "delta_vs_parent": delta_vs_parent or "",
         "metrics": metrics,
+        "measurement_valid": measurement_valid,
+        "evaluation_status": evaluation_status,
+        "evaluation_cases": evaluation_cases,
+        "measurement_audit": measurement_audit,
         "self_assessment": self_assessment,
         "next_steps_hints": next_steps,
+        # Whether those hints were written AFTER the node was scored (the
+        # design) or before, because the post-scoring call failed. The two
+        # answer different questions, so an analysis must be able to tell
+        # them apart rather than pool them.
+        "self_report_stage": getattr(node, "self_report_stage", "pre_evaluation"),
         "build_command": build_cmd,
         "run_command": run_cmd,
         "artifacts": artifacts_out,
@@ -582,10 +969,27 @@ def build_node_report(
         "slurm_job_id": run_env.get("slurm_job_id", "") or "",
         "slurm_partition": run_env.get("slurm_partition", "") or "",
         "slurm_nodelist": run_env.get("slurm_nodelist", "") or "",
+        # Every partition the EXPERIMENT touched, not just this node's — see
+        # _partitions_used_block. Authorised machine-provenance capture.
+        "partitions_used": _partitions_used_block(
+            work_dir, run_env, getattr(node, "id", "") or ""),
         "cpu_info": dict(run_env.get("cpu_info") or {}),
         "mem_total_kb": int(run_env.get("mem_total_kb") or 0) or 0,
         "compilers": dict(run_env.get("compilers") or {}),
+        # What the measurement ACTUALLY ran under, recorded by the executing
+        # shell itself. `compilers` above is the PRE-module view taken from
+        # the ARI process, so without this a report cannot say which modules
+        # produced its numbers — and two module configurations, the very thing
+        # loading them exists to compare, would look identical in the record.
+        "execution_env": dict(run_env.get("execution") or {}),
+        # The assembled view the metric-gaming adversary reads.
+        "compute_env": _compute_env_block(run_env, parent_work_dir),
     }
+    from ari.orchestrator.node_report.scientific_assurance import (
+        scientific_assurance_fields,
+    )
+
+    report.update(scientific_assurance_fields(node))
     return report
 
 
@@ -595,7 +999,6 @@ def write_node_report(
     work_dir: Path,
     parent_work_dir: Path | None,
     eval_result: dict | None = None,
-    delta_vs_parent: str | None = None,
     what_was_done: str | None = None,
     migration_source: str = "fresh",
 ) -> Path:
@@ -614,7 +1017,6 @@ def write_node_report(
             work_dir=work_dir,
             parent_work_dir=parent_work_dir,
             eval_result=eval_result,
-            delta_vs_parent=delta_vs_parent,
             what_was_done=what_was_done,
             migration_source=migration_source,
         )
@@ -635,9 +1037,17 @@ def write_node_report(
                 "node_id": getattr(node, "id", ""),
                 "status": "error",
                 "error": str(exc),
-                "migration_source": migration_source,
                 "files_changed": {"added": [], "modified": [], "deleted": [], "inherited_unchanged": []},
                 "metrics": {},
+                "measurement_valid": False,
+                "evaluation_status": "infrastructure_error",
+                "evaluation_cases": {},
+                "measurement_audit": {
+                    "effective_candidate_compile_flags": [],
+                    "rejected_candidate_compile_flags": [],
+                    "cases": {},
+                },
+                "self_assessment": {"headline": "", "concerns": []},
                 "artifacts": [],
                 "depth": int(getattr(node, "depth", 0) or 0),
                 "label": "other",
@@ -647,8 +1057,9 @@ def write_node_report(
         return out_path
 
 
-# Phase 3E (REFACTORING.md §3 + orchestrator/REFACTORING.md §2 Step 1)
-# moved this module into a package; ``reconstruct_report_from_legacy``
-# is re-exported from ``ari.orchestrator.node_report.__init__`` and the
+# The refactor that turned this module into the
+# ``ari.orchestrator.node_report`` package left the legacy reader outside
+# it: ``reconstruct_report_from_legacy`` is re-exported from
+# ``ari.orchestrator.node_report.__init__`` and the
 # ``legacy_reconstruct`` shim sub-module — importing it here would
 # create a cycle (the migrations module pulls helpers from this file).

@@ -16,6 +16,7 @@ function StatusBadge({ status }: { status: string }) {
   if (status === 'running') return <Badge variant="yellow">{'⏳'} Running</Badge>;
   if (status === 'completed' || status === 'success') return <Badge variant="green">{'✓'} Done</Badge>;
   if (status === 'failed') return <Badge variant="red">{'✗'} Failed</Badge>;
+  if (status === 'blocked') return <Badge variant="red">{'✗'} Blocked</Badge>;
   return <Badge variant="muted">{status}</Badge>;
 }
 

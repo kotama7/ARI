@@ -6,7 +6,9 @@ sources:
     role: doc
   - path: ari-core/ari/cli
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/paths.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # ARI 入门
@@ -37,8 +39,10 @@ ARI 是一个端到端的自主研究系统：给它一个纯文本的研究目�
 ## 两件值得先了解的事
 
 - **仪表盘运行在 `8765` 端口上。** 在仓库根目录用 `./start.sh` 启动每个服务并打开 <http://localhost:8765>；用 `./shutdown.sh` 停止。
-- **每次运行都是自包含的。** 一次运行的所有状态都存于
-  `workspace/checkpoints/<timestamp>_<slug>/` 之下 —— 不会向你的主目录写入任何东西，API 密钥来自 `.env`，绝不来自已保存的设置。
+- **一次运行的结果是自包含的，它的临时工作区不是。** 论文、图表、树、EAR 与各类报告都会落到
+  `workspace/checkpoints/<timestamp>_<slug>/` 之下，API 密钥来自 `.env`，绝不来自已保存的设置。有两样东西在别处：
+  每个节点的工作目录位于 `workspace/experiments/<run_id>/<node_id>/`（与 `checkpoints/` 平级），
+  而由 `./start.sh` 启动的各项服务把它们的 PID 与日志文件保存在 `~/.ari/` 下。
 
 ---
 

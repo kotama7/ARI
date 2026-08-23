@@ -187,6 +187,74 @@ class TestIsMetaFile:
         assert not PathManager.is_meta_file(name)
 
 
+class TestIsMetaFileNodeScope:
+    """The check is basename-only, and two directories disagree about some names.
+
+    ``{checkpoint_dir}/results.json`` is ARI's (checkpoint.py writes it), but the
+    ``emit_results`` tool tells the AGENT to write its own ``results.json`` inside
+    its node work_dir, and the claim gate reads it back from there. Treating the
+    node one as metadata made the agent's declared results invisible in its own
+    record (0 of the 19 nodes that wrote one) and withheld it from the child's
+    work_dir copy (only 3 of 10 children inherited it).
+    """
+
+    def test_agent_deliverable_is_visible_in_a_node_dir(self):
+        assert PathManager.is_meta_file("results.json") is True          # checkpoint
+        assert PathManager.is_meta_file("results.json", scope="node") is False
+
+    def test_agent_log_is_visible_in_a_node_dir(self):
+        """A ``.log`` in a node dir is the agent's (measured: ARI wrote 0 of them
+        into node dirs across a 40-node study)."""
+        assert PathManager.is_meta_file("bench.log", scope="node") is False
+        assert PathManager.is_meta_file("bench.log") is True             # checkpoint
+
+    def test_aris_own_log_stays_hidden_even_in_node_scope(self):
+        """The extension relaxation must not un-hide an EXACT ARI name: ari.log is
+        ARI's log wherever it appears."""
+        assert PathManager.is_meta_file("ari.log", scope="node") is True
+
+    @pytest.mark.parametrize("name", [
+        "node_report.json",     # ARI writes these straight into the node dir
+        "full_log.json",
+        "tree.json",
+        "cost_trace.jsonl",
+        "memory_access.2026.jsonl",   # regex pattern
+    ])
+    def test_ari_written_node_files_stay_hidden(self, name):
+        assert PathManager.is_meta_file(name, scope="node") is True
+
+    def test_default_scope_is_checkpoint_and_unchanged(self):
+        """Callers that do not pass a scope keep the old behaviour exactly."""
+        for name in ("results.json", "bench.log", "ari.log", "tree.json"):
+            assert (PathManager.is_meta_file(name)
+                    is PathManager.is_meta_file(name, scope="checkpoint"))
+
+    def test_node_scope_must_not_be_used_for_the_parent_to_child_copy(self):
+        """STUDY CONTROL — the same predicate has OPPOSITE requirements per site.
+
+        RECORD/DISPLAY (node_report files_changed/artifacts, viz file browser):
+        a node's OWN results.json / *.log are its deliverables -> scope="node".
+
+        The parent->child COPY (the handoff study's *code* channel) is the
+        opposite: the child prompt promises "NOT inherited: the parent's
+        results.csv, slurm-*.out, run.log, metrics.json — deliberately excluded so
+        you cannot silently reuse the parent's numbers." The parent's results must
+        reach a child ONLY via the controlled summary / full_log channels. Using
+        scope="node" there hands every arm the parent's numbers through the code
+        channel and collapses the 2x2 factorial. Regression: that is exactly the
+        bug this pins.
+        """
+        # what the copy site MUST still block (default/checkpoint scope)
+        for name in ("results.json", "run.log", "noisy.log", "metrics.json"):
+            if name in ("metrics.json",):
+                continue  # not a META name; blocked by _is_output_artifact instead
+            assert PathManager.is_meta_file(name) is True, (
+                f"{name} must stay blocked on the parent->child copy path")
+        # ...while the SAME names stay visible in a node's own record
+        assert PathManager.is_meta_file("results.json", scope="node") is False
+        assert PathManager.is_meta_file("noisy.log", scope="node") is False
+
+
 # ── slugify ───────────────────────────────────────────────────────────────
 
 
@@ -569,9 +637,30 @@ class TestResolverEnvHelpers:
         )
 
     def test_set_checkpoint_dir_env(self, monkeypatch, tmp_path):
+        # setenv FIRST, so monkeypatch has the variable on record and removes it
+        # at teardown. delenv(raising=False) on an ALREADY-ABSENT key records
+        # nothing, and set_checkpoint_dir_env writes os.environ directly — so
+        # this test's tmp_path leaked into the environment of every later test
+        # in the same process. ARI_CHECKPOINT_DIR wins the workspace-root
+        # precedence, so anything resolving a workspace afterwards (the harness
+        # registry, for one) looked for it under a deleted temp directory and
+        # reported "no harnesses are registered".
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", "")
         monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
         RuntimePathResolver.set_checkpoint_dir_env(tmp_path / "ck")
         assert PathManager.checkpoint_dir_from_env() == (tmp_path / "ck")
+
+    def test_setting_the_checkpoint_dir_does_not_leak_out_of_a_test(self):
+        """The environment this suite runs under must survive its own tests.
+
+        Not hypothetical: the leak above made every harness-registry test in the
+        same process fail with "no harnesses are registered", and it fired only
+        when the two suites ran together — each was green on its own.
+        """
+        import os
+        value = os.environ.get("ARI_CHECKPOINT_DIR")
+        assert value is None or "pytest-of-" not in value, (
+            f"ARI_CHECKPOINT_DIR still points into a test temp dir: {value}")
 
     def test_from_checkpoint_dir_parity_with_pathmanager(self, tmp_path):
         ck = tmp_path / "checkpoints" / "run1"

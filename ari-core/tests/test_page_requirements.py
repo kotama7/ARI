@@ -95,6 +95,37 @@ def test_wizard_page():
     assert "StepLaunch" in src, "WizardPage must use StepLaunch"
 
 
+def test_step_resources_providers_are_all_served_by_the_catalog():
+    """Every provider the Wizard offers must be one the served catalog describes.
+
+    The Wizard renders its model dropdown from the catalog, so a provider the
+    server does not describe gets an empty dropdown -- no models, no way to
+    pick one. This is not hypothetical: the Wizard offered `claude_code` and
+    the served catalog did not list it, so moving the Wizard onto the catalog
+    would have emptied that provider's dropdown. Nothing could have caught it,
+    because the Wizard's provider list had no test at all and the Settings-side
+    check only ever read the Settings directory -- and Settings does not offer
+    `claude_code`.
+
+    `custom` is excluded on purpose: it is the free-entry mode, not a provider,
+    and StepResources routes it to the text field rather than the dropdown.
+    """
+    from ari.viz.checkpoint_api import _api_models
+
+    src = _read_component("Wizard/StepResources.tsx")
+    m = re.search(r"\{\s*(\[[^\]]*\])\.map\(\(p\) =>", src)
+    assert m, "the Wizard's provider toggle list was not found in StepResources.tsx"
+    offered = [p for p in re.findall(r"'([\w-]+)'", m.group(1)) if p != "custom"]
+    assert offered, "no providers parsed out of the Wizard's provider toggle list"
+
+    served = {p["id"] for p in _api_models()["providers"]}
+    missing = [p for p in offered if p not in served]
+    assert not missing, (
+        f"the Wizard offers {missing} but the served catalog only describes "
+        f"{sorted(served)}; those providers would render an empty model dropdown"
+    )
+
+
 def test_step_resources_openai_models_include_dated_gpt4o_snapshot():
     """Wizard's OpenAI dropdown must offer the gpt-4o-2024-08-06 dated snapshot.
 
@@ -103,16 +134,21 @@ def test_step_resources_openai_models_include_dated_gpt4o_snapshot():
     `missing_scope: model.request`). The dated `gpt-4o-2024-08-06` is a stable
     fallback that ARI users can pick to bypass that routing surprise.
     """
-    src = _read_component("Wizard/StepResources.tsx")
-    # Locate the openai array entry inside PROVIDER_MODELS
-    m = re.search(r"openai\s*:\s*\[([^\]]*)\]", src)
-    assert m, "PROVIDER_MODELS.openai array not found in StepResources.tsx"
-    openai_models_blob = m.group(1)
-    assert "'gpt-4o-2024-08-06'" in openai_models_blob \
-        or '"gpt-4o-2024-08-06"' in openai_models_blob, (
-            "gpt-4o-2024-08-06 must be selectable from the OpenAI provider dropdown; "
-            f"found: {openai_models_blob}"
-        )
+    # Asserted against the served catalog, which is now what the dropdown
+    # renders. It used to be asserted against a table inside StepResources.tsx
+    # -- so it passed while the server, the Wizard and Settings each offered a
+    # different set of OpenAI models, because each check only ever read the copy
+    # sitting next to it.
+    from ari.viz.checkpoint_api import _api_models
+
+    openai = next(
+        (p for p in _api_models()["providers"] if p["id"] == "openai"), None
+    )
+    assert openai is not None, "the served catalog must describe the openai provider"
+    assert "gpt-4o-2024-08-06" in openai["models"], (
+        "gpt-4o-2024-08-06 must be selectable from the OpenAI provider dropdown; "
+        f"served: {openai['models']}"
+    )
 
 
 def test_step_resources_does_not_call_fetch_settings():
@@ -149,9 +185,14 @@ def test_wizard_page_loads_settings_once():
         "WizardPage.tsx must use a ref guard to ensure fetchSettings runs only "
         "once per mount (otherwise React StrictMode or re-renders would refire it)"
     )
-    assert "PROVIDER_MODELS" in src, (
-        "WizardPage.tsx must import PROVIDER_MODELS from StepResources to "
-        "validate the loaded model name against the dropdown options"
+    # The saved model is taken as-is. WizardPage used to validate it against an
+    # imported PROVIDER_MODELS table, which meant a model the table had merely
+    # drifted away from -- not a wrong one -- was silently demoted into the
+    # custom field. Whether the catalog lists it is StepResources' question,
+    # asked against the catalog it actually loaded.
+    assert "PROVIDER_MODELS" not in src, (
+        "WizardPage.tsx must not carry a local model table; the served catalog "
+        "(hooks/useModelCatalog) is the only list of models"
     )
 
 

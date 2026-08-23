@@ -1,5 +1,30 @@
 // ARI Dashboard – global application context
 // Provides shared state (AppState, WebSocket nodes, current page) to all components.
+//
+// LEGACY-SCOPED (gui_refresh G2 tail). State ownership is split three ways and
+// each kind has exactly one owner: server state is cached and invalidated
+// (react-query, keys carrying the run id), view state is local and ephemeral,
+// navigation state lives in the URL. Caching/polling policy for the v2 surface
+// follows from that — reads go through the one query client, freshness policy
+// is set once as client defaults, and a stream event triggers an invalidation
+// rather than a poll.
+//
+// This context is the remote-data store for the LEGACY pages only: it polls
+// the frozen `/state` facade every 5s OUTSIDE the query client, mirrors the
+// tree WebSocket, and tracks the global active checkpoint — exactly the
+// coupling the v2 surface must not inherit. v2 workspaces (Projects/Overview/
+// TreeV2/IdeasV2/ResultsV2/Governance/ConfigBrowser/ConfigStudio) source
+// remote data run-explicitly from `/api/v1` via react-query (`useV1` hooks)
+// and scope themselves with `?run=` URL state instead. Do NOT add new
+// consumers or new remote data here; the structural guard
+// `src/__tests__/appContextScope.test.ts` pins the v2 dirs AppContext-free
+// (single documented exception: IdeasV2Page's run-identity-gated research-goal
+// card). Removal of this provider is decided at the G6 legacy-removal gate,
+// and the order is a dependency chain: every legacy page must be gone and the
+// structural guard must pass with NO exception entries before this provider's
+// remote state may be deleted, and the `/state` facade may only be deleted
+// after this provider is (docs/guides/gui_cutover_runbook.md, "6. Legacy
+// removal").
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { AppState, Checkpoint, TreeNode } from '../types';

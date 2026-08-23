@@ -47,12 +47,27 @@ EXCLUDE_DIRS = {"tests", "test", "__pycache__", "node_modules", ".git",
 
 
 def _iter_source_files() -> Iterable[Path]:
-    """Yield repo source files, skipping tests, GUI writer, and heavy dirs."""
+    """Yield repo source files, skipping tests, GUI writer, and heavy dirs.
+
+    EXCLUSIONS ARE RELATIVE TO THE CHECKOUT, not matched against every component
+    of an absolute path. ``EXCLUDE_DIRS`` holds ``workspace`` and
+    ``checkpoints``, and this repository's own convention puts scratch
+    checkouts under ``workspace/checkpoints/<stamp>/tree`` -- so a checkout
+    living there matched its own location and excluded EVERY file in itself.
+    Measured: the same commit yielded 434 files from the main checkout and 0
+    from a linked worktree, and 0 files means no reader is ever found, so all
+    27 parametrisations reported "set by the GUI launcher but has no reader
+    anywhere" -- a finding produced by having looked nowhere.
+
+    That is the shape this suite exists to catch, one level up: a check whose
+    silence is indistinguishable from a clean result.
+    """
     for root in SEARCH_ROOTS:
         if not root.exists():
             continue
         for p in root.rglob("*.py"):
-            if any(part in EXCLUDE_DIRS for part in p.parts):
+            if any(part in EXCLUDE_DIRS
+                   for part in p.relative_to(REPO_ROOT).parts):
                 continue
             if p.name.startswith("test_") or p.name == "api_experiment.py":
                 continue
@@ -130,7 +145,9 @@ ENV_VARS_WITH_CONSUMERS: list[tuple[str, str]] = [
     # ── Per-phase LLM model overrides (wired Apr 2026) ──
     ("ARI_MODEL_IDEA", "idea-skill LLM model"),
     ("ARI_MODEL_CODING", "AgentLoop (ReAct / coding) LLM model"),
-    ("ARI_MODEL_EVAL", "evaluator-skill LLM model"),
+    ("ARI_MODEL_EVAL", "core BFTS evaluator model"),
+    ("ARI_MODEL_METRIC_PROPOSAL", "explicit metric-proposal model"),
+    ("ARI_MODEL_SEMANTIC_REVIEW", "semantic-advisory model"),
     ("ARI_MODEL_PAPER", "paper-re skill LLM model"),
     ("ARI_MODEL_BFTS", "BFTS orchestrator LLM model"),
 ]
@@ -259,6 +276,8 @@ def _clear_phase_env(monkeypatch):
         monkeypatch.delenv(v, raising=False)
     for phase in ("IDEA", "CODING", "EVAL", "PAPER", "BFTS"):
         monkeypatch.delenv(f"ARI_MODEL_{phase}", raising=False)
+    monkeypatch.delenv("ARI_MODEL_METRIC_PROPOSAL", raising=False)
+    monkeypatch.delenv("ARI_MODEL_SEMANTIC_REVIEW", raising=False)
 
 
 @pytest.mark.parametrize("skill,phase_var", [
@@ -267,7 +286,8 @@ def _clear_phase_env(monkeypatch):
     # the legacy single ARI_MODEL_PAPER was replaced by ARI_MODEL_JUDGE for
     # SimpleJudge grading and ARI_MODEL_REPLICATE for the replicator).
     ("ari-skill-paper-re",   "ARI_MODEL_JUDGE"),
-    ("ari-skill-evaluator",  "ARI_MODEL_EVAL"),
+    ("ari-skill-evaluator",  "ARI_MODEL_METRIC_PROPOSAL"),
+    ("ari-skill-evaluator",  "ARI_MODEL_SEMANTIC_REVIEW"),
 ])
 def test_phase_model_has_precedence_over_global(skill, phase_var):
     """Within each skill's ``_model()`` block, the phase env must be checked

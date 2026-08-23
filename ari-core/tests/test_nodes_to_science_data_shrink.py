@@ -2,7 +2,7 @@
 
 Covers:
 - T-B1: prompt size shrinks under 24KB when reports are available
-- T-B2: legacy fallback path still works (no reports → unchanged behaviour)
+- T-B2: missing reports fail closed without a trace/source fallback
 - T-B3: implementation_overview in LLM output is surfaced into return dict
 - T-B6: filter_nodes(for_synthesis) excludes abandoned/no-data nodes
 """
@@ -13,8 +13,6 @@ import json
 import sys
 from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 # Make sure ari-skill-transform/src is importable.
 _TRANSFORM_SRC = (
@@ -92,7 +90,6 @@ def _make_checkpoint(tmp_path: Path, *, with_reports: bool = True) -> Path:
                                 if nid == "node_b" else [],
                     "deleted": [], "inherited_unchanged": [],
                 },
-                "delta_vs_parent": "made faster" if nid == "node_b" else "initial",
                 "self_assessment": {"succeeded": True, "headline": "ok",
                                     "concerns": []},
                 "metrics": {"x": 1.0 if nid == "node_a" else 2.0},
@@ -130,18 +127,19 @@ def test_TB1_prompt_size_shrinks_with_reports(tmp_path: Path):
     with patch.object(_srv.litellm, "acompletion", _fake):
         out = asyncio.run(fn(str(ckpt / "tree.json")))
 
-    assert out.get("report_driven") is True, out
+    assert out["raw"]["node_report_status"] == "complete", out
+    assert out["interpretation"]["status"] == "ok"
     prompt = captured["prompt"]
     # Spec NFR-11: typical 16-24KB. We assert a generous 30KB upper bound.
     assert len(prompt) < 30_000, f"prompt too large: {len(prompt)} chars"
-    # Sanity: report-driven prompt mentions delta_vs_parent.
-    assert "delta_vs_parent" in prompt
+    # Sanity: report-driven prompt carries structured file changes.
+    assert "files_modified" in prompt
     # The compact source blob path is taken.
     assert "VERBATIM SOURCE" in prompt
 
 
-def test_TB2_legacy_fallback_when_no_reports(tmp_path: Path):
-    """No node_report.json anywhere → use legacy artifact-text path."""
+def test_TB2_missing_reports_do_not_trigger_trace_fallback(tmp_path: Path):
+    """No report means an unavailable annotation and no model call."""
     ckpt = _make_checkpoint(tmp_path, with_reports=False)
     fn = _get_fn()
     captured: dict = {}
@@ -161,9 +159,11 @@ def test_TB2_legacy_fallback_when_no_reports(tmp_path: Path):
     with patch.object(_srv.litellm, "acompletion", _fake):
         out = asyncio.run(fn(str(ckpt / "tree.json")))
 
-    assert out.get("report_driven") is False
-    assert "EXPERIMENT TREE" in captured["prompt"]
-    assert "implementation_overview" not in out
+    assert captured == {}
+    assert out["raw"]["node_report_status"] == "missing"
+    assert out["interpretation"]["status"] == "unavailable"
+    assert out["interpretation"]["error_kind"] == "node-report-unavailable"
+    assert any("no trace/source scan" in item for item in out["limitations"])
 
 
 def test_TB3_implementation_overview_surfaces_when_present(tmp_path: Path):
@@ -193,9 +193,10 @@ def test_TB3_implementation_overview_surfaces_when_present(tmp_path: Path):
     with patch.object(_srv.litellm, "acompletion", _fake):
         out = asyncio.run(fn(str(ckpt / "tree.json")))
 
-    assert "implementation_overview" in out
-    assert out["implementation_overview"]["architecture"] == "Three-loop CSR"
-    assert out["implementation_overview"]["optimizations"] == ["O3", "OpenMP"]
+    overview = out["interpretation"]["implementation_overview"]
+    assert overview["architecture"] == "Three-loop CSR"
+    assert overview["optimizations"] == ["O3", "OpenMP"]
+    assert out["interpretation"]["claim_eligible"] is False
 
 
 def test_TB3b_implementation_overview_absent_when_llm_omits(tmp_path: Path):
@@ -215,7 +216,7 @@ def test_TB3b_implementation_overview_absent_when_llm_omits(tmp_path: Path):
     with patch.object(_srv.litellm, "acompletion", _fake):
         out = asyncio.run(fn(str(ckpt / "tree.json")))
 
-    assert "implementation_overview" not in out
+    assert out["interpretation"]["implementation_overview"] is None
 
 
 def test_TB6_for_synthesis_filter_drops_abandoned(tmp_path: Path):

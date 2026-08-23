@@ -1,7 +1,6 @@
 """Unit + smoke + determinism tests for ``scripts/analyze_references.py``.
 
-Covers subtask ``docs/refactoring/subtasks/054_add_reference_graph_analyzer.md``
-§8 item 10:
+Covers subtask 054 (add reference graph analyzer, since retired) §8 item 10:
 
   (a) a string-keyed factory fixture emits a ``dynamic.string_key`` edge with
       evidence, and the "orphan" target is NOT edge-less;
@@ -110,6 +109,82 @@ def test_low_level_tool_declaration_detected(tmp_path: Path) -> None:
     assert "mcp.tool:z:run_bash" in tool_ids
 
 
+# ── cross-language overlay (barrel-split API client) ────────────────────────
+
+def test_frontend_api_client_glob_covers_barrel_split_modules(
+    tmp_path: Path,
+) -> None:
+    """Since the 063 split ``services/api.ts`` is a re-export barrel: the
+    endpoint URL literals live in ``services/api/*.ts``, so the client
+    config accepts globs/lists and every matched module becomes its own
+    ``ts.module`` node with its own ``cross_lang.http`` edges."""
+    _write(tmp_path, "fe/services/api.ts", "export * from './api/state';\n")
+    _write(
+        tmp_path,
+        "fe/services/api/state.ts",
+        "export async function fetchState() {\n"
+        "  return get('/api/state');\n"
+        "}\n",
+    )
+    _write(tmp_path, "viz/__init__.py", "")
+    _write(
+        tmp_path,
+        "viz/server.py",
+        "def register(app):\n"
+        "    app.add_route('/api/state')\n",
+    )
+    cfg = _fixture_config(
+        scan_roots=["viz"],
+        frontend_api_client=["fe/services/api.ts", "fe/services/api/*.ts"],
+        viz_route_dir="viz",
+    )
+    graph = ar.build_graph(tmp_path, cfg, manifest=None)
+    routes = [n for n in graph["nodes"] if n["kind"] == "route"]
+    assert [n["id"] for n in routes] == ["route:/api/state"]
+    edges = [e for e in graph["edges"] if e["kind"] == "cross_lang.http"]
+    assert edges and edges[0]["from"] == "ts.module:fe/services/api/state.ts"
+    # The barrel carries no endpoint literal -> node present, edge-less.
+    ts_ids = {n["id"] for n in graph["nodes"] if n["kind"] == "ts.module"}
+    assert ts_ids == {
+        "ts.module:fe/services/api.ts",
+        "ts.module:fe/services/api/state.ts",
+    }
+
+
+def test_cross_language_overlay_follows_split_api_barrel(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "frontend/services/api.ts",
+        "export * from './api/widgets';\n",
+    )
+    _write(
+        tmp_path,
+        "frontend/services/api/widgets.ts",
+        "export const widgets = () => get('/api/widgets');\n",
+    )
+    _write(
+        tmp_path,
+        "viz/routes.py",
+        "def route(path):\n    return path == '/api/widgets'\n",
+    )
+    graph = ar.build_graph(
+        tmp_path,
+        _fixture_config(
+            scan_roots=["viz"],
+            frontend_api_client="frontend/services/api.ts",
+            viz_route_dir="viz",
+        ),
+        manifest=None,
+    )
+    edge = next(
+        item
+        for item in graph["edges"]
+        if item["kind"] == "cross_lang.http"
+        and item["to"] == "route:/api/widgets"
+    )
+    assert edge["from"] == "ts.module:frontend/services/api/widgets.ts"
+
+
 # ── (c) repo smoke ──────────────────────────────────────────────────────────
 
 def _repo_graph() -> dict:
@@ -133,20 +208,54 @@ def test_repo_dynamic_overlay_no_orphans() -> None:
     assert len(backends) == 4
     assert all(n["id"] in dyn_targets for n in backends)
 
+    # 063 barrel-split regression guard: the endpoint literals moved from
+    # services/api.ts to services/api/*.ts — a fresh regeneration must
+    # still see the viz routes (the 055 deletion firewall counts on them).
+    routes = [n for n in graph["nodes"] if n["kind"] == "route"]
+    assert routes and all(n["id"] in dyn_targets for n in routes)
+
     prompts = [
         n for n in graph["nodes"]
         if n["kind"] == "data.file" and n["file"].startswith("ari-core/ari/prompts/")
     ]
-    assert len(prompts) == 11
+    # 11 pre-RQGM templates + the 3 RQGM Task 03 proposal-generator templates
+    # + the 3 RQGM Task 05 governance-actor templates (loaded with literal
+    # keys in ari/rqgm/governance/_pipeline.py, so the AST overlay sees them)
+    # + the 9 RQGM Task 06 adversarial-loop templates (literal keys in
+    # ari/rqgm/adversarial/engine.py) + the RQGM Task 07 PromptMutator
+    # meta-prompt (literal key in ari/rqgm/prompt_evolution.py) + the RQGM
+    # Task 08 CleanRoomPromptGenerator meta-prompt (literal key in
+    # ari/rqgm/clean_room.py) + the RQGM Task 14 PolicyMutator meta-prompt
+    # (literal key in ari/rqgm/utility_evolution.py).
+    # + the 2 paper-archive governed founding templates (rqgm/paper_writer,
+    # rqgm/paper_reviewer; literal keys in ari/rqgm/prompt_spec.py's
+    # PAPER_FOUNDING_PROMPT_TABLE, plan ari_rqgm_paper/03 §5.5).
+    # + the RQGM paper-archive Task 05 paper_self_preference adversary template
+    # (rqgm/adversary_paper_self_preference; literal key in ADVERSARY_SPECS,
+    # ari/rqgm/adversarial/engine.py, plan ari_rqgm_paper/05).
+    # + the 2 plan-11 §5.2 recommendation-role templates (rqgm/replay_selector,
+    # rqgm/failure_summary_compressor; literal keys in prompt_spec.py's
+    # FOUNDING_PROMPT_TABLE).
+    # + llm/mcp_name_resolution, externalised out of ari/llm/cli_server.py so
+    # ari-core keeps its no-inline-prompt invariant (literal key there).
+    assert len(prompts) == 35
     assert all(n["id"] in dyn_targets for n in prompts)
 
 
 def test_repo_mcp_tools_and_collision() -> None:
     graph = _repo_graph()
     tools = [n for n in graph["nodes"] if n["kind"] == "mcp.tool"]
-    assert len(tools) == 87
+    # 104 provider-qualified nodes, representing 102 unique bare names because
+    # ``get_result`` and ``get_status`` each have two explicit providers. The
+    # count is what keeps a skill from dropping out of the overlay unnoticed,
+    # so it is re-derived from the tree, never copied from a frozen census.
+    bare = {n["id"].split(":")[-1] for n in tools}
+    assert (len(tools), len(bare)) == (104, 102)
     collisions = {c["tool_name"]: set(c["skills"]) for c in graph["collisions"]}
-    assert collisions.get("read_file") == {"coding", "orchestrator"}
+    assert collisions == {
+        "get_result": {"orchestrator", "tool-registry"},
+        "get_status": {"orchestrator", "tool-registry"},
+    }
 
 
 def test_repo_evidence_and_no_sonfigs() -> None:

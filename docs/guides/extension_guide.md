@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-17
 ---
 
 # Extension Guide
@@ -38,28 +38,32 @@ Minimize energy score of protein folding simulation using different force field 
 3. Poll until completion with `job_status`
 4. Read results with `run_bash`
 
-<!-- min_expected_metric: -500 -->
-<!-- metric_keyword: energy_score -->
+<!-- min_expected_metric: 500 -->
 ```
 
 2. Run:
 
 ```bash
-ari run your_experiment.md --config config/bfts.yaml
+ari run your_experiment.md
 ```
 
 That's it. ARI reads the goal, proposes hypotheses, and searches autonomously.
+`--config` is optional — omitted, `ari run` auto-resolves the packaged
+`ari-core/config/workflow.yaml`.
 
 ### Domain Customization via experiment.md
+
+The following is what `from_experiment_text` (`ari/agent/workflow.py`) actually
+parses; everything else is prose the LLM reads as its goal:
 
 | Section | Purpose | Impact |
 |---------|---------|--------|
 | `## Research Goal` | What to optimize | Drives LLM hypothesis generation |
-| `## Required Workflow` | Which tools, in what order | Sets `tool_sequence` in WorkflowHints |
-| `## Hardware Limits` | Hard constraints | Injected into every agent step as system hint |
-| `## SLURM Script Template` | Starting point for experiments | LLM modifies this for each hypothesis |
-| `<!-- metric_keyword: X -->` | What metric to extract | Used by evaluator and evaluator-skill |
-| `<!-- min_expected_metric: N -->` | Minimum acceptable value | Triggers validation check |
+| `## Required Workflow` | Which tools, in what order | Becomes `WorkflowHints.post_survey_hint` ("Follow this workflow from the experiment spec: …"). `tool_sequence` is built from the tools MCP actually exposes, not from this section |
+| `## Provided Files` (also `## 提供ファイル` / `## 提供文件` / `## Local Files`) | Local inputs | Absolute paths listed here are copied into each node's `work_dir` |
+| `Partition: <name>` / `Max CPUs: <n>` | HPC placement | Read only when HPC is enabled; otherwise `ARI_SLURM_PARTITION` / `ARI_SLURM_CPUS` or a detected up partition fills in |
+| A SLURM mention anywhere in the body (`slurm_submit`, `sbatch`, `srun`, …) | Picks the submit / poll / read trio | Switches to `slurm_submit` + `job_status` + `run_bash`; under the HPC profile, setting `ARI_SLURM_PARTITION` does the same without any keyword |
+| `<!-- min_expected_metric: N -->` | Minimum acceptable value | Parses into `WorkflowHints.min_expected_metric`; a node with **two or more** extracted values that are all below it is marked failed (a single extracted value never trips the threshold). **Digits only** — a negative threshold does not parse |
 
 ---
 
@@ -75,10 +79,22 @@ ari-skill-yourskill/
 │   └── server.py          ← FastMCP server (required)
 ├── tests/
 │   └── test_server.py     ← Tests (minimum 3)
+├── skill.yaml             ← Canonical manifest (required; the reviewed source)
+├── mcp.json               ← Derived from skill.yaml. Never hand-edited
 ├── pyproject.toml         ← Package config
 ├── README.md              ← Tool descriptions and examples
 └── REQUIREMENTS.md        ← Design spec
 ```
+
+`skill.yaml` is the canonical manifest and `mcp.json` is its deterministic
+derivative: after changing the manifest, regenerate with
+`python3 scripts/sync_skill_metadata.py --write`.
+`scripts/check_skill_manifests.py` fails a missing `skill.yaml`
+(`manifest-missing`), an `mcp.json` that no longer matches
+(`compat-metadata-drift`), a `version` that disagrees with `pyproject.toml`
+(`version-drift`), and an `environment_policy` that is not `complete`
+(`environment-policy-incomplete`). Every tool the server exposes must be
+declared in `skill.yaml`.
 
 ### Server Template
 
@@ -110,12 +126,17 @@ if __name__ == "__main__":
 
 ### Registration
 
-In your BFTS config YAML:
+In the `skills:` block of `ari-core/config/workflow.yaml`. `name` is the
+registered skill name that pipeline stages reference (the shipped entries use
+the `<area>-skill` convention, e.g. `paper-skill`), and it must match exactly —
+stage dispatch filters `cfg.skills` by `s.name == stage.skill`:
 
 ```yaml
 skills:
   - name: your-skill
     path: /abs/path/to/ari-skill-yourskill
+    description: What this skill does
+    phase: bfts          # bfts | paper | reproduce, or a list of them
 ```
 
 In your `experiment.md`:
@@ -139,40 +160,62 @@ In your `experiment.md`:
 ## 3. Adding a Post-BFTS Pipeline Stage
 
 Add automated post-processing after the BFTS search completes.
-Only edit `config/pipeline.yaml`. No core code changes needed.
+Only edit the `pipeline:` block of `ari-core/config/workflow.yaml` (the legacy
+`pipeline.yaml` filename is still accepted as a fallback). No core code changes
+needed.
 
 ```yaml
 pipeline:
-  - stage: generate_paper
-    skill: ari-skill-paper
-    tool: generate_section
+  - stage: write_paper
+    skill: paper-skill
+    tool: write_paper_iterative
+    depends_on: [transform_data]
     enabled: true
-    args:
+    phase: paper
+    inputs:
       venue: arxiv
 
-  - stage: review
-    skill: ari-skill-paper
-    tool: review_section
-    enabled: true
-
   - stage: my_new_stage            # ← Add here
-    skill: ari-skill-yourskill
+    skill: your-skill              # must match a `skills:` entry name
     tool: your_analysis_tool
+    depends_on: [write_paper]
     enabled: true
-    args:
+    phase: paper
+    inputs:
       custom_param: value
+      nodes_json_path: '{{checkpoint_dir}}/nodes_tree.json'
+    outputs:
+      file: '{{checkpoint_dir}}/my_new_stage.json'
 
-  - stage: reproducibility_check
-    skill: ari-skill-paper-re
-    tool: reproducibility_report
+  - stage: ors_grade
+    skill: paper-re-skill
+    tool: grade_with_simplejudge
+    depends_on: [ors_run_reproduce]
     enabled: true
+    phase: paper
 ```
 
-Each stage receives:
-- `best_node`: The highest-scoring node from BFTS
-- `all_nodes`: All explored nodes
-- `nodes_json_path`: Path to `nodes_tree.json`
-- Any `args` specified in the YAML
+Stage keys:
+- `skill` / `tool` — the registered skill name and the MCP tool it calls.
+- `inputs:` (alias `input:`) — the tool's keyword arguments, with `{{var}}`
+  template substitution (`{{checkpoint_dir}}`, `{{run_id}}`, `{{ari_root}}`, …).
+  `params:` is a second mapping merged into the same call arguments — string
+  values are `{{var}}`-substituted too, but a `params:` key is never file-loaded
+  and an `inputs:` key of the same name wins. A `<key>_from:` shorthand resolves
+  a checkpoint-relative filename **and** loads its content (see also
+  `load_inputs:`). There is no `args:` key.
+- `depends_on:` — stages run in file order with no topological sort, so keep
+  declarations in dependency order; a stage whose dependency was skipped is
+  skipped too (unless the dependency is explicitly `enabled: false`).
+- `phase:` — `bfts` / `paper` / `reproduce`; drives the GUI graph grouping.
+- `segment:` — `evidence` / `authoring` / `verification`. A default full run
+  ignores it, but segmented execution refuses to start when even one enabled
+  stage carries no valid segment, so declare it on every new `pipeline:` stage.
+- `skip_if_exists:` — a resolved path; the stage is skipped when it exists and
+  is non-empty (and, for `.json`, carries no top-level `error` key).
+  `skip_if_inputs_unchanged:` points at a sidecar contract that must still match
+  disk, which stops a reusable output being reused after its inputs changed.
+- `outputs.file` — where the driver persists the tool's return value.
 
 ---
 
@@ -198,8 +241,11 @@ llm:
   base_url: http://your-server:8000/v1
 ```
 
-If the LLM does not support function/tool calling, set `tool_choice="none"` in `config/bfts.yaml`
-and ensure the experiment workflow uses `## Required Workflow` to guide step-by-step execution.
+There is no `tool_choice` config knob — `ari/llm/client.py` sets it itself
+(`required` / `auto`). If the LLM does not support function/tool calling, route
+it through the CLI-shim backend (`ARI_BACKEND=cli-shim`), whose OpenAI-compatible
+server falls back to a text tool protocol, and make the experiment workflow use
+`## Required Workflow` to guide step-by-step execution.
 
 ---
 
@@ -238,10 +284,10 @@ VENUES = [
 ### Use in pipeline
 
 ```yaml
-- stage: generate_paper
-  skill: ari-skill-paper
-  tool: generate_section
-  args:
+- stage: write_paper
+  skill: paper-skill
+  tool: write_paper_iterative
+  inputs:
     venue: your_venue   # ← Specify here
 ```
 
@@ -265,18 +311,20 @@ mpirun -np 128 ./my_parallel_program
 ```
 ```
 
-In `config/bfts.yaml`, increase timeout:
+In `ari-core/config/default.yaml` (the shipped BFTS defaults) the per-node
+timeout is `timeout_per_node: 7200` (2 hours). Raise it there for long MPI
+jobs — or override it per run with `ARI_TIMEOUT_NODE`:
 
 ```yaml
 bfts:
-  timeout_per_node: 3600   # 1 hour for large MPI jobs
+  timeout_per_node: 14400   # 4 hours for large MPI jobs
 ```
 
 ---
 
 ## 7. Exposing ARI to External Systems
 
-Use `ari-skill-orchestrator` to trigger ARI from other agents, IDEs, or scripts. The orchestrator supports dual transport: **stdio** (MCP for Claude Desktop) + **HTTP** (REST + SSE on `ARI_ORCHESTRATOR_PORT`, default 9890).
+Use `ari-skill-orchestrator` to trigger ARI from other agents, IDEs, or scripts.
 
 ### From Claude Desktop
 
@@ -301,10 +349,14 @@ from mcp import ClientSession
 async with ClientSession(...) as session:
     result = await session.call_tool("run_experiment", {
         "experiment_md": open("experiment.md").read(),
+        "idempotency_key": "my-unique-key",   # required
         "max_nodes": 10
     })
     run_id = result["run_id"]
 ```
+
+`idempotency_key` is a required argument: the same key does not submit a second
+run, it replays the recorded handle.
 
 ### Recursive Sub-Experiments
 
@@ -318,39 +370,46 @@ result = await session.call_tool("run_experiment", {
 })
 ```
 
-Use `list_children(run_id)` to retrieve child runs. The GUI Sub-Experiments page visualizes the hierarchy.
+Use `list_children(parent_run_id)` to retrieve child runs. The GUI Sub-Experiments page visualizes the hierarchy.
 
-### As a REST API (via HTTP transport)
+### Over HTTP (for CI/CD)
 
-When launched with HTTP transport enabled (`ARI_ORCHESTRATOR_PORT`), the orchestrator exposes REST endpoints and SSE for CI/CD integration:
-
-```bash
-# Launch an experiment
-curl -X POST http://localhost:9890/run -d '{"experiment_md": "...", "max_nodes": 10}'
-
-# Check status
-curl http://localhost:9890/status/{run_id}
-```
+The orchestrator is an MCP server with two transports selected by
+`--transport`: **stdio** (the default) and **streamable-http** (MCP at
+`http://{host}:{port}/mcp`, where host is `ARI_ORCHESTRATOR_HTTP_HOST` =
+`127.0.0.1` and port is `ARI_ORCHESTRATOR_HTTP_PORT` = 9890). There is no
+separate REST/SSE API with its own paths — HTTP calls the **same MCP tool
+surface**. `streamable-http` refuses to start without
+`ARI_ORCHESTRATOR_HTTP_TOKENS_FILE`; unauthenticated network control is not
+offered.
 
 ---
 
 ## 8. Changing the BFTS Selection Strategy
 
-The current strategy selects nodes with `has_real_data=True` and the highest metric values.
-To change this, modify `ari/orchestrator/bfts.py`:
+Selection is `BFTS.select_next_node` in `ari/orchestrator/bfts.py`, and by
+default it is an **LLM** decision over the candidate frontier. Two seams come
+before touching code:
+
+- `bfts.deterministic_selector: true` bypasses the LLM entirely and ranks with
+  `_select_fallback` (the same path that runs when the LLM fails to pick).
+  Preference order: nodes with `has_real_data=True` first, then the highest
+  `_fallback_score`.
+- `bfts.frontier_score` picks that fallback's scoring formula:
+  `scientific_plus_diversity` (default), `scientific_only`, `depth_penalized`
+  (subtracts `depth_penalty_lambda * depth`), and `ucb_like` (adds a UCB1-style
+  term scaled by `ucb_c`).
+
+For a genuinely new strategy — Pareto-optimal multi-objective selection, say —
+edit `_fallback_score` / `_select_fallback` in the same file:
 
 ```python
-def _select_best_node(self, nodes: list[Node]) -> Node:
-    """
-    Custom selection strategy.
-    Default: highest metric among nodes with real data.
-    """
-    candidates = [n for n in nodes if n.has_real_data]
-    if not candidates:
-        return nodes[0]
-
+def _select_fallback(self, candidates: list[Node]) -> Node:
+    """Custom deterministic selection over the candidate frontier."""
+    real = [n for n in candidates if n.has_real_data]
+    pool = real or candidates
     # Example: Pareto-optimal selection for multi-objective
-    return pareto_select(candidates, objectives=["MFLOPS", "energy"])
+    return pareto_select(pool, objectives=["score", "energy"])
 ```
 
 ---
@@ -381,6 +440,9 @@ import via the re-export layer:
 | Path / checkpoint resolution   | `from ari.public.paths import PathManager` |
 | LLM client                     | `from ari.public.llm import LLMClient` |
 | Pydantic config models         | `from ari.public.config_schema import ARIConfig, LLMConfig, ...` |
+| Claim-evidence gate helpers    | `from ari.public import claim_gate`    |
+| Per-`work_dir` run environment | `from ari.public import run_env`       |
+| Verified research context      | `from ari.public import verified_context` |
 
 `ari-core/tests/test_public_api_boundary.py` walks every
 `ari-skill-*/{src,tests}/` Python file with AST and fails on imports
@@ -416,13 +478,13 @@ Conventions:
 
 ### `ari/configs/` — non-Pydantic lookup tables
 
-Tables that change without code changes (model prices, default model
-names) live as YAML under `ari-core/ari/configs/`:
+Out-of-band tables that change without code changes live as YAML under
+`ari-core/ari/configs/`:
 
 | File                | Owner                                        |
 |---------------------|----------------------------------------------|
-| `model_prices.yaml` | LLM cost estimation (`ari/cost_tracker.py`)  |
-| `defaults.yaml`     | Default model fall-backs (e.g. lineage_decision_default) |
+| `model_prices.yaml` | LLM cost estimation (`ari/cost_tracker.py`). An unreadable/empty table sets `PRICING_TABLE_UNAVAILABLE`, which `cost_summary.json` reports — it is not silently a free run |
+| `defaults.yaml`     | Model fall-backs (`models.lineage_decision_default`) **plus** the out-of-band RQGM defaults (`rqgm.epoch` / `kernel` / `governance` / `transition` / …), which mirror the typed `ari.config` pydantic defaults; the mirror is pinned by the `test_rqgm_*` tests. The same file also mirrors the Knowledge–Capability–Assurance (`knowledge` / `capability_binding` / `assurance`) and `manuscript` defaults, which are `off` / `legacy` / `off` / `off` |
 
 Read via `from ari.configs import FilesystemConfigLoader; loader.load("model_prices")`.
 

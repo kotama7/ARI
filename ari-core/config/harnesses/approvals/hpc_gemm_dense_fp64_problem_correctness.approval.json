@@ -1,0 +1,15 @@
+{
+  "actor_id": "kotama",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:6d381fa857790c45ec5a016eac5d151cde8c46a6d0048b3e37d1a3958155c3b4",
+  "approved_date": "2026-08-21",
+  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of the control sequence -- the frozen reference passing, the wrong kernel failing on the residual bound, the correct-but-slow kernel PASSING, and the extra-symbol kernel refused by the object audit -- not on independent inspection of the artifacts, which are pinned here for that purpose. Re-earned after the network observation was taken off the clock the forgery guard reads.",
+  "evidence_bundle_digest": "sha256:45fad7ae252b1a0c54078e011ec1ad93dc1d4fac98c50f402a22e4c738b9fbe3",
+  "from_status": "candidate",
+  "harness_id": "hpc/gemm-dense-fp64-problem-correctness",
+  "harness_manifest_digest": "sha256:92c09ee51f3b79bdfa33458e6c104b3620887e6b4ea1dc0d6b095e2ad86f7a9f",
+  "harness_version": "1.0.0",
+  "registration_report_digest": "sha256:af9035c7cf11edbd3e3c189807cd029153b32fbd737aa5a9e36a4fc56e39af8b",
+  "schema_version": "ari.harness-promotion-approval/v1",
+  "to_status": "verified"
+}

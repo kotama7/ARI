@@ -1,0 +1,839 @@
+{
+  "artifact": {
+    "container_runtime": {
+      "clean_environment": true,
+      "contain_all": true,
+      "gpu": false,
+      "image_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+      "image_size_bytes": 1540308992,
+      "network": "none",
+      "runtime": "singularity"
+    },
+    "execution_image": {
+      "architecture": "x86_64",
+      "image_id": "orfs-26q3-openroad-7304ba78",
+      "inner_openroad_digest": "sha256:e69cc5011dc319a46c2f677b94ec7f7abab28f3f136e788071e5125c89daf1d9",
+      "inner_openroad_path": "/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad",
+      "oci_manifest_digest": "sha256:46b03d30451b56dc20734d0f5ac51a8496e7139cda82a576d1915369bd0c68a7",
+      "oci_reference": "docker.io/openroad/orfs:26Q2-565-gadeb389e7",
+      "retained_sif_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+      "retained_sif_size_bytes": 1540308992,
+      "runtime": "singularity",
+      "runtime_version": "4.5.0-1.el9"
+    },
+    "openroad_mcp": {
+      "dependency_lock_digest": "sha256:0fd99caa99abe3c9f731e9aa7dd17076dd21e91826fc9bdd7f5dd86489bee950",
+      "direct_dependencies": [
+        "fastmcp==3.2.0",
+        "mcp[cli]==1.28.1",
+        "pillow==12.3.0",
+        "psutil==7.2.2",
+        "pydantic==2.12.5"
+      ],
+      "distribution_name": "openroad-mcp",
+      "distribution_status": "deprecated-final",
+      "license_digest": "sha256:462f2e81c0f10c3c54a4d41ff284146c1f98ed997a140cb027823b6d847c391f",
+      "license_id": "BSD-3-Clause",
+      "maintained_distribution": "npm",
+      "mcp_contract_digest": "sha256:0ebdb1ce36f25750b40ee8aa57c029c23a60f36dd3f69548313e600351749a01",
+      "package_tree_digest": "sha256:81dae53bac327e764b2760e78c418c8023c9f7b3ca2a31b3147c96ecb8213a82",
+      "python_requires": ">=3.13",
+      "repository_commit": "39d78c091d9f41d217c8c28ddb20fa105942eba5",
+      "repository_tag": "v0.6.1",
+      "repository_url": "https://github.com/The-OpenROAD-Project/OpenROAD-MCP",
+      "source_archive_digest": "sha256:22a8f526c4f4b9d84e8a1ac5a2cfc42594867f6fd6e02f0984afa3f1c43eaade",
+      "version": "0.6.1"
+    },
+    "scheduler_snapshot_digest": "sha256:29dc13329e25e355dd6b225e9fc72a60e546203d61cb7dcc27e0f11734c3eddb",
+    "toolchain_line": {
+      "line_id": "orfs-26q3",
+      "openroad_commit": "7304ba78ade7cb9f78466c6d0231432d72dadd3b",
+      "orfs_commit": "adeb389e7fbf06ef6a939a895c014f69e6f7aa00",
+      "orfs_repository_url": "https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts",
+      "orfs_tag": "26Q3"
+    }
+  },
+  "bundle_digest": "sha256:ec576caa764237e4923892cf1b3f46a497241aad23758a8743023e0b55d67be9",
+  "capability_scope": {
+    "credential_scope_ids": [],
+    "determinism": "seeded",
+    "environment_requirements": [
+      "cpu",
+      "exclusive-node",
+      "singularity-sif",
+      "slurm"
+    ],
+    "permissions": [
+      "process",
+      "scheduler-submit",
+      "workspace-read",
+      "workspace-write"
+    ],
+    "profiles": [
+      {
+        "capability_contract_digest": "sha256:7972e05332f4ee4749787986ff9d1119694a6ec4a7691dee6434b61ba7d7e490",
+        "capability_ref": "ari.eda.openroad.place-route/v1",
+        "experiment_digest": "sha256:3c745c8db55bb9940536d40737e741a8c3db02bbcc562b29d5179f92a73a17bd",
+        "golden_fixture_digest": "sha256:720d8a68ac70aab2dc170b0ade87d760fddc7384d38a873927275192518898ee",
+        "input_schema_digest": "sha256:632835499c910364d6b6f3c393d9a726b3db62e0ebec8d7bf21506b736591e13",
+        "leaf_name": "ari_openroad_run__gcd_nangate45_26q3_slurm_cpu",
+        "library_digest": "sha256:8d540a4d4cf6d09d27c87ad067857a9c0c2eeb023ab7a56e058cd3113db4e9b1",
+        "method_digest": "sha256:ab4744242aab0f36529603754616ddb1b9157a155bbfbcfff98a9d7f7ccd6c1e",
+        "output_contract_digest": "sha256:6d4c22b2066c6334ee2a0695c4ebdca197a9d28599dea86c8760500004f64b92",
+        "output_schema_digest": "sha256:4f5c05c3413a658ff08571e36831465827020e114f05003f90121b909ad5f188",
+        "pdk_digest": "sha256:6c500e236b98953bda22aa6dd939a5d46e9af2a57a6201232bdfe7e2349c5b1f",
+        "profile_id": "gcd-nangate45-26q3-slurm-cpu",
+        "replay_fixture_digest": "sha256:ac81d2b552a15d73fc2b794b9228c43b3afbaafebe7480f9ae6c321871f6105f",
+        "workspace_input_digest": "sha256:9b34eb5ed61746d6577ba329c827a6c7578eb2d4ed4f2468755da235208be34f"
+      }
+    ],
+    "resource_type": "eda-cpu-slurm",
+    "side_effects": "workspace-write"
+  },
+  "captured_date": "2026-08-09",
+  "gate_evidence": {
+    "capability_contract_conformance": {
+      "capability_ref": "ari.eda.openroad.place-route/v1",
+      "experiment_digest": "sha256:3c745c8db55bb9940536d40737e741a8c3db02bbcc562b29d5179f92a73a17bd",
+      "method_digest": "sha256:ab4744242aab0f36529603754616ddb1b9157a155bbfbcfff98a9d7f7ccd6c1e",
+      "official_orfs_reference": {
+        "drc_report_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "execution_image_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+        "invocation": [
+          "make",
+          "DESIGN_CONFIG=designs/nangate45/gcd/config.mk",
+          "FLOW_VARIANT=ari_verified",
+          "SKIP_CTS_REPAIR_TIMING=1"
+        ],
+        "metrics_report_digest": "sha256:6f07f559e582735341892fdf9f28938fe847d10e740388b99ff141f9309f4ea0",
+        "orfs_commit": "adeb389e7fbf06ef6a939a895c014f69e6f7aa00",
+        "qualification": "Independent upstream reference pass only; CTS timing repair was disabled after the pinned binary raised SIGILL, so this is not full default-flow parity.",
+        "result_artifacts": {
+          "6_final.def": {
+            "digest": "sha256:33c30aa0ddeafc25f44cc910d80771b5dca21be673a2bdc2993a60d18009dae6",
+            "size": 406435
+          },
+          "6_final.gds": {
+            "digest": "sha256:e3f9f6e2bda1c8b533e43dec455c4b348b7b2a34d615ea9c037339ad7ca4528a",
+            "size": 526654
+          },
+          "6_final.odb": {
+            "digest": "sha256:0a46f88b9f6a4c2a4c67bb2f385b9e6e25dce224ee9281628c4f5b056ce33ea9",
+            "size": 1230865
+          },
+          "6_final.sdc": {
+            "digest": "sha256:cdc62252251ee823da5dbef746f32b5bf70cb0d9475886badbc7bd1507e428c8",
+            "size": 6137
+          },
+          "6_final.spef": {
+            "digest": "sha256:02a3700060636441726768bf006d233adffc04aeb19906100a8b2eb4352fbdc4",
+            "size": 445599
+          },
+          "6_final.v": {
+            "digest": "sha256:e6124f96c896b8531ffb1329c7810448d9cfef969b4dbee20ed9770fd488cb01",
+            "size": 48464
+          }
+        },
+        "runner": "OpenROAD-flow-scripts make target",
+        "selected_metrics": {
+          "finish__design__instance__area": 716.072,
+          "finish__timing__hold__ws": 0.113878,
+          "finish__timing__setup__ws": 0.016341
+        }
+      }
+    },
+    "credential_scope": {
+      "credential_scope_ids": []
+    },
+    "environment_allowlist": {
+      "provider_digest": "sha256:d6981823308687e69ecea5b685c9b8ea79d7f76e3f448606376186db04caa6f0",
+      "runtime_target": {
+        "architecture": "x86_64",
+        "execution_substrate": "singularity-sif",
+        "network": "isolated",
+        "operating_system": "linux",
+        "provider_python": "CPython-3.13",
+        "scheduler_snapshot_digest": "sha256:29dc13329e25e355dd6b225e9fc72a60e546203d61cb7dcc27e0f11734c3eddb",
+        "site_identity_digest": "sha256:de280f6b0489481d07f61773365a8ce87a11917267b2a736635b093c63842ad2",
+        "worker_python": "container-provided"
+      }
+    },
+    "live_tools_list_parity": {
+      "admitted_leaf": "ari_openroad_run__gcd_nangate45_26q3_slurm_cpu",
+      "snapshot_digest": "sha256:0ebdb1ce36f25750b40ee8aa57c029c23a60f36dd3f69548313e600351749a01",
+      "upstream_tools": [
+        "create_interactive_session",
+        "get_session_history",
+        "get_session_metrics",
+        "inspect_interactive_session",
+        "interactive_openroad_exec",
+        "interactive_openroad_query",
+        "list_interactive_sessions",
+        "list_report_images",
+        "read_report_image",
+        "terminate_interactive_session"
+      ]
+    },
+    "malicious_description_boundary": {
+      "authority_source": "immutable profile and active catalog lock",
+      "test_output_sha256": "sha256:a880424936079bab985ef4f3591e6cd62dd47b8d5d796862d4c4d6eb523f9108"
+    },
+    "manifest_schema": {
+      "schema": "ari.openroad-capability-provider-manifest/v1",
+      "test_output_sha256": "sha256:a880424936079bab985ef4f3591e6cd62dd47b8d5d796862d4c4d6eb523f9108"
+    },
+    "result_schema": {
+      "artifact_manifest": [
+        {
+          "captured": true,
+          "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "logical_role": "openroad-drc-report",
+          "media_type": "text/plain",
+          "relative_path": "reports/drc.rpt",
+          "size": 0
+        },
+        {
+          "captured": true,
+          "digest": "sha256:d98f1bcd6fb69045e9f62b1a48771ae3fedd5aac7113253839b98e5f6475a7c2",
+          "logical_role": "openroad-metrics",
+          "media_type": "application/json",
+          "relative_path": "reports/metrics.json",
+          "size": 1677
+        },
+        {
+          "captured": true,
+          "digest": "sha256:c227220af5186f579d7674eef16eb8f50b1a032af5eed43548f3a2aea3a66643",
+          "logical_role": "openroad-def",
+          "media_type": "text/plain",
+          "relative_path": "results/gcd.def",
+          "size": 428999
+        },
+        {
+          "captured": true,
+          "digest": "sha256:555d3fd021ddb226d9a390246104b6331f737393b6d70aeb20a128e138e72783",
+          "logical_role": "openroad-netlist",
+          "media_type": "text/x-verilog",
+          "relative_path": "results/gcd.v",
+          "size": 64065
+        }
+      ],
+      "experiment_digest": "sha256:3c745c8db55bb9940536d40737e741a8c3db02bbcc562b29d5179f92a73a17bd",
+      "hpc_job": {
+        "container_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+        "environment_digest": "sha256:77bf7484d2c47dc8864564dcfa2b9aac0ff714c372bd24d923357aeaa4361a4e",
+        "handle": {
+          "artifact_scope": "ari-openroad-gcd-nangate45-26q3-slurm-cpu-e1c45dfc4d9d6d949d49269f1195edf0/.ari-hpc/cd4f1963b96788c4f8013f5897aeb2d7af4bbf278c9bcbf3d2dd9e6ce555cc22",
+          "backend": "slurm",
+          "cluster_identity": "sha256:04e26aef0cc039688a382bdcfd0b1852693659de5b6e9a19ad525d1c54fd32a2",
+          "handle_id": "hpc-1a4f72fd5da84c19c7b7471dc6b3024e8a002f8973a5f2b1",
+          "job_id": "269395",
+          "request_digest": "sha256:cd4f1963b96788c4f8013f5897aeb2d7af4bbf278c9bcbf3d2dd9e6ce555cc22",
+          "request_id": "openroad-job-f055c72447a217d8e21da984",
+          "schema_version": "ari.hpc.job-handle/v1",
+          "state": "submitted",
+          "status": "submitted",
+          "submission_digest": "sha256:1a57f4fc12e69848c7e0b4a974b0514da27187ae684e37950608aa359ce907af",
+          "submitted_at": "2026-08-08T16:47:05.222517Z",
+          "workspace_scope": "ari-openroad-gcd-nangate45-26q3-slurm-cpu-e1c45dfc4d9d6d949d49269f1195edf0"
+        },
+        "module_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "module_snapshot_digest": null,
+        "request_digest": "sha256:cd4f1963b96788c4f8013f5897aeb2d7af4bbf278c9bcbf3d2dd9e6ce555cc22",
+        "result_digest": "sha256:ff6fe3e5f2dd3b82522fd0db73bd78342e2717ebef53ec1e41260e3711130278",
+        "status": {
+          "end_time": "2026-08-09T01:47:31",
+          "exit_code": 0,
+          "handle_id": "hpc-1a4f72fd5da84c19c7b7471dc6b3024e8a002f8973a5f2b1",
+          "job_id": "269395",
+          "reason": null,
+          "scheduler_state": "COMPLETED",
+          "schema_version": "ari.hpc.job-status/v1",
+          "start_time": "2026-08-09T01:47:05",
+          "state": "succeeded"
+        }
+      },
+      "method_digest": "sha256:ab4744242aab0f36529603754616ddb1b9157a155bbfbcfff98a9d7f7ccd6c1e",
+      "metrics": [
+        {
+          "corner": "typical",
+          "golden_range": {
+            "max": 0.0,
+            "min": 0.0
+          },
+          "metric_id": "route-drc-errors",
+          "mode": "functional",
+          "source_report": {
+            "digest": "sha256:d98f1bcd6fb69045e9f62b1a48771ae3fedd5aac7113253839b98e5f6475a7c2",
+            "json_pointer": "/route__drc_errors",
+            "relative_path": "reports/metrics.json"
+          },
+          "stage": "routing",
+          "unit": "count",
+          "value": 0.0
+        },
+        {
+          "corner": "typical",
+          "golden_range": {
+            "max": 3700.0,
+            "min": 3500.0
+          },
+          "metric_id": "route-wirelength",
+          "mode": "functional",
+          "source_report": {
+            "digest": "sha256:d98f1bcd6fb69045e9f62b1a48771ae3fedd5aac7113253839b98e5f6475a7c2",
+            "json_pointer": "/route__wirelength",
+            "relative_path": "reports/metrics.json"
+          },
+          "stage": "routing",
+          "unit": "um",
+          "value": 3603.0
+        },
+        {
+          "corner": "typical",
+          "golden_range": {
+            "max": 3500.0,
+            "min": 3200.0
+          },
+          "metric_id": "route-vias",
+          "mode": "functional",
+          "source_report": {
+            "digest": "sha256:d98f1bcd6fb69045e9f62b1a48771ae3fedd5aac7113253839b98e5f6475a7c2",
+            "json_pointer": "/route__vias",
+            "relative_path": "reports/metrics.json"
+          },
+          "stage": "routing",
+          "unit": "count",
+          "value": 3361.0
+        }
+      ],
+      "result_digest": "sha256:521bc57138732ef77b3d702603ca9dc207e02f7af6684b22ba247bcb4d5bdbff",
+      "session_transcript": {
+        "captured": true,
+        "digest": "sha256:e728cde344b86976beec72cd6693a5e67c4f59eb8137bec2282816d96fd82c28",
+        "logical_name": "openroad/sha256/e7/e728cde344b86976beec72cd6693a5e67c4f59eb8137bec2282816d96fd82c28.json",
+        "size": 9530
+      }
+    },
+    "revocation_behavior": {
+      "rule": "non-verified status is ineligible for enforce binding"
+    },
+    "schema_digest_pin": {
+      "input_schema_digest": "sha256:632835499c910364d6b6f3c393d9a726b3db62e0ebec8d7bf21506b736591e13",
+      "name": "ari_openroad_run__gcd_nangate45_26q3_slurm_cpu",
+      "output_schema_digest": "sha256:4f5c05c3413a658ff08571e36831465827020e114f05003f90121b909ad5f188"
+    },
+    "schema_drift_detection": {
+      "upstream_contract_digest": "sha256:0ebdb1ce36f25750b40ee8aa57c029c23a60f36dd3f69548313e600351749a01",
+      "virtual_leaf_schema": {
+        "input_schema_digest": "sha256:632835499c910364d6b6f3c393d9a726b3db62e0ebec8d7bf21506b736591e13",
+        "name": "ari_openroad_run__gcd_nangate45_26q3_slurm_cpu",
+        "output_schema_digest": "sha256:4f5c05c3413a658ff08571e36831465827020e114f05003f90121b909ad5f188"
+      }
+    },
+    "side_effect_declaration": {
+      "permissions": [
+        "process",
+        "scheduler-submit",
+        "workspace-read",
+        "workspace-write"
+      ],
+      "side_effects": "workspace-write"
+    },
+    "source_package_digest_pin": {
+      "artifact": {
+        "container_runtime": {
+          "clean_environment": true,
+          "contain_all": true,
+          "gpu": false,
+          "image_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+          "image_size_bytes": 1540308992,
+          "network": "none",
+          "runtime": "singularity"
+        },
+        "execution_image": {
+          "architecture": "x86_64",
+          "image_id": "orfs-26q3-openroad-7304ba78",
+          "inner_openroad_digest": "sha256:e69cc5011dc319a46c2f677b94ec7f7abab28f3f136e788071e5125c89daf1d9",
+          "inner_openroad_path": "/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad",
+          "oci_manifest_digest": "sha256:46b03d30451b56dc20734d0f5ac51a8496e7139cda82a576d1915369bd0c68a7",
+          "oci_reference": "docker.io/openroad/orfs:26Q2-565-gadeb389e7",
+          "retained_sif_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+          "retained_sif_size_bytes": 1540308992,
+          "runtime": "singularity",
+          "runtime_version": "4.5.0-1.el9"
+        },
+        "openroad_mcp": {
+          "dependency_lock_digest": "sha256:0fd99caa99abe3c9f731e9aa7dd17076dd21e91826fc9bdd7f5dd86489bee950",
+          "direct_dependencies": [
+            "fastmcp==3.2.0",
+            "mcp[cli]==1.28.1",
+            "pillow==12.3.0",
+            "psutil==7.2.2",
+            "pydantic==2.12.5"
+          ],
+          "distribution_name": "openroad-mcp",
+          "distribution_status": "deprecated-final",
+          "license_digest": "sha256:462f2e81c0f10c3c54a4d41ff284146c1f98ed997a140cb027823b6d847c391f",
+          "license_id": "BSD-3-Clause",
+          "maintained_distribution": "npm",
+          "mcp_contract_digest": "sha256:0ebdb1ce36f25750b40ee8aa57c029c23a60f36dd3f69548313e600351749a01",
+          "package_tree_digest": "sha256:81dae53bac327e764b2760e78c418c8023c9f7b3ca2a31b3147c96ecb8213a82",
+          "python_requires": ">=3.13",
+          "repository_commit": "39d78c091d9f41d217c8c28ddb20fa105942eba5",
+          "repository_tag": "v0.6.1",
+          "repository_url": "https://github.com/The-OpenROAD-Project/OpenROAD-MCP",
+          "source_archive_digest": "sha256:22a8f526c4f4b9d84e8a1ac5a2cfc42594867f6fd6e02f0984afa3f1c43eaade",
+          "version": "0.6.1"
+        },
+        "scheduler_snapshot_digest": "sha256:29dc13329e25e355dd6b225e9fc72a60e546203d61cb7dcc27e0f11734c3eddb",
+        "toolchain_line": {
+          "line_id": "orfs-26q3",
+          "openroad_commit": "7304ba78ade7cb9f78466c6d0231432d72dadd3b",
+          "orfs_commit": "adeb389e7fbf06ef6a939a895c014f69e6f7aa00",
+          "orfs_repository_url": "https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts",
+          "orfs_tag": "26Q3"
+        }
+      }
+    },
+    "timeout_cancellation_process_group": {
+      "bounded_command_timeout_seconds": 3600,
+      "test_ids": [
+        "ari-skill-tool-registry/tests/test_openroad_adapter.py",
+        "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_timeout_reaps_the_provider_process_group"
+      ],
+      "test_output_sha256": "sha256:a880424936079bab985ef4f3591e6cd62dd47b8d5d796862d4c4d6eb523f9108"
+    },
+    "unbound_invocation_rejection": {
+      "live_adapter_check": true
+    },
+    "workspace_isolation": {
+      "artifact_refs": [
+        {
+          "digest": "sha256:d8c4382dbf6f1209d2c513a74873ffd699a2b2c8a8d3439fe129e0371566dbdd",
+          "logical_name": "openroad/sha256/d8/d8c4382dbf6f1209d2c513a74873ffd699a2b2c8a8d3439fe129e0371566dbdd.json",
+          "logical_role": "openroad-hpc-submission-record",
+          "media_type": "application/json",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 8975
+        },
+        {
+          "digest": "sha256:2b79d49ff1c1f6d26d2e367ed90ed7f755b66f056d2e0ec77a1a43274c4f520d",
+          "logical_name": "openroad/sha256/2b/2b79d49ff1c1f6d26d2e367ed90ed7f755b66f056d2e0ec77a1a43274c4f520d.json",
+          "logical_role": "openroad-hpc-wrapper-completion",
+          "media_type": "application/json",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 353
+        },
+        {
+          "digest": "sha256:fa67e23c56a4435337e8734315fdd7ab1c7f8e96cb27dad27bbd122b9be922f9",
+          "logical_name": "openroad/sha256/fa/fa67e23c56a4435337e8734315fdd7ab1c7f8e96cb27dad27bbd122b9be922f9.txt",
+          "logical_role": "openroad-hpc-execution-environment",
+          "media_type": "text/plain",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 344
+        },
+        {
+          "digest": "sha256:5640b0e0b1abb66f1921912b24c28bb503831d5a44acb536d66524b24137819c",
+          "logical_name": "openroad/sha256/56/5640b0e0b1abb66f1921912b24c28bb503831d5a44acb536d66524b24137819c.txt",
+          "logical_role": "openroad-hpc-container-runtime",
+          "media_type": "text/plain",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 12
+        },
+        {
+          "digest": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "logical_name": "openroad/sha256/9a/9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa.txt",
+          "logical_role": "openroad-hpc-exit-code",
+          "media_type": "text/plain",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 2
+        },
+        {
+          "digest": "sha256:cd28e1a8c573d6e9bf7a460ed78868d8b4009eebefcae7de05c5f92873875278",
+          "logical_name": "openroad/sha256/cd/cd28e1a8c573d6e9bf7a460ed78868d8b4009eebefcae7de05c5f92873875278.out",
+          "logical_role": "openroad-scheduler-stdout",
+          "media_type": "text/plain",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 17152
+        },
+        {
+          "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "logical_name": "openroad/sha256/e3/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.err",
+          "logical_role": "openroad-scheduler-stderr",
+          "media_type": "text/plain",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 0
+        },
+        {
+          "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "logical_name": "openroad/sha256/e3/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.rpt",
+          "logical_role": "openroad-drc-report",
+          "media_type": "text/plain",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 0
+        },
+        {
+          "digest": "sha256:d98f1bcd6fb69045e9f62b1a48771ae3fedd5aac7113253839b98e5f6475a7c2",
+          "logical_name": "openroad/sha256/d9/d98f1bcd6fb69045e9f62b1a48771ae3fedd5aac7113253839b98e5f6475a7c2.json",
+          "logical_role": "openroad-metrics",
+          "media_type": "application/json",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 1677
+        },
+        {
+          "digest": "sha256:c227220af5186f579d7674eef16eb8f50b1a032af5eed43548f3a2aea3a66643",
+          "logical_name": "openroad/sha256/c2/c227220af5186f579d7674eef16eb8f50b1a032af5eed43548f3a2aea3a66643.def",
+          "logical_role": "openroad-def",
+          "media_type": "text/plain",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 428999
+        },
+        {
+          "digest": "sha256:555d3fd021ddb226d9a390246104b6331f737393b6d70aeb20a128e138e72783",
+          "logical_name": "openroad/sha256/55/555d3fd021ddb226d9a390246104b6331f737393b6d70aeb20a128e138e72783.v",
+          "logical_role": "openroad-netlist",
+          "media_type": "text/x-verilog",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 64065
+        },
+        {
+          "digest": "sha256:e728cde344b86976beec72cd6693a5e67c4f59eb8137bec2282816d96fd82c28",
+          "logical_name": "openroad/sha256/e7/e728cde344b86976beec72cd6693a5e67c4f59eb8137bec2282816d96fd82c28.json",
+          "logical_role": "openroad-session-transcript",
+          "media_type": "application/json",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 9530
+        }
+      ],
+      "workspace_input_digest": "sha256:9b34eb5ed61746d6577ba329c827a6c7578eb2d4ed4f2468755da235208be34f"
+    }
+  },
+  "observations": {
+    "execution_artifact_refs": [
+      {
+        "digest": "sha256:d8c4382dbf6f1209d2c513a74873ffd699a2b2c8a8d3439fe129e0371566dbdd",
+        "logical_name": "openroad/sha256/d8/d8c4382dbf6f1209d2c513a74873ffd699a2b2c8a8d3439fe129e0371566dbdd.json",
+        "logical_role": "openroad-hpc-submission-record",
+        "media_type": "application/json",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 8975
+      },
+      {
+        "digest": "sha256:2b79d49ff1c1f6d26d2e367ed90ed7f755b66f056d2e0ec77a1a43274c4f520d",
+        "logical_name": "openroad/sha256/2b/2b79d49ff1c1f6d26d2e367ed90ed7f755b66f056d2e0ec77a1a43274c4f520d.json",
+        "logical_role": "openroad-hpc-wrapper-completion",
+        "media_type": "application/json",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 353
+      },
+      {
+        "digest": "sha256:fa67e23c56a4435337e8734315fdd7ab1c7f8e96cb27dad27bbd122b9be922f9",
+        "logical_name": "openroad/sha256/fa/fa67e23c56a4435337e8734315fdd7ab1c7f8e96cb27dad27bbd122b9be922f9.txt",
+        "logical_role": "openroad-hpc-execution-environment",
+        "media_type": "text/plain",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 344
+      },
+      {
+        "digest": "sha256:5640b0e0b1abb66f1921912b24c28bb503831d5a44acb536d66524b24137819c",
+        "logical_name": "openroad/sha256/56/5640b0e0b1abb66f1921912b24c28bb503831d5a44acb536d66524b24137819c.txt",
+        "logical_role": "openroad-hpc-container-runtime",
+        "media_type": "text/plain",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 12
+      },
+      {
+        "digest": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "logical_name": "openroad/sha256/9a/9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa.txt",
+        "logical_role": "openroad-hpc-exit-code",
+        "media_type": "text/plain",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 2
+      },
+      {
+        "digest": "sha256:cd28e1a8c573d6e9bf7a460ed78868d8b4009eebefcae7de05c5f92873875278",
+        "logical_name": "openroad/sha256/cd/cd28e1a8c573d6e9bf7a460ed78868d8b4009eebefcae7de05c5f92873875278.out",
+        "logical_role": "openroad-scheduler-stdout",
+        "media_type": "text/plain",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 17152
+      },
+      {
+        "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "logical_name": "openroad/sha256/e3/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.err",
+        "logical_role": "openroad-scheduler-stderr",
+        "media_type": "text/plain",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 0
+      },
+      {
+        "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "logical_name": "openroad/sha256/e3/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.rpt",
+        "logical_role": "openroad-drc-report",
+        "media_type": "text/plain",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 0
+      },
+      {
+        "digest": "sha256:d98f1bcd6fb69045e9f62b1a48771ae3fedd5aac7113253839b98e5f6475a7c2",
+        "logical_name": "openroad/sha256/d9/d98f1bcd6fb69045e9f62b1a48771ae3fedd5aac7113253839b98e5f6475a7c2.json",
+        "logical_role": "openroad-metrics",
+        "media_type": "application/json",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 1677
+      },
+      {
+        "digest": "sha256:c227220af5186f579d7674eef16eb8f50b1a032af5eed43548f3a2aea3a66643",
+        "logical_name": "openroad/sha256/c2/c227220af5186f579d7674eef16eb8f50b1a032af5eed43548f3a2aea3a66643.def",
+        "logical_role": "openroad-def",
+        "media_type": "text/plain",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 428999
+      },
+      {
+        "digest": "sha256:555d3fd021ddb226d9a390246104b6331f737393b6d70aeb20a128e138e72783",
+        "logical_name": "openroad/sha256/55/555d3fd021ddb226d9a390246104b6331f737393b6d70aeb20a128e138e72783.v",
+        "logical_role": "openroad-netlist",
+        "media_type": "text/x-verilog",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 64065
+      },
+      {
+        "digest": "sha256:e728cde344b86976beec72cd6693a5e67c4f59eb8137bec2282816d96fd82c28",
+        "logical_name": "openroad/sha256/e7/e728cde344b86976beec72cd6693a5e67c4f59eb8137bec2282816d96fd82c28.json",
+        "logical_role": "openroad-session-transcript",
+        "media_type": "application/json",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 9530
+      }
+    ],
+    "fixtures": {
+      "golden_digest": "sha256:720d8a68ac70aab2dc170b0ade87d760fddc7384d38a873927275192518898ee",
+      "replay_digest": "sha256:ac81d2b552a15d73fc2b794b9228c43b3afbaafebe7480f9ae6c321871f6105f"
+    },
+    "official_orfs": {
+      "drc_report_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "execution_image_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+      "invocation": [
+        "make",
+        "DESIGN_CONFIG=designs/nangate45/gcd/config.mk",
+        "FLOW_VARIANT=ari_verified",
+        "SKIP_CTS_REPAIR_TIMING=1"
+      ],
+      "metrics_report_digest": "sha256:6f07f559e582735341892fdf9f28938fe847d10e740388b99ff141f9309f4ea0",
+      "orfs_commit": "adeb389e7fbf06ef6a939a895c014f69e6f7aa00",
+      "qualification": "Independent upstream reference pass only; CTS timing repair was disabled after the pinned binary raised SIGILL, so this is not full default-flow parity.",
+      "result_artifacts": {
+        "6_final.def": {
+          "digest": "sha256:33c30aa0ddeafc25f44cc910d80771b5dca21be673a2bdc2993a60d18009dae6",
+          "size": 406435
+        },
+        "6_final.gds": {
+          "digest": "sha256:e3f9f6e2bda1c8b533e43dec455c4b348b7b2a34d615ea9c037339ad7ca4528a",
+          "size": 526654
+        },
+        "6_final.odb": {
+          "digest": "sha256:0a46f88b9f6a4c2a4c67bb2f385b9e6e25dce224ee9281628c4f5b056ce33ea9",
+          "size": 1230865
+        },
+        "6_final.sdc": {
+          "digest": "sha256:cdc62252251ee823da5dbef746f32b5bf70cb0d9475886badbc7bd1507e428c8",
+          "size": 6137
+        },
+        "6_final.spef": {
+          "digest": "sha256:02a3700060636441726768bf006d233adffc04aeb19906100a8b2eb4352fbdc4",
+          "size": 445599
+        },
+        "6_final.v": {
+          "digest": "sha256:e6124f96c896b8531ffb1329c7810448d9cfef969b4dbee20ed9770fd488cb01",
+          "size": 48464
+        }
+      },
+      "runner": "OpenROAD-flow-scripts make target",
+      "selected_metrics": {
+        "finish__design__instance__area": 716.072,
+        "finish__timing__hold__ws": 0.113878,
+        "finish__timing__setup__ws": 0.016341
+      }
+    },
+    "provider_digest_in_validation_environment": "sha256:d6981823308687e69ecea5b685c9b8ea79d7f76e3f448606376186db04caa6f0",
+    "result": {
+      "artifact_manifest": [
+        {
+          "captured": true,
+          "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "logical_role": "openroad-drc-report",
+          "media_type": "text/plain",
+          "relative_path": "reports/drc.rpt",
+          "size": 0
+        },
+        {
+          "captured": true,
+          "digest": "sha256:d98f1bcd6fb69045e9f62b1a48771ae3fedd5aac7113253839b98e5f6475a7c2",
+          "logical_role": "openroad-metrics",
+          "media_type": "application/json",
+          "relative_path": "reports/metrics.json",
+          "size": 1677
+        },
+        {
+          "captured": true,
+          "digest": "sha256:c227220af5186f579d7674eef16eb8f50b1a032af5eed43548f3a2aea3a66643",
+          "logical_role": "openroad-def",
+          "media_type": "text/plain",
+          "relative_path": "results/gcd.def",
+          "size": 428999
+        },
+        {
+          "captured": true,
+          "digest": "sha256:555d3fd021ddb226d9a390246104b6331f737393b6d70aeb20a128e138e72783",
+          "logical_role": "openroad-netlist",
+          "media_type": "text/x-verilog",
+          "relative_path": "results/gcd.v",
+          "size": 64065
+        }
+      ],
+      "experiment_digest": "sha256:3c745c8db55bb9940536d40737e741a8c3db02bbcc562b29d5179f92a73a17bd",
+      "hpc_job": {
+        "container_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+        "environment_digest": "sha256:77bf7484d2c47dc8864564dcfa2b9aac0ff714c372bd24d923357aeaa4361a4e",
+        "handle": {
+          "artifact_scope": "ari-openroad-gcd-nangate45-26q3-slurm-cpu-e1c45dfc4d9d6d949d49269f1195edf0/.ari-hpc/cd4f1963b96788c4f8013f5897aeb2d7af4bbf278c9bcbf3d2dd9e6ce555cc22",
+          "backend": "slurm",
+          "cluster_identity": "sha256:04e26aef0cc039688a382bdcfd0b1852693659de5b6e9a19ad525d1c54fd32a2",
+          "handle_id": "hpc-1a4f72fd5da84c19c7b7471dc6b3024e8a002f8973a5f2b1",
+          "job_id": "269395",
+          "request_digest": "sha256:cd4f1963b96788c4f8013f5897aeb2d7af4bbf278c9bcbf3d2dd9e6ce555cc22",
+          "request_id": "openroad-job-f055c72447a217d8e21da984",
+          "schema_version": "ari.hpc.job-handle/v1",
+          "state": "submitted",
+          "status": "submitted",
+          "submission_digest": "sha256:1a57f4fc12e69848c7e0b4a974b0514da27187ae684e37950608aa359ce907af",
+          "submitted_at": "2026-08-08T16:47:05.222517Z",
+          "workspace_scope": "ari-openroad-gcd-nangate45-26q3-slurm-cpu-e1c45dfc4d9d6d949d49269f1195edf0"
+        },
+        "module_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "module_snapshot_digest": null,
+        "request_digest": "sha256:cd4f1963b96788c4f8013f5897aeb2d7af4bbf278c9bcbf3d2dd9e6ce555cc22",
+        "result_digest": "sha256:ff6fe3e5f2dd3b82522fd0db73bd78342e2717ebef53ec1e41260e3711130278",
+        "status": {
+          "end_time": "2026-08-09T01:47:31",
+          "exit_code": 0,
+          "handle_id": "hpc-1a4f72fd5da84c19c7b7471dc6b3024e8a002f8973a5f2b1",
+          "job_id": "269395",
+          "reason": null,
+          "scheduler_state": "COMPLETED",
+          "schema_version": "ari.hpc.job-status/v1",
+          "start_time": "2026-08-09T01:47:05",
+          "state": "succeeded"
+        }
+      },
+      "method_digest": "sha256:ab4744242aab0f36529603754616ddb1b9157a155bbfbcfff98a9d7f7ccd6c1e",
+      "metrics": [
+        {
+          "corner": "typical",
+          "golden_range": {
+            "max": 0.0,
+            "min": 0.0
+          },
+          "metric_id": "route-drc-errors",
+          "mode": "functional",
+          "source_report": {
+            "digest": "sha256:d98f1bcd6fb69045e9f62b1a48771ae3fedd5aac7113253839b98e5f6475a7c2",
+            "json_pointer": "/route__drc_errors",
+            "relative_path": "reports/metrics.json"
+          },
+          "stage": "routing",
+          "unit": "count",
+          "value": 0.0
+        },
+        {
+          "corner": "typical",
+          "golden_range": {
+            "max": 3700.0,
+            "min": 3500.0
+          },
+          "metric_id": "route-wirelength",
+          "mode": "functional",
+          "source_report": {
+            "digest": "sha256:d98f1bcd6fb69045e9f62b1a48771ae3fedd5aac7113253839b98e5f6475a7c2",
+            "json_pointer": "/route__wirelength",
+            "relative_path": "reports/metrics.json"
+          },
+          "stage": "routing",
+          "unit": "um",
+          "value": 3603.0
+        },
+        {
+          "corner": "typical",
+          "golden_range": {
+            "max": 3500.0,
+            "min": 3200.0
+          },
+          "metric_id": "route-vias",
+          "mode": "functional",
+          "source_report": {
+            "digest": "sha256:d98f1bcd6fb69045e9f62b1a48771ae3fedd5aac7113253839b98e5f6475a7c2",
+            "json_pointer": "/route__vias",
+            "relative_path": "reports/metrics.json"
+          },
+          "stage": "routing",
+          "unit": "count",
+          "value": 3361.0
+        }
+      ],
+      "result_digest": "sha256:521bc57138732ef77b3d702603ca9dc207e02f7af6684b22ba247bcb4d5bdbff",
+      "session_transcript": {
+        "captured": true,
+        "digest": "sha256:e728cde344b86976beec72cd6693a5e67c4f59eb8137bec2282816d96fd82c28",
+        "logical_name": "openroad/sha256/e7/e728cde344b86976beec72cd6693a5e67c4f59eb8137bec2282816d96fd82c28.json",
+        "size": 9530
+      }
+    },
+    "scheduler": {
+      "allocation": "exclusive-node-cpu",
+      "gpu_gres": null,
+      "identity_disclosure": "salted-digest-only",
+      "site_identity_digest": "sha256:de280f6b0489481d07f61773365a8ce87a11917267b2a736635b093c63842ad2",
+      "slurm_version": "slurm 24.05.8",
+      "snapshot_digest": "sha256:29dc13329e25e355dd6b225e9fc72a60e546203d61cb7dcc27e0f11734c3eddb"
+    },
+    "unbound_invocation_rejected": true,
+    "upstream_mcp_schema_snapshot_digest": "sha256:0ebdb1ce36f25750b40ee8aa57c029c23a60f36dd3f69548313e600351749a01",
+    "upstream_mcp_tools": [
+      "create_interactive_session",
+      "get_session_history",
+      "get_session_metrics",
+      "inspect_interactive_session",
+      "interactive_openroad_exec",
+      "interactive_openroad_query",
+      "list_interactive_sessions",
+      "list_report_images",
+      "read_report_image",
+      "terminate_interactive_session"
+    ],
+    "virtual_leaf": {
+      "input_schema_digest": "sha256:632835499c910364d6b6f3c393d9a726b3db62e0ebec8d7bf21506b736591e13",
+      "name": "ari_openroad_run__gcd_nangate45_26q3_slurm_cpu",
+      "output_schema_digest": "sha256:4f5c05c3413a658ff08571e36831465827020e114f05003f90121b909ad5f188"
+    }
+  },
+  "provider_id": "openroad-mcp",
+  "provider_version": "0.6.1",
+  "schema_version": "ari.openroad-registration-evidence/v1",
+  "test_run": {
+    "command": [
+      "<test-python>",
+      "-m",
+      "pytest",
+      "ari-skill-tool-registry/tests/test_openroad_adapter.py",
+      "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_timeout_reaps_the_provider_process_group",
+      "-q"
+    ],
+    "exit_code": 0,
+    "output_sha256": "sha256:a880424936079bab985ef4f3591e6cd62dd47b8d5d796862d4c4d6eb523f9108",
+    "test_ids": [
+      "ari-skill-tool-registry/tests/test_openroad_adapter.py",
+      "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_timeout_reaps_the_provider_process_group"
+    ]
+  }
+}

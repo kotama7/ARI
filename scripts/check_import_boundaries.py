@@ -6,7 +6,8 @@ must only import from ``ari.public.*``"*.  That contract is stated but, until
 this script, unenforced.  This checker parses every skill and core module with
 the stdlib :mod:`ast` and reports the two boundary rules:
 
-  * **B1** — every ``ari-skill-*/src/**`` module may import from ``ari-core``
+  * **B1** — every skill runtime module (resolved from ``skill.yaml``'s
+    entrypoint package) may import from ``ari-core``
     only via ``ari.public.*`` / ``ari.protocols.*``; any other ``ari.<internal>``
     segment crossing the skill->core seam is a violation.
   * **B2** — ``ari-core/ari/**`` must not import any ``ari_skill_*`` package,
@@ -19,9 +20,10 @@ historical debt out of a future ratchet (``--fail-on-regression``).  This script
 only *reads*; it never edits code and never widens ``ari.public.*`` (that is the
 B1 ADAPT runtime work, later subtasks).
 
-Design: docs/refactoring/003_dependency_boundary_report.md §3 (B1) / §4 (B2) /
-§15 (enforcement roadmap); docs/refactoring/009_quality_scripts_plan.md §5.2
-(common script contract, warning-mode-first rollout).
+Design (retired planning documents; numbers kept as provenance): the subtask 003
+dependency-boundary report §3 (B1) / §4 (B2) / §15 (enforcement roadmap);
+refactoring plan 009 (quality scripts) §5.2 (common script contract,
+warning-mode-first rollout).
 
 AST, not grep: guarded (``try/except ImportError``) and in-function imports are
 the norm on the skill->core seam, and comments (e.g. the ``settingsConstants.ts``
@@ -33,6 +35,7 @@ default/``--warning-only`` posture, or ``--fail-on-regression`` with no net-new
 debt; ``1`` = net-new findings under ``--fail-on-regression``; ``2`` =
 usage/environment error (e.g. missing PyYAML).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -130,14 +133,40 @@ def collect_imports(abs_path: Path, rel_path: str) -> list[Edge]:
     return edges
 
 
+def _skill_runtime_root(skill_dir: Path) -> Path | None:
+    """Resolve a skill's Python package root from its canonical manifest.
+
+    ``src/`` remains a compatibility fallback for fixture repositories and old
+    skills.  Using the first component of ``entrypoint.module`` ensures a real
+    package such as ``ari_skill_hpc/server.py`` cannot escape boundary checks.
+    """
+    manifest_path = skill_dir / "skill.yaml"
+    if manifest_path.is_file():
+        try:
+            manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+            entrypoint = manifest.get("entrypoint") or {}
+            if entrypoint.get("command_kind") == "python":
+                module = entrypoint.get("module")
+                if isinstance(module, str):
+                    parts = Path(module).parts
+                    if parts and parts[0] not in {".", ".."}:
+                        root = skill_dir / parts[0]
+                        if root.is_dir():
+                            return root
+        except (OSError, yaml.YAMLError):
+            pass
+    fallback = skill_dir / "src"
+    return fallback if fallback.is_dir() else None
+
+
 def iter_skill_files(target: Path):
-    """Yield ``(skill_name, path)`` for every ``ari-skill-*/src/**/*.py``."""
+    """Yield ``(skill_name, path)`` for every manifested runtime package."""
     for skill_dir in sorted(target.glob("ari-skill-*")):
-        src = skill_dir / "src"
-        if not src.is_dir():
+        runtime_root = _skill_runtime_root(skill_dir)
+        if runtime_root is None:
             continue
-        name = skill_dir.name[len("ari-skill-"):]
-        for py in sorted(src.rglob("*.py")):
+        name = skill_dir.name[len("ari-skill-") :]
+        for py in sorted(runtime_root.rglob("*.py")):
             yield name, py
 
 
@@ -207,7 +236,12 @@ def build_findings(target: Path, rules: dict, allow_ids: set[str]) -> list[Findi
                 fid = f"{rel}::{edge.module}"
                 findings.append(
                     Finding(
-                        "B1", name, rel, edge.line, edge.module, "error",
+                        "B1",
+                        name,
+                        rel,
+                        edge.line,
+                        edge.module,
+                        "error",
                         f"skill '{name}' imports private '{edge.module}' "
                         f"(skills may only import from: {roots})",
                         fid in allow_ids,
@@ -223,18 +257,30 @@ def build_findings(target: Path, rules: dict, allow_ids: set[str]) -> list[Findi
                 fid = f"{rel}::{edge.module}"
                 findings.append(
                     Finding(
-                        "B2", "ari-core", rel, edge.line, edge.module, "error",
+                        "B2",
+                        "ari-core",
+                        rel,
+                        edge.line,
+                        edge.module,
+                        "error",
                         f"core imports non-sanctioned skill '{edge.module}' "
                         "(only ari_skill_memory is sanctioned)",
                         fid in allow_ids,
                     )
                 )
-            if forbid_viz and rel.startswith("ari-core/ari/cli/") \
-                    and core_viz_violation(edge):
+            if (
+                forbid_viz
+                and rel.startswith("ari-core/ari/cli/")
+                and core_viz_violation(edge)
+            ):
                 fid = f"{rel}::{edge.module}"
                 findings.append(
                     Finding(
-                        "CORE_VIZ", "ari-core", rel, edge.line, edge.module,
+                        "CORE_VIZ",
+                        "ari-core",
+                        rel,
+                        edge.line,
+                        edge.module,
                         "warning",
                         f"core cli imports dashboard '{edge.module}' "
                         "(invert via a callback/port)",
@@ -288,7 +334,11 @@ def to_report(target_str: str, findings: list[Finding]) -> dict:
         "version": SCHEMA_VERSION,
         "target": target_str,
         "summary": {
-            "b1": b1, "b2": b2, "known": known, "new": new, "total": len(findings),
+            "b1": b1,
+            "b2": b2,
+            "known": known,
+            "new": new,
+            "total": len(findings),
         },
         "findings": [
             {
@@ -357,22 +407,41 @@ def build_parser() -> argparse.ArgumentParser:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("--target", default=str(REPO_ROOT),
-                    help="restrict the scan subtree (default: repo root)")
-    ap.add_argument("--config", default=str(DEFAULT_CONFIG),
-                    help="rule config YAML (default: scripts/quality/%(prog)s.yaml)")
-    ap.add_argument("--allow", default=str(DEFAULT_ALLOW),
-                    help="frozen allowlist YAML (default: scripts/quality/...allow.yaml)")
-    ap.add_argument("--output", default=None,
-                    help="write the report to a file instead of stdout")
-    ap.add_argument("--format", choices=["markdown", "json"], default="markdown",
-                    help="report format (default: markdown)")
-    ap.add_argument("--json", action="store_true",
-                    help="alias for --format json")
-    ap.add_argument("--warning-only", action="store_true",
-                    help="force exit 0 regardless of findings (default posture)")
-    ap.add_argument("--fail-on-regression", action="store_true",
-                    help="exit 1 only on findings not in the allowlist (ratchet)")
+    ap.add_argument(
+        "--target",
+        default=str(REPO_ROOT),
+        help="restrict the scan subtree (default: repo root)",
+    )
+    ap.add_argument(
+        "--config",
+        default=str(DEFAULT_CONFIG),
+        help="rule config YAML (default: scripts/quality/%(prog)s.yaml)",
+    )
+    ap.add_argument(
+        "--allow",
+        default=str(DEFAULT_ALLOW),
+        help="frozen allowlist YAML (default: scripts/quality/...allow.yaml)",
+    )
+    ap.add_argument(
+        "--output", default=None, help="write the report to a file instead of stdout"
+    )
+    ap.add_argument(
+        "--format",
+        choices=["markdown", "json"],
+        default="markdown",
+        help="report format (default: markdown)",
+    )
+    ap.add_argument("--json", action="store_true", help="alias for --format json")
+    ap.add_argument(
+        "--warning-only",
+        action="store_true",
+        help="force exit 0 regardless of findings (default posture)",
+    )
+    ap.add_argument(
+        "--fail-on-regression",
+        action="store_true",
+        help="exit 1 only on findings not in the allowlist (ratchet)",
+    )
     return ap
 
 
@@ -390,8 +459,9 @@ def main(argv: list[str] | None = None) -> int:
     text = render_json(report) if fmt == "json" else render_markdown(report)
 
     if args.output:
-        Path(args.output).write_text(text + ("\n" if not text.endswith("\n") else ""),
-                                     encoding="utf-8")
+        Path(args.output).write_text(
+            text + ("\n" if not text.endswith("\n") else ""), encoding="utf-8"
+        )
     else:
         sys.stdout.write(text if text.endswith("\n") else text + "\n")
 

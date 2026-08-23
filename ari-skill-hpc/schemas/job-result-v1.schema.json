@@ -1,0 +1,481 @@
+{
+  "$defs": {
+    "ArtifactPinV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "logical_name": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+          "title": "Logical Name",
+          "type": "string"
+        },
+        "media_type": {
+          "default": "application/octet-stream",
+          "maxLength": 255,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "size_bytes": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "logical_name",
+        "path",
+        "digest",
+        "size_bytes"
+      ],
+      "title": "ArtifactPinV1",
+      "type": "object"
+    },
+    "JobErrorV1": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "validation",
+            "transport",
+            "scheduler",
+            "execution",
+            "artifact",
+            "unknown"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "message"
+      ],
+      "title": "JobErrorV1",
+      "type": "object"
+    },
+    "JobHandleV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_scope": {
+          "title": "Artifact Scope",
+          "type": "string"
+        },
+        "backend": {
+          "const": "slurm",
+          "default": "slurm",
+          "title": "Backend",
+          "type": "string"
+        },
+        "cluster_identity": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Cluster Identity",
+          "type": "string"
+        },
+        "handle_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+          "title": "Handle Id",
+          "type": "string"
+        },
+        "job_id": {
+          "pattern": "^[0-9]+(?:_[0-9]+)?$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "request_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.hpc.job-handle/v1",
+          "default": "ari.hpc.job-handle/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "state": {
+          "const": "submitted",
+          "default": "submitted",
+          "title": "State",
+          "type": "string"
+        },
+        "status": {
+          "const": "submitted",
+          "default": "submitted",
+          "title": "Status",
+          "type": "string"
+        },
+        "submission_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Submission Digest",
+          "type": "string"
+        },
+        "submitted_at": {
+          "title": "Submitted At",
+          "type": "string"
+        },
+        "workspace_scope": {
+          "title": "Workspace Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "handle_id",
+        "request_id",
+        "request_digest",
+        "cluster_identity",
+        "job_id",
+        "submission_digest",
+        "workspace_scope",
+        "artifact_scope",
+        "submitted_at"
+      ],
+      "title": "JobHandleV1",
+      "type": "object"
+    },
+    "JobLogV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size Bytes"
+        },
+        "stream": {
+          "enum": [
+            "stdout",
+            "stderr",
+            "scheduler"
+          ],
+          "title": "Stream",
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "stream",
+        "path"
+      ],
+      "title": "JobLogV1",
+      "type": "object"
+    },
+    "JobStatusV1": {
+      "additionalProperties": false,
+      "properties": {
+        "end_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End Time"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "handle_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Handle Id"
+        },
+        "job_id": {
+          "pattern": "^[0-9]+(?:_[0-9]+)?$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "scheduler_state": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Scheduler State",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.hpc.job-status/v1",
+          "default": "ari.hpc.job-status/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "start_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start Time"
+        },
+        "state": {
+          "enum": [
+            "submitted",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id",
+        "state",
+        "scheduler_state"
+      ],
+      "title": "JobStatusV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "accelerator_allocation_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Accelerator Allocation Digest"
+    },
+    "accelerator_inventory_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Accelerator Inventory Digest"
+    },
+    "container_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Container Digest"
+    },
+    "environment_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Environment Digest",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JobErrorV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "handle": {
+      "$ref": "#/$defs/JobHandleV1"
+    },
+    "inputs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ArtifactPinV1"
+      },
+      "title": "Inputs",
+      "type": "array"
+    },
+    "logs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/JobLogV1"
+      },
+      "title": "Logs",
+      "type": "array"
+    },
+    "module_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Module Digest",
+      "type": "string"
+    },
+    "module_snapshot_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Module Snapshot Digest"
+    },
+    "outputs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ArtifactPinV1"
+      },
+      "title": "Outputs",
+      "type": "array"
+    },
+    "provenance": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ArtifactPinV1"
+      },
+      "title": "Provenance",
+      "type": "array"
+    },
+    "request_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Request Digest",
+      "type": "string"
+    },
+    "result_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Result Digest"
+    },
+    "schema_version": {
+      "const": "ari.hpc.job-result/v1",
+      "default": "ari.hpc.job-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/JobStatusV1"
+    }
+  },
+  "required": [
+    "handle",
+    "status",
+    "request_digest",
+    "environment_digest",
+    "module_digest"
+  ],
+  "title": "JobResultV1",
+  "type": "object"
+}

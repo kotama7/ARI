@@ -1,0 +1,280 @@
+{
+  "$defs": {
+    "EvidenceRecordV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_item_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Artifact Item Ids",
+          "type": "array"
+        },
+        "claim_eligible_fact": {
+          "default": false,
+          "title": "Claim Eligible Fact",
+          "type": "boolean"
+        },
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "lane": {
+          "enum": [
+            "publishable",
+            "exploratory",
+            "contextual_negative",
+            "excluded"
+          ],
+          "title": "Lane",
+          "type": "string"
+        },
+        "metric_values": {
+          "additionalProperties": true,
+          "maxProperties": 100000,
+          "title": "Metric Values",
+          "type": "object"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "publishable": {
+          "default": false,
+          "title": "Publishable",
+          "type": "boolean"
+        },
+        "reason_codes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Reason Codes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "kind",
+        "lane"
+      ],
+      "title": "EvidenceRecordV1",
+      "type": "object"
+    },
+    "ManuscriptAnnotationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "annotation_id": {
+          "title": "Annotation Id",
+          "type": "string"
+        },
+        "claim_eligible": {
+          "const": false,
+          "default": false,
+          "title": "Claim Eligible",
+          "type": "boolean"
+        },
+        "model_call_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Call Digest"
+        },
+        "purpose": {
+          "title": "Purpose",
+          "type": "string"
+        },
+        "source_refs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Source Refs",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "annotation_id",
+        "purpose",
+        "text"
+      ],
+      "title": "ManuscriptAnnotationV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "annotations": {
+      "items": {
+        "$ref": "#/$defs/ManuscriptAnnotationV1"
+      },
+      "maxItems": 10000,
+      "title": "Annotations",
+      "type": "array"
+    },
+    "assurance": {
+      "additionalProperties": true,
+      "maxProperties": 10000,
+      "title": "Assurance",
+      "type": "object"
+    },
+    "claim_characteristics": {
+      "additionalProperties": {
+        "type": "boolean"
+      },
+      "maxProperties": 64,
+      "title": "Claim Characteristics",
+      "type": "object"
+    },
+    "context_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Context Digest",
+      "type": "string"
+    },
+    "contribution_map": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 10000,
+      "title": "Contribution Map",
+      "type": "array"
+    },
+    "evidence_records": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRecordV1"
+      },
+      "maxItems": 100000,
+      "title": "Evidence Records",
+      "type": "array"
+    },
+    "exploration_history": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 100000,
+      "title": "Exploration History",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10000,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "methods": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 10000,
+      "title": "Methods",
+      "type": "array"
+    },
+    "negative_results": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 100000,
+      "title": "Negative Results",
+      "type": "array"
+    },
+    "omission_manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Omission Manifest Digest",
+      "type": "string"
+    },
+    "profile_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Profile Digest",
+      "type": "string"
+    },
+    "related_work": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 100000,
+      "title": "Related Work",
+      "type": "array"
+    },
+    "reproducibility": {
+      "additionalProperties": true,
+      "maxProperties": 10000,
+      "title": "Reproducibility",
+      "type": "object"
+    },
+    "research_question": {
+      "additionalProperties": true,
+      "maxProperties": 256,
+      "title": "Research Question",
+      "type": "object"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-context/v1",
+      "default": "ari.manuscript-context/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Snapshot Digest",
+      "type": "string"
+    },
+    "subjects": {
+      "additionalProperties": true,
+      "maxProperties": 10000,
+      "title": "Subjects",
+      "type": "object"
+    },
+    "threats_to_validity": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10000,
+      "title": "Threats To Validity",
+      "type": "array"
+    }
+  },
+  "required": [
+    "run_id",
+    "profile_digest",
+    "source_snapshot_digest",
+    "omission_manifest_digest",
+    "context_digest"
+  ],
+  "title": "ManuscriptContextV1",
+  "type": "object"
+}

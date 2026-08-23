@@ -1,0 +1,69 @@
+% F22: full lifecycle of a governed (ari_rqgm) run, set in the ARI house
+% design language (_style.tex). Three phase columns, F21-style: BOOT
+% (lavender / ideation fill) — mode resolution, the one-time founding
+% registration transaction (32 prompt-or-policy records + 20 components), and the first
+% epoch freeze; GOVERNED SEARCH (peach / execution fill) — the per-node
+% hooks (proposal round, ungoverned node execution, governance-level
+% assignment, adversarial round) inside a dashed loop enclosure; EPOCH
+% BOUNDARY (pale green / gate fill) — audit, kernel-validated transition,
+% frontier repair + clean room, and the next freeze. The dotted margin
+% path at the bottom is the reflux into the next epoch's search. No
+% accent edge: this figure has no single emphasis role (F23 carries it).
+%
+% style.tikzstyles is loaded by the preamble / the standalone wrapper;
+% the ari* house styles come from _style.tex. The build cwd differs per
+% entry point, so resolve _style.tex from each known prefix.
+\InputIfFileExists{../shared/figures/tikz/_style.tex}{}{%
+  \InputIfFileExists{shared/figures/tikz/_style.tex}{}{%
+    \InputIfFileExists{report/shared/figures/tikz/_style.tex}{}{%
+      \InputIfFileExists{_style.tex}{}{%
+        \errmessage{F22: cannot locate figures/tikz/_style.tex}}}}}
+\begin{tikzpicture}[aricanvas]
+
+  % --- column 1: boot (mode + founding registration) -------------------
+  \node[ariboxwide, fill=phaseidea]           (mode)     {\figlabel{F22.mode}};
+  \node[ariboxwide, fill=phaseidea, below=of mode] (founding) {\figlabel{F22.founding}};
+  \node[ariboxwide, fill=phaseidea, below=of founding] (freezeo) {\figlabel{F22.freeze0}};
+  \node[ariphase, above=0.4cm of mode]        (h1)       {\figlabel{F22.head.boot}};
+  \pic at ([xshift=-2.5mm]h1.west) {ariglyph bulb};
+  \draw[ariarrow] (mode)     -- (founding);
+  \draw[ariarrow] (founding) -- (freezeo);
+
+  % --- column 2: governed search (per-node hooks, loop-enclosed) -------
+  \node[aribox exp, right=of mode]            (proposal) {\figlabel{F22.proposal}};
+  \node[aribox exp, below=of proposal]        (execute)  {\figlabel{F22.execute}};
+  \node[aribox exp, below=of execute]         (level)    {\figlabel{F22.level}};
+  \node[aribox exp, below=of level]           (advers)   {\figlabel{F22.adversarial}};
+  \node[ariloop, fit=(proposal)(execute)(level)(advers)] (loopgov) {};
+  \node[ariphase, above=0.65cm of proposal]   (h2)       {\figlabel{F22.head.search}};
+  \pic at ([xshift=-2.5mm]h2.west) {ariglyph flask};
+  \node[arinote, anchor=south west] at ([xshift=6mm]loopgov.north) (ttl) {\figlabel{F22.loop}};
+  \pic at ([xshift=-2.5mm]ttl.west) {ariglyph loop};
+  \draw[ariarrow] (proposal) -- (execute);
+  \draw[ariarrow] (execute)  -- (level);
+  \draw[ariarrow] (level)    -- (advers);
+
+  % --- column 3: epoch boundary ----------------------------------------
+  \node[aribox gate, right=of proposal]       (audit)    {\figlabel{F22.audit}};
+  \node[aribox gate, below=of audit]          (transit)  {\figlabel{F22.transition}};
+  \node[aribox gate, below=of transit]        (repair)   {\figlabel{F22.repair}};
+  \node[aribox idea, below=of repair]         (freezen)  {\figlabel{F22.freeze1}};
+  \node[ariphase, above=0.4cm of audit]       (h3)       {\figlabel{F22.head.boundary}};
+  \pic at ([xshift=-2.5mm]h3.west) {ariglyph gate};
+  \draw[ariarrow] (audit)   -- (transit);
+  \draw[ariarrow] (transit) -- (repair);
+  \draw[ariarrow] (repair)  -- (freezen);
+
+  % --- handoffs between the phase columns -------------------------------
+  \draw[ariarrow, rounded corners=5pt]
+    (freezeo.east) -- ([xshift=8mm]freezeo.east) |- (proposal.west);
+  \draw[ariarrow, rounded corners=5pt]
+    (advers.east) -- ([xshift=8mm]advers.east)
+    |- node[arinote, pos=0.3] {\figlabel{F22.note.trigger}} (audit.west);
+
+  % --- reflux: the new epoch keeps searching ----------------------------
+  \draw[arifeedback]
+    (freezen.south) -- ([yshift=-7mm]freezen.south) -| (loopgov.south);
+  \node[arinote] at ([yshift=-7mm]loopgov.south east) {\figlabel{F22.note.next}};
+
+\end{tikzpicture}

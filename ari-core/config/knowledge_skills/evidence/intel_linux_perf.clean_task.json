@@ -1,0 +1,21 @@
+{
+  "architecture": "x86_64",
+  "attachment_execution": "none",
+  "capability_ref": "ari.profiling.hardware-counters/v1",
+  "denied_events": {},
+  "execution_location": "typed-slurm-cpu-provider",
+  "hardware_counters_available": true,
+  "node_identifier_persisted": false,
+  "perf_event_paranoid": 0,
+  "perf_present": true,
+  "probe_events": [
+    "cycles",
+    "instructions"
+  ],
+  "probe_method": "perf_event_open(PERF_TYPE_HARDWARE), pid=0, cpu=-1",
+  "probe_returncode": 0,
+  "result": "pass",
+  "schema_version": "ari.intel-linux-perf-clean-task/v1",
+  "security_setting_changed": false,
+  "stderr_category": null
+}

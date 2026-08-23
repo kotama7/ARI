@@ -1,0 +1,9 @@
+## TOOL NAME RESOLUTION — read before your first tool call
+
+The instructions above refer to tools by their BARE names. The tools
+actually available to you are MCP tools with namespaced names. When the
+instructions say to call `X()`, call the name on the RIGHT:
+{rows}
+A bare name is NOT callable here and fails with "No such tool
+available". Do not re-probe a failed bare name — translate it using
+this table and call the qualified name.

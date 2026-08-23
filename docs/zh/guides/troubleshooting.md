@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-22
 ---
 
 # 故障排查
@@ -34,8 +34,9 @@ ari run /abs/path/to/experiment.md
 
 ### `DeprecationWarning: $HOME/.ari/...`
 
-**原因：** 触碰了旧版回退路径。v1.0 将在此处硬失败；v0.5–v0.8 发出
-警告。
+**原因：** 触碰了旧版回退路径。自 v0.5 起的每个版本都会发出指明替代项的
+`DeprecationWarning`（`ari/_deprecation.py`，`removal_version="v1.0"`）；
+v1.0 将移除该回退路径。
 
 **修复：** 设置显式环境变量。对照表如下：
 
@@ -76,11 +77,19 @@ sacct -j <jobid> --format=Reason # Sometimes more verbose
 
 ### 构建步骤返回 `exit_code=127`
 
-**原因：** 几乎总是缺少编译器。HPC skill 限制使用 `gcc`；
-在大多数集群上 `mpicc` / `icc` / `aocc` 不在默认 PATH 中。
+**原因：** 该命令不在 `PATH` 上。`slurm_submit` 的 script bridge 以
+`#SBATCH --export=NIL` 提交，并随后设置
+`PATH=/usr/local/bin:/usr/bin:/bin`，因此只有基础系统工具链（通常是
+`gcc`）可达；站点通过 environment module 提供的编译器（`mpicc` /
+`icc` / `aocc`）并不在其中。
 
-**修复：** 将 `mpicc` 替换为 `gcc -fopenmp`（如需要则显式链接 OpenMPI）。
-在 experiment.md 的 `Hardware Limits` 章节中声明该约束。
+**修复：** 加载该工具链所在的 module。bridge 会在你的脚本主体运行前，
+在节点上 source module 系统自身的 init（`/etc/profile.d/modules.sh`、
+`/etc/profile.d/lmod.sh`、`$MODULESHOME/init/bash`），所以写在脚本内的
+`module load` 是有效的；若改为向工具传入 `modules=`，则会先执行
+`module --force purge`，并在完全没有 module 系统时以 `86` 退出。否则
+将 `mpicc` 替换为 `gcc -fopenmp`（如需要则显式链接 OpenMPI），并在
+experiment.md 的 `Hardware Limits` 章节中声明该约束。
 
 ### `--account` 被拒绝
 
@@ -103,29 +112,36 @@ sacct -j <jobid> --format=Reason # Sometimes more verbose
 curl -fsS http://127.0.0.1:8283/healthz   # Should return 200
 
 # If it fails, restart per docs/guides/hpc_setup.md#6
-docker compose -f containers/letta/docker-compose.yml up -d
+docker compose -f scripts/letta/docker-compose.yml up -d
 # or
-apptainer run containers/letta.sif &
+scripts/letta/start_singularity.sh
 ```
 
 仪表盘的 `/api/memory/health` 路由使用相同的探针，因此如果 UI 显示
 "Letta unhealthy"，说明集群上没有运行中的 Letta 服务。
 
-### `LETTA_EMBEDDING_CONFIG is required`
+### `Letta agent embedding mismatch`
 
-**原因：** Letta 需要嵌入模型配置来构建归档集合。
+**原因：** `LETTA_EMBEDDING_CONFIG` 是 embedding *handle*，而不是配置文件
+路径；而且 Letta 会在创建时冻结 agent 的 `embedding_config`。如果该检查点的
+agent 是用另一个 handle 创建的 —— 通常是托管的 `letta/letta-free` →
+`embeddings.memgpt.ai` 端点（其上游宕机时会返回空 body 的 522）—— 那么无论
+环境变量写了什么，被冻结的 handle 都会继续生效，`add_memory` 会以一个不透明
+的 400 失败。
 
-**修复：** 将 `LETTA_EMBEDDING_CONFIG` 指向描述嵌入端点的 JSON 文件。
-兼容 OpenAI 的示例：
+**修复：** 先设置 handle，再 purge 该检查点的 agent，让下一次 `add_memory`
+用这个 handle 重新创建它（`LettaBackend.purge_checkpoint`；注意这会删除已有
+的 archival passages）：
 
-```json
-{
-  "embedding_endpoint_type": "openai",
-  "embedding_model": "text-embedding-3-small",
-  "embedding_dim": 1536,
-  "embedding_endpoint": "https://api.openai.com/v1"
-}
+```bash
+export LETTA_EMBEDDING_CONFIG=openai/text-embedding-3-small
 ```
+
+不设置时默认为 `letta-default`。ARI 把空值、`letta-default` 与
+`letta/letta-free` 视为同一种情况 ——「未做显式选择」—— 因此在不稳定的
+MemGPT 托管端点上后端只会记录一条警告。上面那个硬错误仅在你显式要求了与
+agent 冻结时*不同*的 handle 时才会抛出。`letta-default` 在服务端展开成什么，
+是 Letta 自己的决定，与 ARI 无关。
 
 ### `archival memory search returned 0 results`
 
@@ -145,7 +161,7 @@ apptainer run containers/letta.sif &
 **原因：** 提供商速率限制。
 
 **修复：** ARI 将每次 LLM 调用记录于
-`$ARI_CHECKPOINT_DIR/cost_log.jsonl`。检查每分钟调用频率；若超过
+`$ARI_CHECKPOINT_DIR/cost_trace.jsonl`。检查每分钟调用频率；若超过
 提供商配额，请降低 `ARI_PARALLEL` 或将 BFTS 评判器切换至更廉价/
 本地模型（`ARI_MODEL_JUDGE=ollama/qwen3:32b`）。
 
@@ -157,18 +173,54 @@ apptainer run containers/letta.sif &
 python - <<'PY'
 import json, collections
 costs = collections.Counter()
-with open(f"{__import__('os').environ['ARI_CHECKPOINT_DIR']}/cost_log.jsonl") as fh:
+with open(f"{__import__('os').environ['ARI_CHECKPOINT_DIR']}/cost_trace.jsonl") as fh:
     for line in fh:
         rec = json.loads(line)
-        costs[rec["metadata"].get("skill", "?")] += rec["cost_usd"]
+        costs[rec.get("skill") or "?"] += rec["estimated_cost_usd"]
 for skill, c in costs.most_common():
     print(f"{c:7.3f}  {skill}")
 PY
 ```
 
+每一行都是扁平的 `CallRecord`（`timestamp`、`node_id`、`phase`、
+`skill`、`model`、`*_tokens`、`estimated_cost_usd` 等），没有嵌套的
+`metadata` 对象。新增字段 `epoch` 仅由 `ari_rqgm` 运行写入，默认运行
+中不存在。
+
+即使在 `ari_rqgm` 运行中，该字段也只会打在由 ARI **核心**进程发出的调用上：
+`RQGMRuntime` 在 epoch 开启时通过 `cost_tracker.set_default_metadata(epoch=...)`
+设置它，而该默认值只存在于设置它的那个进程自己的内存里。每个 MCP 技能服务器都是
+独立进程，其 `bootstrap_skill(...)` 只登记 `skill`（有时还有 `phase`），也没有任何
+环境变量把 epoch 带过进程边界 —— 因此技能发出的每一次调用记录中都没有 `epoch`。
+所以按 `epoch` 汇总 `cost_trace.jsonl` 得到的是核心进程的开销，而不是整轮运行的
+开销；要看全貌请按 `skill` 汇总。要把技能调用精确归属到 epoch，需要通过 MCP 传递
+每次调用的元数据，而 ARI 并未这样做。
+
 最大开销通常来自 BFTS 评判器（`ari-skill-evaluator`）或
 rubric 评审（`ari-skill-paper`）。使用 `ARI_MODEL_EVAL` /
 `ARI_MODEL_JUDGE` 为其设置模型上限。
+
+### 所有调用都记为 `$0.00`
+
+**原因：** 价格表（`ari/configs/model_prices.yaml`）加载失败——通常是
+追加行格式有误，或 skill 的 venv 中缺少 PyYAML。表为空时每次调用都会
+被估算为 0。
+
+**诊断：** `cost_summary.json` 会明确标出这一点：
+
+```bash
+python - <<'PY'
+import json, os
+s = json.load(open(f"{os.environ['ARI_CHECKPOINT_DIR']}/cost_summary.json"))
+print("pricing_table_unavailable:", s["pricing_table_unavailable"])
+print("dropped_records:", s["dropped_records"], "/ call_count:", s["call_count"])
+PY
+```
+
+`pricing_table_unavailable: true` 表示价格表加载失败（加载器同时会输出
+`model_prices table unavailable` 警告）。`dropped_records` 非零表示
+`call_count` 是**少计**的——这些调用有 usage 但记录时抛了异常，每一次
+都会记录 `cost record dropped` 日志。
 
 ## VLM（图表 / 表格评审）
 
@@ -198,13 +250,16 @@ file $ARI_CHECKPOINT_DIR/figures/fig1.png   # should report PNG
 
 ### `RLIMIT_NPROC: resource temporarily unavailable`
 
-**原因：** coding 沙箱将 fork() 上限设为 `ARI_MAX_CHILD_PROCS`
-（默认 1024），某个子进程突破了该限制。
+**原因：** 设置了 `ARI_MAX_CHILD_PROCS`，于是 coding 沙箱用
+`RLIMIT_NPROC` 限制了 fork()，而某个子进程突破了该限制。**并不存在
+默认上限** —— 不设置时，`ari.container` 与 coding skill 都不会施加任何
+上限。
 
 **修复：** 要么精简导致问题的命令（如果评分提示词含糊，智能体
-常会陷入 fork bomb 循环），要么提高 `ARI_MAX_CHILD_PROCS`。
-默认值已故意设得较为宽松 —— 触达上限通常意味着真实的 bug，
-而非预算不足。
+常会陷入 fork bomb 循环），要么提高 `ARI_MAX_CHILD_PROCS`。注意
+`RLIMIT_NPROC` 是按 real uid 而非按进程树生效的：该上限会把你的用户
+在这台机器上已有的所有 task 一并计入，所以一个偏小的显式上限会让
+一次本来空闲的构建也报 `EAGAIN`。多数情况下取消设置才是正解。
 
 ## 仪表盘 / viz
 
@@ -216,10 +271,10 @@ file $ARI_CHECKPOINT_DIR/figures/fig1.png   # should report PNG
 **修复：**
 
 ```bash
-# From your laptop:
-ssh -L 8000:127.0.0.1:8000 user@remote-host
-# Then on the remote:
-ari viz --port 8000
+# 在你的本机 —— WebSocket 使用 port+1，所以两个端口都要转发：
+ssh -L 8765:127.0.0.1:8765 -L 8766:127.0.0.1:8766 user@remote-host
+# 然后在远程主机上（checkpoint 目录是必填参数；--port 默认 8765）：
+ari viz /abs/path/to/checkpoints/<run_id>
 ```
 
 ### 前端显示陈旧状态
@@ -231,11 +286,13 @@ ari viz --port 8000
 ## 下一步排查方向
 
 - `$ARI_CHECKPOINT_DIR/ari.log` —— 应用日志。
-- `$ARI_CHECKPOINT_DIR/cost_log.jsonl` —— LLM 费用记录。
+- `$ARI_CHECKPOINT_DIR/cost_trace.jsonl` —— LLM 费用记录
+  （汇总见 `cost_summary.json`）。
 - `$ARI_CHECKPOINT_DIR/lineage_decisions.jsonl` —— stagnation
   决策（v0.7+）。
 - `docs/reference/file_formats.md` —— 检查点中每个文件的含义。
-- `docs/_archive/refactor_audit.md` —— 已知的迁移债务。
+- `docs/guides/migration.md` —— 版本间迁移步骤（v0.5 → v0.6 起）
+  与 GUI 刷新说明。
 
 ## 另请参阅
 

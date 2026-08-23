@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "KnowledgeSkillRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "body_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Body Sha256",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,255}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "body_sha256",
+        "manifest_sha256"
+      ],
+      "title": "KnowledgeSkillRefV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/node-knowledge-skill-use-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "epoch_id": {
+      "title": "Epoch Id",
+      "type": "string"
+    },
+    "epoch_lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Epoch Lock Digest",
+      "type": "string"
+    },
+    "knowledge_composition_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Knowledge Composition Digest",
+      "type": "string"
+    },
+    "node_id": {
+      "title": "Node Id",
+      "type": "string"
+    },
+    "ordered_skills": {
+      "items": {
+        "$ref": "#/$defs/KnowledgeSkillRefV1"
+      },
+      "title": "Ordered Skills",
+      "type": "array"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.node-knowledge-skill-use/v1",
+      "default": "ari.node-knowledge-skill-use/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "use_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Use Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "node_id",
+    "epoch_id",
+    "epoch_lock_digest",
+    "ordered_skills",
+    "knowledge_composition_digest",
+    "use_digest"
+  ],
+  "title": "ARI Node Knowledge Skill Use v1",
+  "type": "object"
+}

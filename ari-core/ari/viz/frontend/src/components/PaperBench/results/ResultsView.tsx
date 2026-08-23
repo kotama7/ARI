@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useT } from '../../../i18n';
 import { ErrorState } from '../../common';
+import { withTokenParam } from '../../../services/api/client';
 import {
   fetchPaperbenchRun,
   fetchPaperbenchRunResults,
@@ -98,7 +99,9 @@ export function ResultsView() {
     if (!jobId || !snap || snap.status === 'completed' || snap.status === 'failed') {
       return;
     }
-    const es = new EventSource(`/api/paperbench/run/${jobId}/logs`);
+    // MN-8 (ADR-13): EventSource cannot set headers — the remote-mode token
+    // rides the query string (no-op in the loopback default).
+    const es = new EventSource(withTokenParam(`/api/paperbench/run/${jobId}/logs`));
     es.addEventListener('log', (ev) => {
       try {
         const row = JSON.parse((ev as MessageEvent).data);
@@ -282,7 +285,10 @@ export function ResultsView() {
   };
 
   return (
-    <div style={{ padding: 28, display: 'flex', gap: 24, maxWidth: 1400 }}>
+    <div
+      className="paperbench-results-layout"
+      style={{ padding: 28, display: 'flex', gap: 24, maxWidth: 1400 }}
+    >
       <div style={{ flex: 1 }}>
         <h2>{t('pb_results_title')}</h2>
         <div style={{ color: '#666', marginBottom: 14, fontSize: 13 }}>
@@ -297,7 +303,10 @@ export function ResultsView() {
         )}
       </div>
 
-      <aside style={{ width: 320, padding: 16, background: '#f9fafb', borderRadius: 8 }}>
+      <aside
+        className="paperbench-results-summary"
+        style={{ width: 320, padding: 16, background: '#f9fafb', borderRadius: 8 }}
+      >
         <h3 style={{ marginBottom: 8 }}>{t('pb_results_summary')}</h3>
         <div
           style={{

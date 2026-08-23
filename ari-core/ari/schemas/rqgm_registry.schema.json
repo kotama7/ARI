@@ -1,0 +1,206 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/rqgm_registry.schema.json",
+  "title": "ARI-RQGM rqgm_registry.json",
+  "description": "Derived rollup of ComponentRegistry + PromptRegistry state in one file (docs/reference/rqgm_schemas.md, \"rqgm_registry.schema.json\" under \"State and event-log schemas (Task 02)\") so the two registries stay transactionally consistent on disk. rqgm_transitions.jsonl is the source of truth. Prompt text is referenced by source, never inlined; spec_ref points at the Task-07 PromptSpec record (null in v1). Local $defs are byte-equal copies of rqgm_defs.schema.json (pinned by tests).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "registry_version",
+    "as_of_event_hash",
+    "components",
+    "prompts"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "registry_version": {
+      "$ref": "#/$defs/hash12"
+    },
+    "as_of_event_hash": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{12}|[0-9a-f]{64})?$"
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "component_id",
+          "role",
+          "tier",
+          "status",
+          "epoch_id_registered",
+          "source_refs"
+        ],
+        "properties": {
+          "component_id": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/$defs/rqgm_role"
+          },
+          "tier": {
+            "$ref": "#/$defs/rqgm_tier"
+          },
+          "status": {
+            "$ref": "#/$defs/rqgm_status"
+          },
+          "prompt_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "epoch_id_registered": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "source_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "prompts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "prompt_id",
+          "role",
+          "status",
+          "prompt_hash",
+          "prompt_sha256",
+          "source",
+          "epoch_id_registered",
+          "source_refs"
+        ],
+        "properties": {
+          "prompt_id": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/$defs/rqgm_role"
+          },
+          "status": {
+            "$ref": "#/$defs/rqgm_status"
+          },
+          "prompt_hash": {
+            "$ref": "#/$defs/hash12"
+          },
+          "prompt_sha256": {
+            "$ref": "#/$defs/sha256_hex"
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "committed_template",
+                  "checkpoint_file",
+                  "policy"
+                ]
+              },
+              "key": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            }
+          },
+          "spec_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "epoch_id_registered": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "source_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash12": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$"
+    },
+    "sha256_hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "rqgm_status": {
+      "type": "string",
+      "enum": [
+        "candidate",
+        "validated",
+        "shadow",
+        "probationary_active",
+        "active",
+        "warning",
+        "probation",
+        "quarantine",
+        "retired",
+        "banned"
+      ]
+    },
+    "rqgm_role": {
+      "type": "string",
+      "enum": [
+        "generator",
+        "reviewer",
+        "adversary",
+        "defender",
+        "judge",
+        "router",
+        "prompt_mutator",
+        "clean_room_generator",
+        "replay_selector",
+        "failure_summary_compressor",
+        "policy_mutator",
+        "utility_policy",
+        "paper_writer",
+        "paper_reviewer",
+        "auditor",
+        "evidence_clerk",
+        "governance_judge",
+        "constitutional_kernel",
+        "knowledge_binder",
+        "capability_binder",
+        "harness_resolver",
+        "fixed_verifier",
+        "audit_log"
+      ]
+    },
+    "rqgm_tier": {
+      "type": "string",
+      "enum": [
+        "fixed",
+        "institutional",
+        "meta"
+      ]
+    }
+  }
+}

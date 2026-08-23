@@ -1,0 +1,192 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/rqgm_attack_records.schema.json",
+  "title": "ARI-RQGM adversarial attack-loop records",
+  "description": "The four attack-loop record shapes multiplexed into {ckpt}/rqgm_adversarial_cases.jsonl and the Task 02 audit log (docs/reference/rqgm_schemas.md, \"rqgm_attack_records.schema.json\" and \"The accountability binding on validated_attack\"; owned by Task 06): RawAttackRecord (role adversary — audit-log material ONLY until adjudicated, invariant 8), DefenderResponse (role defender), JudgmentRecord (role judge — always written, even invalid), ValidatedAttackRecord (role judge — exists ONLY for verdicts valid|partially_valid, invariant 9). target_artifact.type is a closed artifact set with NO component-id field (artifact-only targeting); every attack requires >= 1 attack_evidence_ref. Artifact-only targeting is a rule about ATTACKS: the post-adjudication ValidatedAttackRecord carries the optional target_component_id — the accountability binding governance counts (validated_attack_involvement) and prosecutes on — resolved from the implicated role (affected_components, role names) against the epoch-frozen active component set. It is minted only by the judge's verdict, never by the adversary, and is present-or-absent, never present-and-empty (minLength 1). created_at is wall-clock metadata, never hashed (P2). Additive-only evolution.",
+  "$defs": {
+    "hash12": {"type": "string", "pattern": "^[0-9a-f]{12}$"},
+    "epoch_id": {"type": "string", "pattern": "^epoch_[0-9]{3,}$"},
+    "severity": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+    "adversary_type": {
+      "type": "string",
+      "enum": [
+        "overclaim",
+        "metric_gaming",
+        "prior_art",
+        "reproducibility",
+        "evidence_gap",
+        "cost_explosion",
+        "prompt_injection"
+      ]
+    },
+    "evidence_ref": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "pointer": {"type": "string"},
+        "artifact_hash": {"type": "string"}
+      }
+    },
+    "target_artifact": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "proposal",
+            "experiment_plan",
+            "node_report",
+            "metric_result",
+            "paper_claim",
+            "novelty_claim",
+            "citation_claim",
+            "reproducibility_claim"
+          ]
+        },
+        "node_id": {"type": "string"},
+        "ref": {"type": "string"},
+        "artifact_hash": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "envelope": {
+      "type": "object",
+      "required": [
+        "record_id",
+        "record_type",
+        "schema_version",
+        "epoch_id",
+        "component_id",
+        "prompt_hash",
+        "role",
+        "created_at",
+        "source_refs",
+        "status"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "epoch_id": {"type": "string"},
+        "component_id": {"type": "string"},
+        "prompt_hash": {
+          "anyOf": [{"$ref": "#/$defs/hash12"}, {"type": "null"}]
+        },
+        "created_at": {"type": "string"},
+        "source_refs": {"type": "array", "items": {"type": "string"}},
+        "status": {"type": "string"}
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "record_type": {"const": "raw_attack"},
+        "record_id": {"type": "string", "pattern": "^atk_[0-9]{6,}$"},
+        "role": {"const": "adversary"},
+        "adversary_type": {"$ref": "#/$defs/adversary_type"},
+        "target_artifact": {"$ref": "#/$defs/target_artifact"},
+        "attack_claim": {"type": "string", "minLength": 1},
+        "attack_evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/evidence_ref"}
+        },
+        "severity_claimed": {"$ref": "#/$defs/severity"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "required": [
+        "adversary_type",
+        "target_artifact",
+        "attack_claim",
+        "attack_evidence_refs",
+        "severity_claimed"
+      ]
+    },
+    {
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "record_type": {"const": "defender_response"},
+        "record_id": {"type": "string", "pattern": "^def_[0-9]{6,}$"},
+        "role": {"const": "defender"},
+        "raw_attack_id": {"type": "string", "pattern": "^atk_[0-9]{6,}$"},
+        "stance": {
+          "type": "string",
+          "enum": ["rebut", "concede", "propose_fix"]
+        },
+        "rebuttal_text": {"type": "string"},
+        "counter_evidence_refs": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/evidence_ref"}
+        },
+        "proposed_fix": {"type": ["string", "null"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "required": ["raw_attack_id", "stance"]
+    },
+    {
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "record_type": {"const": "judgment_record"},
+        "record_id": {"type": "string", "pattern": "^jdg_[0-9]{6,}$"},
+        "role": {"const": "judge"},
+        "raw_attack_id": {"type": "string", "pattern": "^atk_[0-9]{6,}$"},
+        "defense_id": {"type": "string"},
+        "verdict": {
+          "type": "string",
+          "enum": ["valid", "partially_valid", "invalid"]
+        },
+        "severity": {"$ref": "#/$defs/severity"},
+        "rationale": {"type": "string"},
+        "evidence_refs": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/evidence_ref"}
+        },
+        "defense_status": {
+          "type": "string",
+          "enum": ["present", "absent_infrastructure"]
+        }
+      },
+      "required": ["raw_attack_id", "verdict", "severity", "defense_status"]
+    },
+    {
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "record_type": {"const": "validated_attack"},
+        "record_id": {"type": "string", "pattern": "^vat_[0-9]{6,}$"},
+        "role": {"const": "judge"},
+        "case_type": {"$ref": "#/$defs/adversary_type"},
+        "raw_attack_id": {"type": "string", "pattern": "^atk_[0-9]{6,}$"},
+        "defense_id": {"type": "string"},
+        "judgment_id": {
+          "type": "string",
+          "pattern": "^jdg_[0-9]{6,}$"
+        },
+        "source_node_id": {"type": "string"},
+        "attack_summary": {"type": "string"},
+        "validated": {"const": true},
+        "verdict": {
+          "type": "string",
+          "enum": ["valid", "partially_valid"]
+        },
+        "severity": {"$ref": "#/$defs/severity"},
+        "affected_components": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "target_component_id": {"type": "string", "minLength": 1},
+        "expected_behavior": {"type": "object"},
+        "target_artifact_hash": {"type": "string"}
+      },
+      "required": [
+        "case_type",
+        "raw_attack_id",
+        "judgment_id",
+        "validated",
+        "verdict",
+        "severity"
+      ]
+    }
+  ]
+}

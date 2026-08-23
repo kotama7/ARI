@@ -98,7 +98,8 @@ $\Evidence$ 为贡献构型的集合,$\Inputs$ 为从一切归约中剔除的已
 \Require 带按节点报告的谱系节点 $\Nodes$;指标方向映射
 \Ensure  科学记录 $\Evidence$:带类型构型、按键极值、方法论叙事
 \State $\bestnode \gets \operatorname*{arg\,max}_{n \in \Nodes}\, \nodescore{n}$
-       \Comment{同分: 已验证, 其次更深}
+       \Comment{同分: 已验证, 其次更深;被逻辑擦除的节点
+       (\cref{sec:rqgm:boundary})不参选,全部被擦除则无胜者}
 \State $L \gets \lineage{\bestnode}$ \Comment{根到最佳的祖先链}
 \State $\mathcal{C} \gets \{\, n \in L : \textsc{Contributes}(n) \,\}$
        \Comment{角色谓词(代码)}

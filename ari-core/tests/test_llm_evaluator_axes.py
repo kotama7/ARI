@@ -167,3 +167,68 @@ def test_system_prompt_includes_axis_weight_line():
     assert "Axis weights" in sp
     for k in AXIS_NAMES:
         assert k in sp
+
+
+def test_results_json_survives_an_llm_failure(tmp_path, monkeypatch):
+    """results.json is the AUTHORITATIVE measured ground truth. An empty/garbage
+    LLM reply (json.loads on "" → "Expecting value") must NOT orphan a node's
+    real measurements as has_real_data=False — the e2e run's root node lost 27
+    real measurements this way because the merge lived inside the try that the
+    LLM parse failure short-circuited."""
+    (tmp_path / "results.json").write_text(
+        '{"measurements": {"gbps_untiled": 11.389, "speedup_best": 1.265, "correctness": 0}}'
+    )
+    monkeypatch.setenv("ARI_WORK_DIR", str(tmp_path))
+
+    ev = LLMEvaluator(model="dummy")
+
+    async def _empty(**kwargs):            # the judge returns nothing
+        return _fake_completion_response("")
+
+    with patch("ari.evaluator.llm_evaluator.litellm.acompletion", side_effect=_empty):
+        result = ev.evaluate_sync(goal="g", artifacts=[{"type": "result"}],
+                                  summary="s", node_id="root")
+
+    assert result["has_real_data"] is True, "real measurements were discarded on LLM failure"
+    assert result["metrics"]["gbps_untiled"] == pytest.approx(11.389)
+    assert result["metrics"]["speedup_best"] == pytest.approx(1.265)
+
+
+def test_no_results_json_still_reports_no_real_data_on_failure(tmp_path, monkeypatch):
+    """Without results.json, an LLM failure correctly stays has_real_data=False —
+    the recovery must not fabricate real data where there is none."""
+    monkeypatch.setenv("ARI_WORK_DIR", str(tmp_path))  # no results.json here
+    ev = LLMEvaluator(model="dummy")
+
+    async def _empty(**kwargs):
+        return _fake_completion_response("")
+
+    with patch("ari.evaluator.llm_evaluator.litellm.acompletion", side_effect=_empty):
+        result = ev.evaluate_sync(goal="g", artifacts=[], summary="s", node_id="root")
+
+    assert result["has_real_data"] is False
+    assert result["metrics"] == {}
+
+
+def test_corrupt_results_json_is_flagged_not_silently_absent(tmp_path, monkeypatch, caplog):
+    """M3: a results.json that EXISTS but does not decode is a LOST measurement,
+    not an absent one. The reader must warn and drop a `results.json.unreadable`
+    sidecar so a truncated write (the writer is non-atomic) is distinguishable
+    from a node that legitimately emitted no results.json."""
+    (tmp_path / "results.json").write_text('{"measurements": {"gbps": 1.5', encoding="utf-8")
+    monkeypatch.setenv("ARI_WORK_DIR", str(tmp_path))
+
+    with caplog.at_level("WARNING"):
+        meas = LLMEvaluator._results_json_measurements()
+
+    assert meas == {}  # unparseable → no measurements recovered
+    assert (tmp_path / "results.json.unreadable").is_file()
+    assert any("unreadable" in r.getMessage() for r in caplog.records)
+
+
+def test_absent_results_json_leaves_no_unreadable_sidecar(tmp_path, monkeypatch):
+    """M3 corollary: a genuinely absent results.json stays silent — no sidecar,
+    no warning — so absence and corruption never look alike."""
+    monkeypatch.setenv("ARI_WORK_DIR", str(tmp_path))
+    assert LLMEvaluator._results_json_measurements() == {}
+    assert not (tmp_path / "results.json.unreadable").exists()

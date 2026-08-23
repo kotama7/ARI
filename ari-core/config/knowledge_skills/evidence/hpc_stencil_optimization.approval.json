@@ -1,0 +1,18 @@
+{
+  "actor_id": "kotama7 <kotamatakanori2@gmail.com>",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:0cff4383e8e89bf9e4cb4d48e50d3ca6a90180e3dac9da0240bbc6f1e601557a",
+  "approved_date": "2026-08-07",
+  "authorization_basis": "Reviewed the rewritten body against the measured clean task (per-step trajectory equivalence, linearity identity, UBSan/ASan/TSan clean, alternating replays above the gate under a bound job step) and the stored capability-abstraction report. The body now carries the thread-placement and timed-region discipline this repository established by measurement. All sixteen registration gates pass.",
+  "from_status": "candidate",
+  "registration_evidence_digest": "sha256:4ba770ec72e902c927991f45644a69ab9ee30c1176fed10a290636c1282ce4df",
+  "registration_report_digest": null,
+  "schema_version": "ari.knowledge-skill-promotion-approval/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:a73df05ab4266f93af629b1b486e4c7c5ac06d1813e2ef1c7b13e65c09cce241",
+    "id": "hpc.stencil.optimization",
+    "manifest_sha256": "sha256:4fbf7f26f8dd26fc2eac540a50b92dfba87b038a6948588e464b47c002c86de7",
+    "version": "1.0.0"
+  },
+  "to_status": "verified"
+}

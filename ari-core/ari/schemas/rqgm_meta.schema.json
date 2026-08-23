@@ -1,0 +1,178 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/rqgm_meta.schema.json",
+  "title": "ARI-RQGM meta-agent evolution records",
+  "description": "RQGM Task 11 (docs/reference/rqgm_schemas.md, \"Meta-evolution schema (Task 11)\"): the tier + capability-flag extension of ComponentRegistry entries, the MetaAgentOutputRecord line shape of {ckpt}/rqgm_meta_outputs.jsonl, and the MetaCandidateEvaluation record consumed by the RegistryTransitionEngine. The deterministic Python mirror lives in ari/rqgm/meta_rules.py (capability_entry_failures) — the two must agree. Flags default to false: capability is opt-in, absence is denial.",
+  "$defs": {
+    "hash12": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$"
+    },
+    "rqgm_tier": {
+      "type": "string",
+      "enum": ["fixed", "institutional", "meta"]
+    },
+    "capability_flags": {
+      "type": "object",
+      "properties": {
+        "can_modify_registry": {"type": "boolean", "default": false},
+        "can_activate_candidates": {"type": "boolean", "default": false},
+        "can_read_retired_prompt_text": {"type": "boolean", "default": false},
+        "can_file_impeachment": {"type": "boolean", "default": false},
+        "can_author_evidence_bundle": {"type": "boolean", "default": false},
+        "can_emit_candidates": {"type": "boolean", "default": false},
+        "can_emit_replay_recommendation": {"type": "boolean", "default": false},
+        "can_emit_failure_summary": {"type": "boolean", "default": false},
+        "allowed_targets": {"type": "array", "items": {"type": "string"}},
+        "forbidden_targets": {"type": "array", "items": {"type": "string"}},
+        "max_outputs_per_epoch": {"type": "integer", "minimum": 0}
+      }
+    },
+    "meta_component_entry": {
+      "description": "The registry-entry extension (docs/reference/rqgm_schemas.md, \"Meta-evolution schema (Task 11)\"): tier is mandatory and closed; for tier meta the five dangerous flags are schema-level const-false; fixed-tier entries carry no true flag at all.",
+      "type": "object",
+      "required": ["component_id", "role", "tier"],
+      "properties": {
+        "component_id": {"type": "string", "minLength": 1},
+        "role": {"type": "string", "minLength": 1},
+        "tier": {"$ref": "#/$defs/rqgm_tier"},
+        "status": {"type": "string"},
+        "prompt_hash": {"type": "string"},
+        "epoch_id": {"type": "string"},
+        "capabilities": {"$ref": "#/$defs/capability_flags"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"tier": {"const": "meta"}}},
+          "then": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "can_modify_registry": {"const": false},
+                  "can_activate_candidates": {"const": false},
+                  "can_read_retired_prompt_text": {"const": false},
+                  "can_file_impeachment": {"const": false},
+                  "can_author_evidence_bundle": {"const": false}
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"tier": {"const": "fixed"}}},
+          "then": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "can_modify_registry": {"const": false},
+                  "can_activate_candidates": {"const": false},
+                  "can_read_retired_prompt_text": {"const": false},
+                  "can_file_impeachment": {"const": false},
+                  "can_author_evidence_bundle": {"const": false},
+                  "can_emit_candidates": {"const": false},
+                  "can_emit_replay_recommendation": {"const": false},
+                  "can_emit_failure_summary": {"const": false}
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "meta_agent_output_record": {
+      "description": "One {ckpt}/rqgm_meta_outputs.jsonl line (docs/reference/rqgm_schemas.md, \"Meta-evolution schema (Task 11)\"): the ONLY artifact a meta-agent produces. created_at is metadata and never enters any hash (P2).",
+      "type": "object",
+      "required": [
+        "record_type", "record_id", "epoch_id", "component_id",
+        "prompt_hash", "role", "created_at", "source_refs", "status",
+        "output_kind", "target_role", "shadow", "sandboxed",
+        "input_bundle_hash", "output_payload_hash"
+      ],
+      "properties": {
+        "record_type": {"const": "meta_agent_output"},
+        "record_id": {"type": "string", "pattern": "^meta_out_[0-9a-f]{12}$"},
+        "epoch_id": {"type": "string"},
+        "component_id": {"type": "string", "minLength": 1},
+        "prompt_hash": {"type": ["string", "null"]},
+        "role": {"type": "string", "minLength": 1},
+        "created_at": {"type": "string"},
+        "source_refs": {"type": "array", "items": {"type": "string"}},
+        "status": {"type": "string", "enum": ["recorded", "denied"]},
+        "output_kind": {
+          "type": "string",
+          "enum": [
+            "prompt_candidate", "clean_room_candidate",
+            "replay_case_recommendation", "failure_summary"
+          ]
+        },
+        "target_role": {"type": "string"},
+        "candidate_ref": {"type": "string"},
+        "expected_improvement": {"type": "string"},
+        "shadow": {"type": "boolean"},
+        "sandboxed": {"type": "boolean"},
+        "input_bundle_hash": {"$ref": "#/$defs/hash12"},
+        "output_payload_hash": {"$ref": "#/$defs/hash12"}
+      }
+    },
+    "meta_candidate_evaluation": {
+      "description": "The meta_candidate_evaluation record (docs/reference/rqgm_schemas.md, \"Meta-evolution schema (Task 11)\"): deterministic aggregations only, consumed by the Task 09 RegistryTransitionEngine as candidate_evaluations input for meta roles.",
+      "type": "object",
+      "required": [
+        "record_type", "record_id", "epoch_id",
+        "candidate_component_id", "incumbent_component_id",
+        "sandbox", "shadow", "downstream_fate",
+        "authority_non_expansion_check"
+      ],
+      "properties": {
+        "record_type": {"const": "meta_candidate_evaluation"},
+        "record_id": {"type": "string"},
+        "epoch_id": {"type": "string"},
+        "candidate_component_id": {"type": "string", "minLength": 1},
+        "incumbent_component_id": {"type": "string"},
+        "sandbox": {
+          "type": "object",
+          "required": [
+            "cases_run", "schema_valid_rate",
+            "constraint_preservation_rate", "contamination_hits",
+            "budget_violations", "passed"
+          ],
+          "properties": {
+            "cases_run": {"type": "integer", "minimum": 0},
+            "schema_valid_rate": {"type": "number"},
+            "constraint_preservation_rate": {"type": "number"},
+            "contamination_hits": {"type": "integer", "minimum": 0},
+            "budget_violations": {"type": "integer", "minimum": 0},
+            "passed": {"type": "boolean"}
+          }
+        },
+        "shadow": {
+          "type": "object",
+          "required": ["epochs_observed", "outputs_recorded"],
+          "properties": {
+            "epochs_observed": {"type": "integer", "minimum": 0},
+            "outputs_recorded": {"type": "integer", "minimum": 0},
+            "comparison_observation_refs": {
+              "type": "array", "items": {"type": "string"}
+            }
+          }
+        },
+        "downstream_fate": {
+          "type": "object",
+          "required": [
+            "candidates_produced", "validation_pass_rate",
+            "promotion_rate", "post_promotion_sanction_rate"
+          ],
+          "properties": {
+            "candidates_produced": {"type": "integer", "minimum": 0},
+            "validation_pass_rate": {"type": "number"},
+            "promotion_rate": {"type": "number"},
+            "post_promotion_sanction_rate": {"type": "number"}
+          }
+        },
+        "authority_non_expansion_check": {
+          "type": "string", "enum": ["pass", "fail"]
+        }
+      }
+    }
+  }
+}

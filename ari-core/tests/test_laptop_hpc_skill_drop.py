@@ -17,8 +17,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
-
 
 # ── Problem 1: laptop profile drops hpc-skill ─────────────────────────
 
@@ -70,9 +68,14 @@ def test_core_build_runtime_applies_filter(monkeypatch):
     captured = {}
 
     class _StubMCP:
-        def __init__(self, skills, disabled_tools=None):
+        def __init__(self, skills, disabled_tools=None, **_kwargs):
             captured["skill_names"] = [getattr(s, "name", "") for s in skills]
             captured["disabled"] = list(disabled_tools or [])
+            # `allowed_tools` is no longer a named parameter of MCPClient, so it
+            # arrives (if at all) through **_kwargs. Reading the bare name here
+            # was a latent NameError that only stayed quiet because this branch
+            # is not currently reached.
+            captured["allowed"] = list(_kwargs.get("allowed_tools") or [])
 
         def list_tools(self, phase=None):
             return []
@@ -127,7 +130,12 @@ def test_core_build_runtime_applies_filter(monkeypatch):
 def test_hpc_skill_no_longer_defines_run_bash():
     """run_bash was moved to coding-skill; hpc-skill must not re-declare it."""
     from pathlib import Path
-    server_py = Path(__file__).resolve().parents[2] / "ari-skill-hpc" / "src" / "server.py"
+    server_py = (
+        Path(__file__).resolve().parents[2]
+        / "ari-skill-hpc"
+        / "ari_skill_hpc"
+        / "server.py"
+    )
     text = server_py.read_text()
     assert 'name="run_bash"' not in text, (
         "hpc-skill must not re-declare run_bash — this caused a name clash with "
@@ -138,14 +146,15 @@ def test_hpc_skill_no_longer_defines_run_bash():
     )
 
 
-def test_coding_skill_run_bash_exists_and_is_container_aware():
-    """coding-skill owns run_bash; its body must use ari.container when available."""
+def test_coding_skill_run_bash_exists_and_uses_common_container_executor():
+    """coding-skill owns run_bash and builds reviewed container argv."""
     from pathlib import Path
     server_py = Path(__file__).resolve().parents[2] / "ari-skill-coding" / "src" / "server.py"
     text = server_py.read_text()
     assert 'name="run_bash"' in text, "coding-skill must declare run_bash"
-    assert "run_shell_in_container" in text, (
-        "coding-skill's _run_bash must wrap commands in the configured container"
+    assert "container_shell_argv" in text and "execute_local" in text, (
+        "coding-skill's _run_bash must use reviewed container argv through the "
+        "common executor"
     )
 
 

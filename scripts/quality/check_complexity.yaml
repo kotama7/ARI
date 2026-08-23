@@ -1,6 +1,6 @@
 # check_complexity.yaml -- thresholds/config for scripts/check_complexity.py
-# Design: docs/refactoring/009_quality_scripts_plan.md §5.1; baseline:
-# docs/refactoring/reports/001_complexity_baseline.md (subtask 001).
+# Design: refactoring plan 009 (quality scripts) §5.1; baseline measured by
+# subtask 001 (complexity baseline). Both since retired.
 # stdlib + PyYAML only; no LLM, no network (design principle P2).
 
 # Data-derived LOC tiers (physical `wc -l` lines). Strictly-greater-than bands,

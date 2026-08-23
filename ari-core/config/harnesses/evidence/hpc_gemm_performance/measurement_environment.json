@@ -1,0 +1,23 @@
+{
+  "environment": {
+    "note": "recorded, not restricted; a variable outside this prefix set is neither captured nor known to be harmless",
+    "sha256": "sha256:a845310137a1ce9571a0b976609ef92a2c90c631d8c211fe7f9e90ccd06675a7",
+    "variables": {
+      "ARI_LETTA_SIF": "~/ARI/scripts/letta/letta.sif",
+      "ARI_PERF_THREADS": "2",
+      "BLIS_NUM_THREADS": "1",
+      "GOTO_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    }
+  },
+  "environment_note": "variable VALUES are scrubbed of host identity here",
+  "placement": {
+    "machine": "x86_64",
+    "thread_budget": "2"
+  },
+  "placement_note": "a timed verdict is a statement about a machine; these are the keys the manifest pins, read from the machine the controls ran on, and the sequence refused before its first launch unless they matched",
+  "registration_commit": "8791cb6fa8a8f305b12e07c803a765fcc2c94c3d"
+}

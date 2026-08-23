@@ -32,6 +32,39 @@ from ari_skill_memory.config import MemoryConfig
 
 log = logging.getLogger(__name__)
 
+_LETTA_CORE_BLOCK_LIMIT = 5_000
+_LETTA_CORE_BLOCK_TARGET = 4_900
+_TRUNCATION_MARKER = "…<truncated>"
+
+
+def _bounded_core_context(context: dict) -> str:
+    """Serialize context below Letta 0.9's 5,000-character block limit."""
+
+    value = json.loads(json.dumps(context, ensure_ascii=False))
+    rendered = json.dumps(value, ensure_ascii=False)
+    while len(rendered) > _LETTA_CORE_BLOCK_TARGET:
+        strings = [
+            (key, item)
+            for key, item in value.items()
+            if isinstance(item, str) and item
+        ]
+        if not strings:
+            # The current ARI context is string/scalar-only. Keep a defensive,
+            # valid JSON fallback for future callers rather than slicing JSON.
+            return json.dumps(
+                {"_truncated": True, "keys": sorted(map(str, value))},
+                ensure_ascii=False,
+            )
+        key, item = max(strings, key=lambda pair: len(pair[1]))
+        excess = len(rendered) - _LETTA_CORE_BLOCK_TARGET
+        if len(item) <= len(_TRUNCATION_MARKER):
+            value[key] = ""
+        else:
+            keep = max(0, len(item) - excess - len(_TRUNCATION_MARKER))
+            value[key] = item[:keep] + _TRUNCATION_MARKER
+        rendered = json.dumps(value, ensure_ascii=False)
+    return rendered
+
 
 class LettaClientProtocol(Protocol):  # pragma: no cover - typing only
     def health(self) -> dict: ...
@@ -309,7 +342,7 @@ class _SdkLettaAdapter:
     def write_core_blocks(
         self, *, agent_id: str, persona: str, human: str, context: dict
     ) -> None:
-        ctx_value = json.dumps(context or {}, ensure_ascii=False)
+        ctx_value = _bounded_core_context(context or {})
         self._update_block(agent_id, "persona", persona)
         self._update_block(agent_id, "human", human)
         self._update_block(agent_id, "ari_context", ctx_value)

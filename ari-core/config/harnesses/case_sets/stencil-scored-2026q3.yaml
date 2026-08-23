@@ -1,0 +1,18 @@
+# WHICH PROBLEMS the 3-D Jacobi harness measures on.
+#
+# A case is (nx, ny, nz, nt). Three grids of the same volume in different
+# aspect ratios, so a kernel that blocks for one layout does not read as a
+# general improvement.
+#
+# nt=240 rather than the cheaper 30: the driver's untimed setup is 64.4% of a
+# 30-sweep call and 18.5% of a 240-sweep one, so the shorter run mostly measures
+# the harness. It also resolves better (sd 0.504% at nt=120 against 1.024% at
+# nt=30) and costs less per sweep (1.14 ms against 2.62 ms).
+schema_version: ari.harness-case-set/v1
+revision: native-perf-stencil-cases/v1@scored-2026q3
+kind: stencil
+description: "The scored Jacobi grids: one cube and two anisotropic boxes, 240 sweeps."
+cases:
+  - [256, 256, 256, 240]
+  - [384, 192, 192, 240]
+  - [192, 192, 384, 240]

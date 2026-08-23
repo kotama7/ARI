@@ -1,0 +1,14 @@
+schema_version: ari.target-abi-identity/v1
+family: stencil
+interface_contract: stencil-7point-c-abi/v1
+dtype: float64
+language: c
+subject_type: program
+target_kind: shared-library
+# The names ari/assurance/drivers/shared_library.py resolves for this
+# family. Declaring the contract without them is a claim nothing checks:
+# a candidate exporting only the problem's own entry point was declared
+# conformant and failed 33/33 cases with "missing ari_stencil_f32 symbol".
+exported_symbols:
+  - ari_stencil_f32
+  - ari_stencil_f64

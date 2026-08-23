@@ -9,13 +9,20 @@ BFTS tree search × Agent loop, and outputs a paper section.
 ## Design Principles
 
 - **P1 Generic core**: No experiment-domain knowledge in ari-core
-- **P2 Deterministic skills**: No LLM calls inside MCP skill servers
+- **P2 Deterministic where possible**: MCP tools are deterministic by default, and
+  the ones that are not say so. "No LLM calls inside MCP skill servers" was the
+  original wording and it is not what ships: nine of the thirteen registered
+  skill packages call an LLM from their server code. Determinism is a property of
+  a tool, not of a package — see the skill table in `README.md` and
+  `ari-core/WORKFLOW.md`
 - **P3 Multi-objective evaluation**: No scalar score; raw metrics dict drives selection
 - **P4 Dependency injection**: Domain knowledge injected from experiment.md at runtime
+- **P5 Reproducibility-first**: see `docs/concepts/PHILOSOPHY.md`, which carries all
+  five in full — this list is a summary, not the contract
 
 ## Tech Stack
 
-- Python 3.11+
+- Python — `ari-core/pyproject.toml` declares `requires-python = ">=3.9"`
 - litellm (LLM routing: Ollama, OpenAI, Anthropic)
 - FastMCP (MCP client)
 - pydantic (data models)
@@ -24,39 +31,80 @@ BFTS tree search × Agent loop, and outputs a paper section.
 ## Key Interfaces
 
 ### BFTSConfig
+
+A pydantic `BaseModel` in `ari/config/__init__.py`, not a dataclass, and wider
+than the four fields this file used to show. The search-shape fields and their
+shipped defaults:
+
 ```python
-@dataclass
-class BFTSConfig:
-    max_nodes: int = 10
-    max_depth: int = 3
-    max_parallel: int = 2
-    timeout_per_node: int = 1200
+class BFTSConfig(BaseModel):
+    max_depth: int = 5                     # ARI_MAX_DEPTH
+    max_total_nodes: int = 50              # ARI_MAX_NODES
+    max_react_steps: int = 20              # ARI_MAX_REACT
+    timeout_per_node: int = 7200           # ARI_TIMEOUT_NODE
+    max_parallel_nodes: int = 4            # ARI_PARALLEL
+    max_expansions_per_node: int = 4
+    label_saturation_threshold: int = 2
+    frontier_score: Literal[...] = ...
+    # …and more; the class is the authority
 ```
 
-### WorkflowHints
-Domain-specific workflow configuration auto-extracted from experiment.md.
-Controls tool sequence, metric extraction, and validation behavior.
+Read the class rather than this block — each field carries a `description` that
+explains why the default is what it is (`max_react_steps` is 20 rather than the
+former 80 because a node's own best result landed at p95=15 steps), and the env
+var that overrides it. Every default here differs from the values this document
+used to state.
 
-### NodeLabel
-- `DRAFT`: Initial state
-- `SUCCESS`: has_real_data=True
-- `FAILED`: Evaluation failed or hallucination detected
+### WorkflowHints
+A dataclass in `ari/agent/workflow.py`, injected into `AgentLoop` by DI. Carries
+domain-specific workflow configuration auto-extracted from experiment.md and
+controls tool sequence, metric extraction and validation behaviour;
+`enrich_hints_from_mcp` fills in the submitter/poller/reader tool names from the
+MCP tools actually discovered, so the same hints work against a different skill
+set.
+
+### NodeLabel and NodeStatus
+
+These are two different fields and this document used to merge them into one,
+which made `SUCCESS` look like a label the planner could choose. It is not.
+
+`NodeLabel` (`ari/orchestrator/node.py`) says what a node is *for*, and the LLM
+assigns it during `expand()`; `loop.py` appends a matching system hint. Values:
+`draft`, `improve`, `debug`, `ablation`, `validation`, and `other` — the
+catch-all for an LLM-invented label such as `replication`, whose verbatim string
+is kept on `Node.raw_label` so a downstream reader can still see what was meant.
+
+`NodeStatus` says what *happened*: `pending`, `running`, `success`, `failed`,
+`abandoned`, moved only by `mark_running` / `mark_success` / `mark_failed` /
+`mark_abandoned`. `has_real_data` is a separate boolean and is not a status.
 
 ## Post-BFTS Pipeline
 
-Configured via `config/pipeline.yaml`.
-Stages: `generate_paper` → `review` → `reproducibility_check`
+Configured via the `pipeline:` block of `config/workflow.yaml` — there is no
+`config/pipeline.yaml`. It carries 31 stages, not three: `search_related_work` and
+`audit_node_provenance`, then the data/figure stages, then paper writing interleaved
+with three rounds of `link_paper_claims` → `claim_evidence_hard_gate` →
+`evidence_grounded_semantic_review` (draft, final and locked), and finally the six
+`ors_*` reproduction stages.
 
 Adding a stage requires only a YAML change — no core code modification.
 
 ## Pipeline Keyword Extraction
 
-`pipeline.py` contains `_extract_keywords_from_nodes(nodes_json_path)`:
+`ari/pipeline/context_builder.py` defines
+`_extract_keywords_from_nodes(nodes_json_path, base_topic="")`:
 - Reads `nodes_tree.json` produced by BFTS
-- Extracts compiler flags, optimization keywords from node memory/artifacts
-- Returns a targeted arXiv query string
-- Called before the `search_related_work` stage; query injected as `args["query"]`
-- **No LLM. No MCP call.** Pure Python deterministic function.
+- Collects `eval_summary` text from successful nodes and **asks an LLM** for a
+  concise academic search query; falls back to `base_topic` when the call fails
+- Called once by `WorkflowDriver` before the stage loop, with the run's topic slug
+  turned back into prose as `base_topic`. The result becomes the `{{keywords}}`
+  template variable, and `search_related_work` picks it up through its declared
+  input `query: '{{keywords}}'` — no stage-specific injection
+
+This paragraph previously ended "**No LLM. No MCP call.** Pure Python
+deterministic function." That is the reverse of what the function does, and it
+matters: the first arXiv query of every run is model output, so it is not
+reproducible from the tree alone.
 
 ## Story2Proposal integration (execution-grounded contract)
 
@@ -246,7 +294,7 @@ Negative: a reported number corrupted (20.91→99.99) and the paper relinked →
 `numeric_mismatch` (reported 99.99 vs recomputed 20.91) → `should_block=True`. The
 full chain is confirmed end-to-end: the evaluator wrapper converts `should_block`
 into exactly `{"error": ...}` (`ari-skill-evaluator` `_tool_claim_evidence_hard_gate`,
-regression-tested in `tests/test_s2p_tools.py`), `stage_runner` raises on an
+regression-tested in `ari-skill-evaluator/tests/test_s2p_tools.py`), `stage_runner` raises on an
 error-only MCP result, and the orchestrator records the stage error so a dependent
 `finalize_paper` is skipped (covered by `test_pipeline_e2e.py::test_mcp_error_dict_detected_as_failure`).
 

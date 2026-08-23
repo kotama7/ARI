@@ -1,11 +1,13 @@
-# ARI System Report
+# Constitutional ARI-RQGM Technical Report
 
-This directory holds the **ARI system report** — an arXiv-style technical
-report describing the exploration algorithm and paper-generation pipeline
-of [ARI](../README.md). This is the **v0.8.1 edition**; the evaluation it
-reports was captured at the **v0.8.0 dogfood snapshot** (v0.8.1 is a
-behavior-preserving structural refactor that does not change the system the
-report describes — see [CHANGELOG.md](../CHANGELOG.md)).
+This directory holds the **Constitutional ARI-RQGM technical report** — an
+arXiv-style account of governed co-evolution for autonomous research. The
+2026-07-28 edition replaces the earlier general ARI system report: its scope is
+the immutable constitutional kernel, evolvable prompts/components/utility
+policy, epoch transitions, accountability, clean-room replacement, governed
+paper archive, and current lifecycle evidence. Execution strategies that
+remain available as product features are intentionally outside the report's
+scope (see [CHANGELOG.md](../CHANGELOG.md)).
 
 The report is built in three languages (en, ja, zh) and published in two
 formats (PDF, HTML). The English version is the master; ja and zh are
@@ -44,6 +46,8 @@ report/
 ├── en/main.tex,strings.tex,chapters/*.tex   # master English source
 ├── ja/main.tex,strings.tex,chapters/*.tex   # hand-maintained Japanese
 ├── zh/main.tex,strings.tex,chapters/*.tex   # hand-maintained Simplified Chinese
+│   ├── chapters/08_rqgm.tex                 # constitutional RQGM core method
+│   └── chapters/appendix_specification.tex  # complete state/authority/recovery spec
 │
 ├── scripts/
 │   ├── snapshot_prompts.py         # refresh shared/appendix/prompts/
@@ -66,7 +70,7 @@ PDF (per language):
 ```bash
 make pdf-en           # latexmk -lualatex en/main.tex
 make pdf-ja           # latexmk -lualatex ja/main.tex
-make pdf-zh           # latexmk -xelatex  zh/main.tex
+make pdf-zh           # latexmk -lualatex zh/main.tex
 make pdf-all
 ```
 
@@ -83,6 +87,38 @@ Figures (regenerate from frozen data):
 make figures          # PGF + dot one-shot
 make figure FIG=F04_react_loop   # standalone preview of a single TikZ
 ```
+
+## Current reproducibility status
+
+The report no longer cites `c050ebf505aff7f26fb2ec2757e7b101d455c83f` as a
+public artifact: that object does not resolve from the public repository and
+does not identify the current uncommitted working tree. The local,
+content-addressed bundle under `shared/artifact/` records source hashes,
+dependency inventory, exact selectors, collected identifiers, and run logs.
+It is not an immutable tag, DOI archive, container, or public CI log. Publish
+and archive those materials before adding an artifact identifier to the paper.
+
+The exact local selectors used for the 2026-07-28 counts are:
+
+```bash
+python scripts/reproduce_constitutional_rqgm.py --run all
+# focused: 1124 passed
+# full: 4787 passed, 16 skipped, 2 xfailed (4805 collected)
+```
+
+The complete deny-by-default role × tier × action × resource decision
+manifest is emitted as stable JSON with:
+
+```bash
+cd ari-core
+python -m ari.rqgm.authority_manifest > authority-manifest.json
+```
+
+The focused test count is intentionally separate from the partial
+non-overlapping category breakdown in the report. A release artifact should
+also preserve `pytest --collect-only -q` output for both selectors, the five
+application-fault fixtures, the event-integrity negative cases, the clean
+fixture, and the exact prompt snapshot bundle.
 
 ## Quality gates (`make check-all`)
 
@@ -127,9 +163,12 @@ make check-prompt-snapshots    # gate 10 — fails if snapshots drift
 ```
 
 Each snapshot file carries a `% snapshot-from: <path>@<sha256> @ commit
-<git>` header. Prompts are reproduced in English in every language
-version of the report (gate 6 / `check_i18n.py` excludes the appendix).
-See `CLAUDE.md` §2 for the rationale.
+<git>` header. The English and Chinese PDFs reproduce the RQGM-specific
+prompt seeds verbatim. For readability, the Japanese PDF gives a
+role-by-role Japanese summary of each prompt while the snapshot directory
+retains the exact runtime text. Gate 6 checks the prompt labels and
+structure but excludes appendix prose from the length-ratio test. See
+`CLAUDE.md` §2 for the rationale.
 
 ## Bibliography discipline (anti-hallucination)
 

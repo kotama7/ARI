@@ -23,6 +23,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
+from ari.call_context import ToolCallContextV1
 from ari.llm.client import LLMClient
 from ari.mcp.client import MCPClient
 
@@ -249,7 +250,30 @@ def run_react(
         messages:          list[dict] — full conversation log
         tool_calls_count:  int
     """
+    checkpoint = os.environ.get("ARI_CHECKPOINT_DIR", "").strip()
+    run_id = Path(checkpoint.rstrip(os.sep)).name if checkpoint else ""
+    call_context = (
+        ToolCallContextV1.for_run(run_id, phase=agent_phase)
+        if run_id
+        else None
+    )
     raw_tools = mcp.list_tools(phase=agent_phase)
+
+    def _context_admits(tool: dict) -> bool:
+        requirement = str(
+            (tool.get("policy") or {}).get("context_requirement") or "none"
+        )
+        return requirement == "none" if call_context is None else call_context.satisfies(
+            requirement
+        )
+
+    raw_tools = [tool for tool in raw_tools if _context_admits(tool)]
+    context_requirements = {
+        str(tool.get("name") or ""): str(
+            (tool.get("policy") or {}).get("context_requirement") or "none"
+        )
+        for tool in raw_tools
+    }
     tool_defs: list[dict] = [
         {
             "type": "function",
@@ -286,10 +310,18 @@ def run_react(
 
     for step in range(1, max_steps + 1):
         try:
+            completion_kwargs = {
+                "phase": agent_phase,
+                "skill": "react_driver",
+                "work_dir": _work_dir,
+            }
+            if call_context is not None:
+                completion_kwargs["call_context"] = call_context
             resp = llm.complete(
-                _build_window(messages), tools=tool_defs, require_tool=False,
-                phase=agent_phase, skill="react_driver",
-                work_dir=_work_dir,
+                _build_window(messages),
+                tools=tool_defs,
+                require_tool=False,
+                **completion_kwargs,
             )
         except Exception as e:
             log.error("react_driver step %d LLM error: %s", step, e)
@@ -372,7 +404,12 @@ def run_react(
 
             # Regular MCP dispatch.
             try:
-                result = mcp.call_tool(tool_name, args)
+                requirement = context_requirements.get(tool_name, "none")
+                result = (
+                    mcp.call_tool(tool_name, args, context=call_context)
+                    if requirement != "none" and call_context is not None
+                    else mcp.call_tool(tool_name, args)
+                )
             except Exception as e:
                 result = {"error": f"{tool_name} failed: {type(e).__name__}: {e}"}
             text = json.dumps(result, ensure_ascii=False, default=str)

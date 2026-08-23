@@ -1,0 +1,135 @@
+{
+  "additionalProperties": false,
+  "description": "A complete, idempotent request whose scientific input is digest-bound.",
+  "properties": {
+    "cpus": {
+      "default": 1,
+      "maximum": 1024,
+      "minimum": 1,
+      "title": "Cpus",
+      "type": "integer"
+    },
+    "estimated_cost_usd": {
+      "default": 0.0,
+      "maximum": 1000000.0,
+      "minimum": 0.0,
+      "title": "Estimated Cost Usd",
+      "type": "number"
+    },
+    "executor": {
+      "default": "",
+      "maxLength": 128,
+      "title": "Executor",
+      "type": "string"
+    },
+    "experiment_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Experiment Digest",
+      "type": "string"
+    },
+    "experiment_md": {
+      "maxLength": 1048576,
+      "minLength": 1,
+      "title": "Experiment Md",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "llm_backend": {
+      "default": "",
+      "maxLength": 128,
+      "title": "Llm Backend",
+      "type": "string"
+    },
+    "max_cost_usd": {
+      "default": 100.0,
+      "maximum": 1000000.0,
+      "minimum": 0.0,
+      "title": "Max Cost Usd",
+      "type": "number"
+    },
+    "max_descendant_runs": {
+      "default": 32,
+      "maximum": 10000,
+      "minimum": 0,
+      "title": "Max Descendant Runs",
+      "type": "integer"
+    },
+    "max_nodes": {
+      "default": 10,
+      "maximum": 10000,
+      "minimum": 1,
+      "title": "Max Nodes",
+      "type": "integer"
+    },
+    "max_recursion_depth": {
+      "default": 3,
+      "maximum": 32,
+      "minimum": 0,
+      "title": "Max Recursion Depth",
+      "type": "integer"
+    },
+    "max_total_nodes": {
+      "default": 100,
+      "maximum": 100000,
+      "minimum": 1,
+      "title": "Max Total Nodes",
+      "type": "integer"
+    },
+    "model": {
+      "default": "",
+      "maxLength": 256,
+      "title": "Model",
+      "type": "string"
+    },
+    "parent_run_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Run Id"
+    },
+    "request_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Request Digest",
+      "type": "string"
+    },
+    "retrieval_backend": {
+      "default": "",
+      "maxLength": 128,
+      "title": "Retrieval Backend",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.orchestrator-run-request/v1",
+      "default": "ari.orchestrator-run-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "timeout_minutes": {
+      "default": 60,
+      "maximum": 10080,
+      "minimum": 1,
+      "title": "Timeout Minutes",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "experiment_md",
+    "experiment_digest",
+    "request_digest"
+  ],
+  "title": "RunRequestV1",
+  "type": "object"
+}

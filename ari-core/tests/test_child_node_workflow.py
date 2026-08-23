@@ -5,8 +5,7 @@ as the parent (e.g. slurm_submit when a scheduler is configured),
 preventing accidental execution on the wrong host.
 """
 import re
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -40,7 +39,7 @@ class TestWorkflowHintsFromExperiment:
         """ARI_SLURM_PARTITION set by the wizard (profile=hpc) must force the
         SLURM workflow even when experiment.md contains no SLURM keywords —
         otherwise HPC runs fall back to run_bash on the login node."""
-        monkeypatch.setenv("ARI_SLURM_PARTITION", "sx40")
+        monkeypatch.setenv("ARI_SLURM_PARTITION", "gpu-private")
         text = "We propose an implementation of CSR-format SpMM for CPUs."
         hints = from_experiment_text(text)
         assert hints.job_submitter_tool == "slurm_submit"
@@ -49,7 +48,7 @@ class TestWorkflowHintsFromExperiment:
 
     def test_env_partition_ignored_when_hpc_disabled(self, monkeypatch):
         """Laptop profile must still suppress SLURM even if the env var leaks in."""
-        monkeypatch.setenv("ARI_SLURM_PARTITION", "sx40")
+        monkeypatch.setenv("ARI_SLURM_PARTITION", "gpu-private")
         hints = from_experiment_text("Run a benchmark", hpc_enabled=False)
         assert hints.job_submitter_tool is None
 
@@ -66,7 +65,6 @@ _MOCK_MCP_TOOLS = [
     {"name": "web_search", "description": "Search the web", "inputSchema": {"properties": {"query": {}}}, "skill_name": "web-skill"},
     {"name": "search_papers", "description": "Search academic papers", "inputSchema": {"properties": {"query": {}}}, "skill_name": "web-skill"},
     {"name": "fetch_url", "description": "Fetch web page", "inputSchema": {"properties": {"url": {}}}, "skill_name": "web-skill"},
-    {"name": "search_arxiv", "description": "Search arXiv", "inputSchema": {"properties": {"query": {}}}, "skill_name": "web-skill"},
     {"name": "add_memory", "description": "Save memory", "inputSchema": {"properties": {"node_id": {}, "text": {}}}, "skill_name": "memory-skill"},
     {"name": "search_memory", "description": "Search memories", "inputSchema": {"properties": {"query": {}}}, "skill_name": "memory-skill"},
 ]
@@ -89,10 +87,6 @@ class TestWebResearchToolHints:
     def test_default_hint_includes_search_papers(self):
         hints = _enriched_hints("Run a benchmark locally")
         assert "search_papers" in hints.post_survey_hint
-
-    def test_default_hint_includes_search_arxiv(self):
-        hints = _enriched_hints("Run a benchmark locally")
-        assert "search_arxiv" in hints.post_survey_hint
 
     def test_default_hint_includes_fetch_url(self):
         hints = _enriched_hints("Run a benchmark locally")
@@ -424,6 +418,21 @@ class TestBuildBestNodesContext:
         context, _ = build_best_nodes_context([node], "test goal")
         assert "71 GFLOP/s" in context
         assert "summary:" in context.lower() or "specialized" in context
+
+    def test_context_excludes_erased_nodes(self):
+        """RQGM-erased nodes (retained stale scores) must not ground the paper
+        context or its headline best_metrics."""
+        from ari.pipeline import build_best_nodes_context
+
+        erased = MagicMock()
+        erased.status = NodeStatus.SUCCESS
+        erased.has_real_data = True
+        erased.metrics = {"_scientific_score": 0.9, "_valid_for_frontier": False}
+        erased.eval_summary = "stale result"
+        erased.label = "improve"
+
+        context, best_metrics = build_best_nodes_context([erased], "test goal")
+        assert context == "" and best_metrics == {}
 
 
 # ── Repro best_val fallback test ─────────────────────────────────────────

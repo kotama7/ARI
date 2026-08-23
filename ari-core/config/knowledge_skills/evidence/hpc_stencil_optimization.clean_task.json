@@ -1,0 +1,76 @@
+{
+  "attachment_execution": "none",
+  "compiler": "gcc 13.2.0",
+  "container_sha256": null,
+  "correctness": {
+    "measurements": {
+      "metamorphic_linearity": "1.665e-16",
+      "trajectory_relative": "0.000e+00"
+    },
+    "methods": [
+      "metamorphic_linearity",
+      "trajectory_relative"
+    ],
+    "result": "pass"
+  },
+  "independently_authored_baseline": true,
+  "memory_safety": {
+    "checks": {
+      "address": {
+        "diagnostics": [],
+        "result": "pass",
+        "returncode": 0
+      },
+      "undefined": {
+        "diagnostics": [],
+        "result": "pass",
+        "returncode": 0
+      }
+    },
+    "methods": [
+      "address-sanitizer",
+      "undefined-behavior-sanitizer"
+    ],
+    "result": "pass"
+  },
+  "node_identifier_persisted": false,
+  "performance": {
+    "affinity_policy": "distinct-physical-core-per-thread-without-persisting-cpu-id",
+    "baseline": "independently authored naive kernel in the same binary",
+    "clock": "CLOCK_MONOTONIC_RAW",
+    "compiler_flags": [
+      "-O3",
+      "-fno-fast-math",
+      "-march=native"
+    ],
+    "replay_speedups": [
+      1.656219,
+      1.667187,
+      1.668021,
+      1.675242
+    ],
+    "replays": 4,
+    "result": "pass",
+    "sample_order": "alternating-baseline-candidate",
+    "statistic": "minimum of trials",
+    "threshold": 1.05,
+    "timer_overhead_subtracted": false,
+    "trials_per_replay": 3,
+    "warmup": "one untimed call per variant"
+  },
+  "race_detection": {
+    "detail": {
+      "diagnostics": [],
+      "result": "pass",
+      "returncode": 0
+    },
+    "methods": [
+      "thread-sanitizer"
+    ],
+    "result": "pass"
+  },
+  "release_binary_sha256": "sha256:3f8e7189f93790bdb22a58cfc799843725366e43ff5feb7b089e0f65165063f0",
+  "result": "pass",
+  "schema_version": "ari.hpc-stencil-optimization-clean-task/v1",
+  "task_source_sha256": "sha256:8a7d77731f4cbee0f849ac254329ef6befce43377ad8898a3b4cb04e258794d7"
+}

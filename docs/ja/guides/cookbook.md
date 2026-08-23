@@ -8,7 +8,15 @@ sources:
     role: implementation
   - path: ari-core/ari/orchestrator/bfts.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # クックブック
@@ -22,7 +30,17 @@ last_verified: 2026-06-10
 > `ari-core/config/profiles/<name>.yaml` に、ラン全体の設定は
 > `workflow.yaml` に置きます。プロファイルは、`--profile <name>`（CLI）を
 > 渡すかウィザードで選択すると、デフォルトの上にマージされます。`evaluator:`
-> や `bfts:` ブロックはどちらのファイルにも追加できます。
+> や `bfts:` ブロックは `workflow.yaml` に追加します。
+>
+> **`--profile` がマージするのは 4 キーだけです。** docstring の記述に反して、
+> `_apply_profile`（`ari-core/ari/cli/run.py`）はディープマージではありません。
+> 読むのは `bfts.max_total_nodes`、`bfts.max_parallel_nodes`（またはその歴史的な
+> 綴りである `parallel`）、`hpc.enabled`、`hpc.scheduler` の 4 つだけです。
+> プロファイル YAML のそれ以外のキー — `partition`、`cpus_per_task`、
+> `memory_gb`、`walltime`、`max_concurrent_jobs`、および `evaluator:` ブロック —
+> はファイルから読み込まれた後、黙って捨てられます。それらは代わりに
+> `workflow.yaml`（`resources:`、`evaluator:`、`bfts:`）か環境変数
+> （`ARI_SLURM_PARTITION`）に置いてください。
 
 ## 環境プロファイル: laptop / HPC / cloud
 
@@ -41,7 +59,10 @@ bfts:
   parallel: 2
 ```
 
-**`hpc`** — パーティションを自動検出する SLURM/PBS/LSF クラスタ:
+**`hpc`** — スケジューラを有効化する（`scheduler:` より下のキーはファイルに
+記録されるだけでマージされません。パーティションは `ARI_SLURM_PARTITION`、
+実験ファイルの `Partition:` 行、あるいは `sinfo` が報告する最初の `up`
+パーティションから解決されます）:
 
 ```yaml
 profile: hpc
@@ -71,21 +92,23 @@ bfts:
 ```
 
 **レシピ — 独自のプロファイルを作る。** `ari-core/config/profiles/` に新しい
-ファイル（例: `bigjob.yaml`）を置き、`--profile bigjob` で選択します:
+ファイル（例: `bigjob.yaml`）を置き、`--profile bigjob` で選択します。内容は
+マージされる 4 キーに留めてください — それ以外にここへ書いたものは無視され、
+ファイルに解決できないプロファイル名は警告をログに出して処理を続行するだけです:
 
 ```yaml
 profile: bigjob
 hpc:
   enabled: true
   scheduler: auto
-  partition: gpu
-  cpus_per_task: 32
-  memory_gb: 128
-  walltime: "12:00:00"
 bfts:
   max_total_nodes: 40
   parallel: 8
 ```
+
+サイジングのノブは `workflow.yaml` の `resources:` ブロックに置きます。その
+キー名は `cpus` / `memory_gb` / `gpus` / `walltime` / `partition` です — または
+環境変数（`ARI_SLURM_PARTITION`）に置きます。
 
 パーティション検出と SLURM の詳細については [HPC セットアップ](hpc_setup.md)
 を参照してください。
@@ -94,7 +117,7 @@ bfts:
 
 ARI は 4 つの独立した評価レイヤを公開しています。各デフォルトは従来の挙動を
 再現する no-op です。完全なセマンティクスは
-[設定 → BFTS 評価レイヤ](../reference/configuration.md#bfts-evaluation-layers-configurable)
+[設定 → BFTS 評価レイヤ](../reference/configuration.md#bfts-の評価層-設定で切替可能)
 にあります。以下のレシピはよく使う組み合わせです。
 
 **ボトルネックスコアリング — *すべて*の軸が良好なときだけノードを報酬する:**
@@ -121,13 +144,24 @@ bfts:
   depth_penalty_lambda: 0.1
 ```
 
-**汎用の 5 軸の代わりにカスタム軸（例: 高速化）を測定する:**
+**ルーブリック由来の軸の代わりにカスタム軸（例: 高速化）を測定する**
+（`axis_mode` のデフォルトは `dynamic` で、有効なルーブリックから軸を構築します）。
+`custom_axes` は `{name, description, weight}` レコードのリストです — 文字列だけの
+リストは設定ロード時に拒否されます:
 
 ```yaml
 evaluator:
   axis_mode: custom
-  custom_axes: [correctness, speedup, reproducibility]
-  # axis_weights below set the relative weight of each named axis
+  custom_axes:
+    - name: correctness
+      description: "結果が許容誤差内で参照実装と一致するか"
+      weight: 0.4
+    - name: speedup
+      description: "ベースラインに対する実時間の高速化率（1.0 = 変化なし）"
+      weight: 0.4
+    - name: reproducibility
+      description: "記録された成果物から実行を再現できるか"
+      weight: 0.2
 ```
 
 **監査前の挙動を厳密に再現する**（正規の 5 軸と調和平均を固定する）:
@@ -171,9 +205,13 @@ export ARI_SLURM_PARTITION=gpu          # required when the sandbox is slurm
 export ARI_RUBRIC=sc                    # venue template: sc / neurips / nature
 ```
 
-`ARI_RUBRIC` を切り替えると、BFTS のスコアリング軸と公開レビュー基準が
-同時に変わります — [用語集 → venue](../reference/glossary.md) と
-[アーキテクチャ → Plan / Venue contract](../concepts/architecture.md#plan--venue-contract-v070)
+`ARI_RUBRIC`（既定は `neurips`）は、BFTS のスコアリング軸を導出する元となる
+`ari-core/config/reviewer_rubrics/` 配下の rubric YAML を選びます。公開レビュー
+基準は**別のつまみ**です: `review_paper` ステージは rubric をワークフローの明示的な
+入力、すなわち `workflow.yaml` の `paper_rubric`（既定は `generic_conference`）
+として受け取ります。探索とレビューを同じ venue で判定させたい場合は両方を設定して
+ください — [用語集 → venue](../reference/glossary.md) と
+[アーキテクチャ → Plan / Venue contract](../concepts/architecture.md#plan-venue-契約-v0-7-0)
 を参照してください。
 
 ---

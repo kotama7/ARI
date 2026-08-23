@@ -6,7 +6,35 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/clone
+    role: implementation
+  - path: ari-core/ari/registry
+    role: implementation
+  - path: ari-core/ari/publish
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+  - path: ari-core/config/reviewer_rubrics
+    role: config
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+  - path: ari-skill-paper/src
+    role: implementation
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+  - path: ari-skill-vlm/src/review.py
+    role: implementation
+  - path: ari-skill-web/src/server.py
+    role: implementation
+  - path: ari-skill-orchestrator/src/server.py
+    role: implementation
+  - path: ari-skill-memory/src/ari_skill_memory/config.py
+    role: implementation
+  - path: scripts/setup/install_deps.sh
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # ARI CLI リファレンス
@@ -22,6 +50,7 @@ ARI のコマンドライン操作の完全なリファレンスです。CLI は
 | `ari run` | 新しい実験を実行 | New Experiment ウィザード → Launch |
 | `ari resume` | 中断された実験を再開 | Experiments ページ → Resume ボタン |
 | `ari paper` | 論文のみ生成（実験をスキップ） | `POST /api/run-stage {stage: "paper"}` |
+| `ari manuscript <subcmd>` | Manuscript Complete の compile / 検査 / repair / lock | — |
 | `ari status` | 実験ツリーとサマリーを表示 | Monitor / Tree ページ |
 | `ari viz` | Web ダッシュボードを起動 | -- |
 | `ari projects` | 過去のすべての実験を一覧表示 | Experiments ページ |
@@ -29,11 +58,51 @@ ARI のコマンドライン操作の完全なリファレンスです。CLI は
 | `ari delete` | チェックポイントを削除 | Experiments ページ → Delete ボタン |
 | `ari settings` | 設定の表示または変更 | Settings ページ |
 | `ari skills-list` | 利用可能なツールを一覧表示 | Settings → MCP Skills |
+| `ari knowledge <subcmd>` | 非実行の Knowledge Skill を検査（`search` / `show` / `import` / `validate-manifest` / `validate-registration`、加えて `lock` と `use`） | — |
+| `ari provider <subcmd>` | 実行可能な Capability Provider を検査（`search` / `show` / `probe` / `validate-manifest`、加えて `lock` と `bindings`） | — |
+| `ari harness <subcmd>` | Harness と assurance 証跡を検査（`search` / `show` / `resolve` / `verify` / `validate-manifest` / `validate-registration`、加えて `lock`、`attestation`、`suite`） | — |
 | `ari memory ...` | Letta メモリバックエンドを管理 | Settings → Memory (Letta) |
 | `ari ear <subcmd>` | EAR キュレーション/公開/プロモーションのライフサイクル (v0.7.0) | — |
 | `ari clone <ref>` | キュレート済み EAR バンドルを取得 (file/https/ari/gh/doi)、digest 検証 (v0.7.0) | — |
 | `ari registry <subcmd>` | セルフホスト EAR レジストリ: `serve` / `token issue\|revoke\|list` (v0.7.0) | — |
 | `ari migrate node-reports <checkpoint>` | 旧 (v0.6.0) checkpoint に `node_report.json` を補完 | — |
+| `ari doctor claude-code` | `claude_code` LLM バックエンドのヘルスチェック（バイナリ/ポリシー/フラグ。`--live` で実呼び出し 1 回） | — |
+
+> **実行モード。** オプトインの `ari_rqgm` モードは v1 で **CLI フラグを一切
+> 追加しません** — 有効化は純粋に設定（workflow.yaml の
+> `ari.mode: ari_rqgm` + `rqgm.enabled: true`）または `ARI_MODE` /
+> `ARI_RQGM_ENABLED` 環境変数オーバーライドで行います。上記のすべての
+> コマンドはデフォルトの `simple_bfts` モードで従来と同一に動作します。
+> [実行モード](../guides/execution_modes.md)を参照。
+
+## `ari manuscript` — 完全性と publication の操作
+
+このコマンド群は、オプトインの exploration-to-authoring コンパイラに対する
+機械可読なオペレータ面です。既定の `manuscript.mode: "off"` 経路では動作
+しません。
+
+```bash
+ari manuscript compile CHECKPOINT [--mode audit|enforce] \
+  [--profile generic_empirical_v1] [--repair-policy disabled|explicit|auto] \
+  [--config WORKFLOW]
+ari manuscript status CHECKPOINT [--fail-if-blocked]
+ari manuscript inspect CHECKPOINT [--requirement ID] [--lane LANE] [--node ID]
+ari manuscript plan-repair CHECKPOINT [--config WORKFLOW]
+ari manuscript repair CHECKPOINT [--request REQUEST_ID]... [--config WORKFLOW]
+ari manuscript explain-publication CHECKPOINT
+ari manuscript lock-publication CHECKPOINT
+```
+
+`plan-repair` は外部システムに対して read-only です。`repair` はまず admit
+された request と budget を永続化し、そのうえで通常の bounded research runtime
+を使います。`ari paper` が research repair を開始することはありません。
+`--mode` の既定は `audit` です。`--repair-policy auto` は `--mode enforce` を
+併せて指定しない限り拒否されます。`--request` は繰り返し指定でき、**省略すると
+plan 内のすべての request が選択されます** — 未知の id は
+`unknown request IDs: ...` で拒否されます。`lock-publication` が成功するのは、
+最終ビルドと PDF そのものに束縛された fresh で publishable な decision に
+対してだけです。
+[オペレータランブック](../guides/manuscript_complete_operations.md)を参照。
 
 ---
 
@@ -50,10 +119,8 @@ ari migrate node-reports /path/to/checkpoint
 ari migrate node-reports /path/to/checkpoint --overwrite   # 既存レポートも上書き
 ```
 
-再構築されたレポートには `migration_source: "auto"` が付くため、ダウンストリーム
-フィルタはやや保守的に振る舞います (例: `for_code` は files_changed 空でも
-auto レポートのノードを採用)。復元できないフィールド (`original_direction`,
-`delta_vs_parent`, `next_steps_hints`) は null になります。
+復元できないフィールド (`original_direction`,
+`next_steps_hints`) は null になります。
 
 ---
 
@@ -65,7 +132,8 @@ auto レポートのノードを採用)。復元できないフィールド (`or
 ari run <experiment.md> [--config <config.yaml>] [--profile <profile>] \
                         [--virsci-live/--no-virsci-live] \
                         [--virsci-k N] [--virsci-team-size N] \
-                        [--virsci-n-authors N] [--virsci-n-papers N]
+                        [--virsci-n-authors N] [--virsci-n-papers N] \
+                        [--kca-audit/--no-kca-audit] [--task-tag TAG]...
 ```
 
 | 引数 | 必須 | 説明 |
@@ -78,9 +146,11 @@ ari run <experiment.md> [--config <config.yaml>] [--profile <profile>] \
 | `--virsci-team-size` | いいえ | VirSci-live のチームあたり最大メンバー数。`ARI_IDEA_VIRSCI_TEAM_SIZE` を設定。既定 3。 |
 | `--virsci-n-authors` | いいえ | VirSci-live の `select_coauthors` 用著者プールサイズ。`ARI_IDEA_VIRSCI_N_AUTHORS` を設定。既定 16。 |
 | `--virsci-n-papers` | いいえ | VirSci-live の SPECTER2 検索コーパスサイズ。`ARI_IDEA_VIRSCI_N_PAPERS` を設定。既定 800。 |
+| `--kca-audit` / `--no-kca-audit` | いいえ | Knowledge・capability binding・assurance を `audit` モードにし、それぞれの照会 Skill を公開。未設定なら `assurance.tolerance_policy` を `hpc-floating-point/v1` に既定設定する。既定 OFF。 |
+| `--task-tag` | いいえ | 決定論的な Knowledge/Harness の task tag。複数指定は繰り返し。タグは小文字化・トリム・重複除去され、checkpoint の `workflow.yaml` の `resolved_launch.task_tags` に記録される。 |
 
 これらのフラグは、アイデアスキルが読み込む `ARI_IDEA_VIRSCI_*` 環境変数の契約を
-設定します（下記 [アイデア生成 (VirSci-live)](#アイデア生成-virsci-live) 参照）。
+設定します（下記 [アイデア生成 (VirSci-live)](#アイデア生成-virsci-live) 参照）。
 `--virsci-live` が ON のとき、仮説生成はライブの Semantic Scholar スナップショット
 上で VirSci 本物の `select_coauthors` + `generate_idea` メカニズムを実行します。
 依存が無い場合や実行時エラーが発生した場合は、`idea.json` の契約が同一のまま
@@ -108,7 +178,7 @@ ari run experiment.md --virsci-live --virsci-k 7 --virsci-team-size 3
 **実行される処理：**
 
 1. ARI がユニークなプロジェクト名を生成（LLM が生成するタイトル）
-2. チェックポイントディレクトリを作成: `./checkpoints/<run_id>/`
+2. チェックポイントディレクトリを作成: `./workspace/checkpoints/<run_id>/`
 3. arXiv と Semantic Scholar で関連論文を検索
 4. VirSci マルチエージェント議論で仮説を生成
 5. Best-First Tree Search（BFTS）で実験を実行
@@ -129,7 +199,7 @@ ari resume <checkpoint_dir> [--config <config.yaml>]
 **使用例：**
 
 ```bash
-ari resume ./checkpoints/20260328_matrix_opt/
+ari resume ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 保存されたツリーを読み込み、保留中または失敗したノードを特定し、停止した箇所から再開します。
@@ -147,34 +217,50 @@ ari paper <checkpoint_dir> [--experiment <experiment.md>] [--config <config.yaml
                            [--num-reviews-ensemble N] \
                            [--num-reflections N]
 
-# 同梱ルーブリック (16 種): neurips (既定、v2 互換)、iclr、icml、cvpr、acl、
-#   sc、chi、osdi、stoc、icra、siggraph、nature、usenix_security、
-#   journal_generic、workshop、generic_conference。加えて内蔵の `legacy`
-#   フォールバック (v0.5 スキーマ) も利用可能。
+# 同梱ルーブリック (23 種): neurips、iclr、icml、cvpr、acl、sc、chi、osdi、
+#   stoc、icra、siggraph、nature、usenix_security、aer、econometrica、qje、
+#   apsr、ahr、philreview、pmla、journal_generic、workshop、
+#   generic_conference。
 #   ari-core/config/reviewer_rubrics/ に <id>.yaml を追加するだけで
 #   新しい venue に対応できます。
 ```
 
-**使用例 — v2 互換の既定 (NeurIPS 形式、1-shot、5 reflection):**
+**使用例 — 同梱の既定 (`generic_conference` 形式):**
 
 ```bash
-ari paper ./checkpoints/20260328_matrix_opt/
+ari paper ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 **使用例 — Supercomputing (SC) ルーブリックで 5 名アンサンブル + メタ査読:**
 
 ```bash
-ari paper ./checkpoints/20260328_matrix_opt/ \
+ari paper ./workspace/checkpoints/20260328_matrix_opt/ \
           --rubric sc --num-reviews-ensemble 5
 ```
 
-論文パイプラインは: データ変換、図生成、論文執筆、VLM 図査読、**ルーブリック
-駆動の論文査読** (rubric 形式 + reflection + オプションのアンサンブル + Area
-Chair メタ査読)、再現性チェック (`ari/agent/react_driver.py` 駆動の ReAct
-エージェント) を実行します。
+> **`--rubric` は論文査読者には届きません。** このフラグ (および `ARI_RUBRIC`)
+> が選ぶのは、ARI 自身の評価器がスコア軸を導出する rubric (既定 `neurips`) と、
+> lineage 判断が継承する rubric です。`write_paper` / `review_paper` ステージは
+> `rubric_id` を workflow のトップレベルキー `paper_rubric:` から取ります —
+> 同梱の `ari-core/config/workflow.yaml` では `generic_conference` です。
+> paper スキルは意図的に `ARI_RUBRIC` を読まず既定値も推測しません
+> (`resolve_rubric` は `rubric_id is required` を送出)。査読 venue を変えるには
+> workflow YAML の `paper_rubric` を編集してください。
+
+論文パイプラインは: データ変換、図生成、論文執筆、claim-evidence ゲート、
+VLM 図査読、**ルーブリック駆動の論文査読** (rubric 形式 + reflection +
+オプションのアンサンブル + Area Chair メタ査読)、refine/render と finalize、
+そして ORS 再現性トラック (`ors_generate_rubric` → `ors_audit_rubric` →
+`ors_seed_sandbox` → `ors_build_reproduce` → `ors_run_reproduce` →
+`ors_grade`、`paper-re-skill` と `replicate-skill` が担当) を実行します。
 
 CLI フラグは環境変数でも設定可能: `ARI_RUBRIC`、`ARI_FEWSHOT_MODE`、
-`ARI_NUM_REVIEWS_ENSEMBLE`、`ARI_NUM_REFLECTIONS`。
+`ARI_NUM_REVIEWS_ENSEMBLE`、`ARI_NUM_REFLECTIONS`。このうち査読側が実際に
+読むのは `ARI_NUM_REVIEWS_ENSEMBLE` と `ARI_NUM_REFLECTIONS` だけです
+(`review_compiled_paper` はどちらも 引数 > 環境変数 > rubric 既定値 の順で
+解決)。`--fewshot-mode` は現在 inert です: 値を検証して `ARI_FEWSHOT_MODE`
+を export しますが、この変数を読むコードは存在せず、`fewshot_mode` は
+rubric YAML の `params` ブロックだけから決まります。
 
 ---
 
@@ -189,18 +275,28 @@ ari status <checkpoint_dir>
 **使用例：**
 
 ```bash
-ari status ./checkpoints/20260328_matrix_opt/
+ari status ./workspace/checkpoints/20260328_matrix_opt/
 
 # 出力:
-# ── Experiment Tree ──
-# root (success) score=153736
-# ├── improve_1 (success) score=180200
-# │   ├── ablation_1 (success) score=120000
-# │   └── validation_1 (success) score=178500
-# └── draft_2 (failed)
+# Run: 20260328_matrix_opt
+# └── root d=0 success
+#     ├── improve_1 d=1 success
+#     │   ├── ablation_1 d=2 success
+#     │   └── validation_1 d=2 success
+#     └── draft_2 d=1 failed
 #
-# Summary: 4 success, 1 failed, 0 running, 0 pending
+#         Summary
+# ┏━━━━━━━━━┳━━━━━━━┓
+# ┃ Status  ┃ Count ┃
+# ┡━━━━━━━━━╇━━━━━━━┩
+# │ failed  │     1 │
+# │ success │     4 │
+# └─────────┴───────┘
 ```
+
+ノード行が持つのは id・深さ・ステータスだけで、`ari status` は **スコアを
+表示しません**。ノードごとの score フィールドは廃止され、代替は用意されて
+いません。
 
 ---
 
@@ -221,10 +317,10 @@ ari viz <checkpoint_dir> [--port <port>]
 
 ```bash
 # ダッシュボードの起動
-ari viz ./checkpoints/ --port 8765
+ari viz ./workspace/checkpoints/ --port 8765
 
 # 特定の実行を監視
-ari viz ./checkpoints/20260328_matrix_opt/ --port 9878
+ari viz ./workspace/checkpoints/20260328_matrix_opt/ --port 9878
 ```
 
 ブラウザで `http://localhost:<port>` を開いてください。ダッシュボードの使い方は[クイックスタートガイド](../getting-started/quickstart.md)を参照してください。
@@ -239,17 +335,31 @@ ari viz ./checkpoints/20260328_matrix_opt/ --port 9878
 ari projects [--checkpoints <dir>]
 ```
 
+`--checkpoints` の既定値は `./checkpoints` であり、`ari run` が実際に書き込む
+`workspace/checkpoints/` ツリーでは **ありません**。リポジトリルートで
+`ari projects` を引数なしに実行すると `Directory not found: checkpoints` を
+表示して終了コード 1 になります。実際のルートを明示してください。
+
 **使用例：**
 
 ```bash
-ari projects
+ari projects --checkpoints ./workspace/checkpoints
 
 # 出力:
-# ID                              Nodes  Status    Best Score  Modified
-# 20260328_matrix_opt             28     complete  153736      2h ago
-# 20260327_sorting_benchmark      12     complete  0.95        1d ago
-# 20260326_benchmark_test         5      failed    --          2d ago
+#                       ARI Projects
+# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━┓
+# ┃ ID                         ┃ Nodes ┃ Status  ┃ Score ┃ Modified    ┃
+# ┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━┩
+# │ 20260328_matrix_opt        │    28 │ done    │ 8.40  │ 03/28 14:02 │
+# │ 20260327_sorting_benchmark │    12 │ running │ —     │ 03/27 09:15 │
+# │ 20260326_sample_experiment │     0 │ empty   │ —     │ 03/26 22:41 │
+# └────────────────────────────┴───────┴─────────┴───────┴─────────────┘
 ```
+
+Status は `tree.json` (無ければ `nodes_tree.json`) から導出され、
+`running` / `done` / `empty` / `corrupt` のいずれかです — 成功/失敗の判定では
+ありません。Score は `review_report.json` の `scientific_score` (無ければ
+`score`) を小数 2 桁に整形した値で、レビューレポートが無ければ `—` です。
 
 ---
 
@@ -262,6 +372,8 @@ ari show <checkpoint> [--checkpoints-dir <dir>]
 ```
 
 実験ツリー、レビューレポートの概要、および成果物の一覧を表示します。
+`<checkpoint>` はまずパスとして扱われ、そのパスが存在しない場合にだけ
+`--checkpoints-dir` (既定 `./checkpoints`) を基準に解決されます。
 
 ---
 
@@ -270,12 +382,18 @@ ari show <checkpoint> [--checkpoints-dir <dir>]
 チェックポイントディレクトリを削除します。
 
 ```bash
-ari delete <checkpoint> [--yes]
+ari delete <checkpoint> [--checkpoints-dir <dir>] [--yes]
 ```
 
 | フラグ | 説明 |
 |--------|------|
+| `--checkpoints-dir` | `<checkpoint>` 自体が既存パスでない場合にだけ使われるベースディレクトリ。既定 `./checkpoints` |
 | `-y` / `--yes` | 確認プロンプトをスキップ |
+
+ディレクトリを削除する前に、`ari delete` はそのチェックポイントの Letta
+メモリ名前空間を purge します。この処理は best-effort で、失敗しても警告を
+記録するだけでローカルの `rmtree` は続行され、孤立した Letta エントリは
+`ari memory prune-local` で後から掃除することになります。
 
 ---
 
@@ -295,6 +413,13 @@ ari settings [--config <config.yaml>] [options]
 | `--cpus <count>` | CPU 数を設定 |
 | `--mem <GB>` | メモリを GB 単位で設定 |
 
+`--config` の既定値は `./config.yaml` で、そのファイルが存在しなければ終了
+コード 1 で終わります — 同梱 workflow へのフォールバックはありません。
+`--partition` / `--cpus` / `--mem` は型付きの `resources:` ブロックに
+(`partition` / `cpus` / `mem_gb` として) 書き込まれます。experiment.md の
+ヘッダから解析される実行ごとの `slurm_partition` / `slurm_max_cpus` ヒントは
+これとは別物で、ここでの設定に上書きされません。
+
 **使用例：**
 
 ```bash
@@ -306,6 +431,22 @@ ari settings --model gpt-4o
 
 # 複数のオプションを設定
 ari settings --model qwen3:32b --partition gpu --cpus 64 --mem 128
+```
+
+---
+
+## ari doctor claude-code
+
+`claude_code` LLM バックエンドのヘルスチェック
+（[claude_code_provider.md](./claude_code_provider.md) 参照）: claude
+バイナリとバージョン、解決済み設定の fail-loud ポリシー検証、実際に実行
+される strict モードコマンド、静的なフラグサポート報告
+（`--max-turns` / `--system-prompt-file` は `claude --help` に出ない
+hidden-but-supported フラグ）。
+
+```bash
+ari doctor claude-code           # オフラインチェックのみ
+ari doctor claude-code --live    # + schema 検証付き実 hermetic 呼び出し 1 回（トークン消費）
 ```
 
 ---
@@ -338,19 +479,19 @@ ari ear promote  <checkpoint> [--target public|unlisted]
 
 ```bash
 # 1. 著者が論文パイプライン後にバンドルをキュレート
-ari ear curate ./checkpoints/run_20260504_xy/
+ari ear curate ./workspace/checkpoints/run_20260504_xy/
 
 # 2. allow/deny ルール後の中身を確認
-ari ear status ./checkpoints/run_20260504_xy/
+ari ear status ./workspace/checkpoints/run_20260504_xy/
 # bundle_sha256: 0ccabb16...
 # files:         42
 # visibility:    staged
 
 # 3. registry に staged で publish
-ari ear publish ./checkpoints/run_20260504_xy/ --backend ari-registry
+ari ear publish ./workspace/checkpoints/run_20260504_xy/ --backend ari-registry
 
 # 4. 査読 + 再現性チェック合格後に public に昇格
-ari ear promote ./checkpoints/run_20260504_xy/ --target public
+ari ear promote ./workspace/checkpoints/run_20260504_xy/ --target public
 ```
 
 `bundle_sha256` は `finalize_paper` ステージで論文の `\codedigest{...}` マクロに焼き付けられます。論文を持っている人なら、registry が落ちていても任意のコピーを digest で検証できます。
@@ -370,8 +511,8 @@ ari memory <subcommand> [options]
 | サブコマンド | 説明 |
 |------------|------|
 | `health` | バックエンドへ ping、レイテンシ、namespace ハッシュ、サーバーバージョンを表示 |
-| `migrate` | v0.5.x の `memory_store.jsonl` (および `--react` 付与時は `memory.json`) を Letta コレクションへ一括取り込み。元ファイルは `*.migrated-<ts>` にリネーム |
-| `backup` | Letta 上のメモリを `{ckpt}/memory_backup.jsonl.gz` (gzipped JSONL) にスナップショット保存。パイプライン段の境界とシャットダウン時に自動実行 |
+| `migrate` | v0.5.x の `memory_store.jsonl` (および `--react` 付与時は `memory.json`) を Letta コレクションへ一括取り込み。元ファイルは `*.migrated-<ts>` にリネーム。`--dry-run` は取り込まずに件数だけ数える |
+| `backup` | Letta 上のメモリを `{ckpt}/memory_backup.v1.json.gz` にスナップショット保存 — JSONL ではなく、gzip 圧縮された digest 束縛の JSON ドキュメント 1 件。`ari run` が `atexit` で登録するのでプロセス終了時に 1 回だけ書き出される。`ARI_HANDOFF_MEMORY_OFF=1` はこの自動書き出しだけを抑止する (明示的なコマンド実行は従来どおり動作) |
 | `restore` | `backup` の逆。`--on-conflict=skip\|overwrite\|merge` (既定 `skip`)。`ari resume` 時に Letta が空なら自動実行 |
 | `start-local` | ローカル Letta サーバを起動: `--path=auto\|docker\|singularity\|pip` |
 | `stop-local` | docker/singularity/pip Letta を停止 (best-effort) |
@@ -414,12 +555,14 @@ ari skills-list [--config <config.yaml>]
 
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
-| `ARI_BACKEND` | LLM バックエンド（`ollama` / `openai` / `anthropic` / `claude`） | `ollama` |
+| `ARI_BACKEND` | LLM バックエンド。ルーティング対象の識別子は `ollama`、`openai`、`anthropic` / `claude`、`claude_code` / `claude-code`、`cli-shim` / `cli_shim`。それ以外の値は prefix を付けずそのまま LiteLLM に渡される | `ollama` |
 | `ARI_MODEL` | モデル名 | `qwen3:8b` |
 | `OPENAI_API_KEY` | OpenAI API キー | -- |
 | `ANTHROPIC_API_KEY` | Anthropic API キー | -- |
 | `OLLAMA_HOST` | Ollama サーバーの URL | `http://localhost:11434` |
 | `LLM_API_BASE` | 汎用 API ベース URL（フォールバック） | -- |
+| `ARI_MODE` | 実行モードのオーバーライド: `simple_bfts` / `ari_rqgm`（[実行モード](../guides/execution_modes.md)を参照） | `simple_bfts` |
+| `ARI_RQGM_ENABLED` | RQGM 安全インターロックのオーバーライド（`0`/`1`/`true`/`false`; `ARI_MODE=ari_rqgm` と一致している必要がある） | off |
 
 ### BFTS 設定
 
@@ -428,24 +571,27 @@ ari skills-list [--config <config.yaml>]
 | `ARI_MAX_NODES` | 実験の最大総数 | 50 |
 | `ARI_MAX_DEPTH` | ツリーの最大深さ | 5 |
 | `ARI_PARALLEL` | 同時実行の実験数 | 4 |
-| `ARI_MAX_REACT` | ノードごとの最大 ReAct ステップ数 | 80 |
+| `ARI_MAX_REACT` | ノードごとの最大 ReAct ステップ数 | 20 |
 | `ARI_TIMEOUT_NODE` | ノードごとのタイムアウト（秒） | 7200 |
 
 ### HPC 設定
 
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
-| `ARI_EXECUTOR` | 実行バックエンド（`local` / `slurm` / `pbs` / `lsf`） | `local` |
+| `ARI_EXECUTOR` | 実行バックエンドのヒント。触るのは orchestrator スキルだけで、サブ実験の `executor` フィールドの初期値にし、空でなければ子 run の環境へ再 export する。契約は enum 検査のない自由形式文字列 (128 文字以下) で、`ari-core` 側にこれを読むコードは無い | -- (未設定) |
 | `ARI_SLURM_PARTITION` | SLURM パーティション名 | -- |
-| `ARI_SLURM_CPUS` | SLURM ジョブの CPU 数オーバーライド | (自動検出) |
+| `ARI_SLURM_CPUS` | SLURM ジョブの CPU 数オーバーライド | (`auto_config` では未設定。PaperBench の再現経路は `8` にフォールバック) |
+| `ARI_SLURM_MEM_GB` | `resources` に記録されるメモリ (GB) | -- |
+| `ARI_SLURM_GPUS` | `resources` に記録される GPU 数 | -- |
+| `ARI_SLURM_WALLTIME` | `resources` に記録される walltime | -- |
 
 ### 検索・VLM
 
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
-| `ARI_RETRIEVAL_BACKEND` | 論文検索: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
-| `VLM_MODEL` | 図レビュー用 VLM モデル | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | orchestrator スキルの HTTP ポート | `9890` |
+| `ARI_RETRIEVAL_BACKEND` | 論文検索プロバイダの既定値: `semantic_scholar` (別名 `semantic-scholar`) / `arxiv` / `alphaxiv`。`both` は **拒否** される — pin した `search_papers` 呼び出しを 2 回発行し alias で統合すること | `semantic_scholar` |
+| `ARI_VLM_MODEL` | 図レビュー用 VLM モデル。未設定なら `VLM_MODEL` にフォールバックし、どちらも未設定だと VLM 査読は `ARI_VLM_MODEL must select a visual review model` を送出 | -- (既定値なし) |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | orchestrator スキルの HTTP ポート (1〜65535 の整数として解釈できること)。ホストは `ARI_ORCHESTRATOR_HTTP_HOST`、既定 `127.0.0.1` | `9890` |
 
 ### メモリ (Letta)
 
@@ -461,23 +607,27 @@ ari skills-list [--config <config.yaml>]
 | `ARI_MEMORY_ACCESS_LOG` | `{checkpoint}/memory_access.jsonl` への書き込み | `on` |
 | `ARI_MEMORY_ACCESS_LOG_MAX_MB` | ローテーション閾値 | `100` |
 | `ARI_MEMORY_AUTO_RESTORE` | `ari resume` 時にバックアップを自動復元 | `true` |
-| `ARI_MEMORY_BACKUP_INTERVAL_S` | 実行中の機会的バックアップ (0 = OFF) | `0` |
 
 ### 論文査読 (ルーブリック)
 
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
-| `ARI_RUBRIC` | 査読に使う rubric_id (例: `neurips`、`sc`、`nature`、`generic_conference`) | `neurips` |
-| `ARI_FEWSHOT_MODE` | `static` (内蔵 examples) / `dynamic` (OpenReview 等から取得) | `static` |
-| `ARI_NUM_REVIEWS_ENSEMBLE` | 独立査読者数 (N>1 で Area Chair メタ査読も実行) | `1` |
-| `ARI_NUM_REFLECTIONS` | self-reflection ループ回数 | `5` |
+| `ARI_RUBRIC` | 評価器のスコア軸と lineage 判断が使う rubric_id (例: `neurips`、`sc`、`nature`、`generic_conference`)。論文査読者には届かない (上記 `ari paper` の注記を参照) | `neurips` |
+| `ARI_FEWSHOT_MODE` | 現在 inert。書き込む側しか存在せず、`fewshot_mode` は rubric YAML の `params` からのみ決まる | -- |
+| `ARI_NUM_REVIEWS_ENSEMBLE` | 独立査読者数 (N>1 で Area Chair メタ査読も実行) | rubric 既定値 (同梱 23 種すべて `1`) |
+| `ARI_NUM_REFLECTIONS` | self-reflection ループ回数 | rubric 既定値 (`generic_conference` と `workshop` は 3、他は 5) |
 
 ### フェーズごとのモデルオーバーライド
+
+`ARI_MODEL_<PHASE>` として読まれ、未設定または空文字ならそのフェーズは
+グローバルの `cfg.llm.model` のままです。
 
 | 変数 | フェーズ |
 |------|---------|
 | `ARI_MODEL_IDEA` | アイデア生成 |
+| `ARI_MODEL_CODING` | AgentLoop / ReAct (インプロセスのコーディングエージェント) |
 | `ARI_MODEL_BFTS` | BFTS 実験 |
+| `ARI_MODEL_EVAL` | 評価器 / judge |
 | `ARI_MODEL_PAPER` | 論文執筆 |
 
 ### アイデア生成 (VirSci-live)
@@ -505,12 +655,16 @@ ari skills-list [--config <config.yaml>]
 
 ARI は `.env` ファイルを自動的に読み込みます（以下の順序で確認）：
 
-1. `<checkpoint_dir>/.env`（最優先）
-2. `<project_root>/.env`
+1. `$ARI_CHECKPOINT_DIR/.env` — この変数が設定されているときだけ（最優先）
+2. `<project_root>/.env` — `$ARI_ROOT` が設定されていればそれ、無ければリポジトリルート
 3. `<project_root>/ari-core/.env`
 4. `~/.env`（最低優先）
 
 形式: `KEY=VALUE`（`#` で始まる行は無視されます）。
+
+いずれも `override=False` で読み込まれるため、シェルで既に export 済みの変数は
+**4 つすべて** より優先されます。ファイル同士では、そのキーを最初に設定した
+ファイルが勝ちます。
 
 ---
 
@@ -556,12 +710,12 @@ EOF
 curated な EAR bundle を「取得 + digest 検証 + 展開」する。
 **コード実行は伴わない**。論文を再現する読者の「1 行 install」経路を提供する。
 
-### 対応スキーム (PR ごとに段階展開)
+### 対応スキーム
 
 | スキーム | resolver |
 |---|---|
 | `file://<path>` | ローカル file/dir |
-| `https://<url>` | tarball ダウンロード |
+| `https://<url>` / `http://<url>` | tarball ダウンロード |
 | `ari://<id>` | ari-registry |
 | `gh:<user>/<repo>` | GitHub repo or release |
 | `doi:<doi>` | Zenodo deposition |
@@ -570,24 +724,38 @@ curated な EAR bundle を「取得 + digest 検証 + 展開」する。
 
 ```
 --expect-sha256 <hex>   bundle digest を強制検証。不一致は hard fail。
---no-extract            tarball のみ取得 (展開なし)。
+                        --no-extract 時は無視される (下記参照)。
+--no-extract            tarball のみ取得 (展開なし)。このとき digest 検証も
+                        すべてスキップされる — digest は展開後のファイルから
+                        しか再計算できないため、報告される bundle_sha256 は
+                        空になり、--expect-sha256 は一度も比較されない。
 --registry <name>       ari:// resolver を registries.yaml の特定 registry に限定。
-                        `$ARI_REGISTRIES_FILE` env var、または
-                        `$ARI_CHECKPOINT_DIR/.ari/registries.yaml` を設定すること。
-                        レガシーの `$HOME/.ari/registries.yaml` は v0.5.0 で
-                        廃止され DeprecationWarning を出す（v1.0 でフォールバック削除）。
+                        `$ARI_REGISTRIES_FILE` env var を設定するか、
+                        `./.ari/registries.yaml` に置くこと。レガシーの
+                        `$HOME/.ari/registries.yaml` は v0.5.0 で廃止され
+                        DeprecationWarning を出す（v1.0 でフォールバック削除）。
+                        該当する名前が無ければ registry は 0 件となり、
+                        "no ari-registry configured" で失敗する。
 --token <env-or-value>  bearer token (環境変数名 → 値の順で解決)。
 ```
 
 ### 検証モデル
 
-1. resolver が artifact を一時 dir に展開
-2. orchestrator が sibling 一時 dir に展開
-3. 各ファイルの sha256 を再計算し manifest.lock と照合
-4. 正規化 files-only manifest から bundle digest を再計算し
-   `manifest.lock.bundle_sha256` と照合
+1. resolver が artifact (tarball またはディレクトリ) を一時 dir に書き出す
+2. orchestrator が sibling の一時 dir (`_stage`) に展開する。絶対パス、`..`
+   による脱出、外部を指すリンクは拒否する
+3. 各ファイルの sha256 を再計算し manifest.lock と照合。manifest が挙げている
+   のに bundle に無いファイルは hard fail
+4. 正規化 manifest (`{version, files:[{path, sha256, size}]}`、`version: 2` では
+   各ファイルの `role` も含む) から bundle digest を再計算し
+   `manifest.lock.bundle_sha256` と照合 — ただし manifest が実際に宣言している
+   場合のみで、`bundle_sha256` が無い manifest は受理される
 5. `--expect-sha256` 指定時はそれが再計算 digest と一致しなければ hard fail
-6. 全工程成功時のみ dest に rename。失敗時は dest を残さない (atomic)
+6. 全工程成功時のみ stage を dest に rename。失敗時は dest を残さない。
+   `dest` は存在しないか空でなければならない
+
+手順 2〜5 は展開する場合にのみ実行されます。`--no-extract` は生の artifact を
+コピーするだけで、何も検証しません。
 
 ---
 
@@ -608,7 +776,8 @@ ari registry token list
 セットアップ:
 
 ```bash
-# 1. サーバ依存の追加インストール (デフォルトでは含めない)
+# 1. サーバ依存は requirements.txt / lockfile に既に含まれているので、通常の
+#    ./setup.sh でインストールされる。--with-registry は情報表示のみ。
 ./setup.sh --with-registry        # または pip install fastapi uvicorn[standard] python-multipart
 
 # 2. データディレクトリを指定して起動 (デフォルトポート 8290)
@@ -624,8 +793,8 @@ ari registry token issue alice
 
 | 項目 | 内容 |
 |------|------|
-| エンドポイント | `POST /artifact`、`GET\|HEAD /artifact/<id>`、`GET /artifact/<id>/manifest.lock`、`POST /artifact/<id>/promote`、`DELETE /artifact/<id>`、`/healthz`、`/version` |
-| 認証 | bearer token (sqlite ハッシュ保管)。upload/delete/promote は所有者 token 必須 |
+| エンドポイント | `POST /artifact`、`GET\|HEAD /artifact/<id>`、`GET /artifact/<id>/manifest.lock`、`POST /artifact/<id>/promote?target=...`、`DELETE /artifact/<id>`、`/healthz`、`/version` |
+| 認証 | bearer token (sqlite ハッシュ保管)。upload/delete/promote は所有者 token 必須。`HEAD /artifact/<id>` と `GET /artifact/<id>/manifest.lock` は token を **一切** 取らない — staged なバンドルの digest・長さ・可視性・ファイル manifest 全体が、id を知っている者なら誰でも読める |
 | 可視性 | `staged` (所有者のみ) → `unlisted` (id 知っている者のみ) / `public` (公開)。降格は拒否 |
 | Artifact id | `sha256(bundle.tar.gz)[:16]` のコンテンツアドレス |
 | ストレージ | `${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` |
@@ -636,10 +805,13 @@ ari registry token issue alice
 - `scripts/registry/docker-compose.yml` — nginx + uvicorn + sqlite-on-volume。Production。
 - `scripts/registry/start_singularity.sh` — Apptainer / Singularity SIF。HPC。
 
-クライアント設定の `registries.yaml` を以下のいずれかに配置:
-`$ARI_REGISTRIES_FILE` env override、`$ARI_CHECKPOINT_DIR/.ari/registries.yaml`、
-または `./.ari/registries.yaml`。`$HOME/.ari/registries.yaml` は v0.5.0 で
-廃止され、フォールバックは v1.0 で削除されます。
+クライアント設定の `registries.yaml` は `$ARI_REGISTRIES_FILE` env override、
+または `./.ari/registries.yaml` に配置します。`$HOME/.ari/registries.yaml` は
+v0.5.0 で廃止され DeprecationWarning を出し、フォールバックは v1.0 で削除され
+ます。checkpoint スコープの `.ari/registries.yaml` は resolver の docstring に
+記載がありますが、現状は **到達しません** — `ari clone` も `ari-registry`
+publish バックエンドも lookup に checkpoint を渡さないためです。使いたい場合は
+`$ARI_REGISTRIES_FILE` でそのファイルを指してください:
 
 ```yaml
 registries:
@@ -648,4 +820,9 @@ registries:
     token: $ARI_REGISTRY_TOKEN
 ```
 
-そのうえで `export ARI_REGISTRY_TOKEN=ari_<発行された値>` し、`ari clone ari://<id>` や `ari ear publish --backend ari-registry` を使います。
+そのうえで `export ARI_REGISTRY_TOKEN=ari_<発行された値>` し、
+`ari clone ari://<id>` (エントリを 1 つに固定するなら
+`ari clone ari://<registry-name>/<id>`) や
+`ari ear publish --backend ari-registry` を使います。`registries.yaml` が
+どこにも無い場合、どちらも `$ARI_REGISTRY_URL` + `$ARI_REGISTRY_TOKEN` から
+組み立てた単一 registry にフォールバックします。

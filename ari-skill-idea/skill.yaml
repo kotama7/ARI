@@ -1,5 +1,94 @@
+schema_version: 1
 name: idea-skill
-display_name: "Generate research ideas"
-description: "Multi-agent system using VirSci to generate and evaluate diverse research hypotheses via scientific deliberation"
-requires_env: []
-version: "0.4.1"
+package: ari-skill-idea
+version: 0.2.0
+display_name: Generate research ideas
+description: Literature-grounded survey and multi-agent hypothesis generation using VirSci workflows.
+environment_policy: complete
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env:
+  - ARI_BACKEND
+  - ARI_CHECKPOINT_DIR
+  - ARI_IDEA_VIRSCI_K
+  - ARI_IDEA_VIRSCI_MAX_TEAMS
+  - ARI_IDEA_VIRSCI_N_AUTHORS
+  - ARI_IDEA_VIRSCI_N_PAPERS
+  - ARI_IDEA_VIRSCI_REAL
+  - ARI_IDEA_VIRSCI_SPECTER2_MODEL
+  - ARI_IDEA_VIRSCI_SPECTER2_REVISION
+  - ARI_IDEA_VIRSCI_TEAM_SIZE
+  - ARI_IDEA_LLM_TIMEOUT_S
+  - ARI_IDEA_N_IDEAS
+  - ARI_IDEA_N_AGENTS
+  - ARI_IDEA_DISCUSSION_ROUNDS
+  - ARI_LLM_API_BASE
+  - ARI_LLM_MODEL
+  - ARI_MODEL_IDEA
+  - ARI_MODEL_IDEA_REVISION
+  - ARI_WORKSPACE
+  - AWS_DEFAULT_REGION
+  - AWS_REGION
+  - AZURE_API_BASE
+  - AZURE_API_VERSION
+  - LLM_API_BASE
+  - LLM_MODEL
+  - OLLAMA_HOST
+  - VERTEXAI_LOCATION
+  - VERTEXAI_PROJECT
+credential_scopes:
+  - id: literature.semantic-scholar
+    optional_env: [S2_API_KEY, SEMANTIC_SCHOLAR_API_KEY]
+  - id: model.huggingface
+    optional_env: [HF_TOKEN, HUGGINGFACE_API_KEY]
+  - id: model.provider
+    optional_env:
+      - ANTHROPIC_API_KEY
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AZURE_API_KEY
+      - AZURE_OPENAI_API_KEY
+      - COHERE_API_KEY
+      - DATABRICKS_API_TOKEN
+      - DEEPINFRA_API_KEY
+      - DEEPSEEK_API_KEY
+      - GEMINI_API_KEY
+      - GOOGLE_API_KEY
+      - GOOGLE_APPLICATION_CREDENTIALS
+      - GROQ_API_KEY
+      - MISTRAL_API_KEY
+      - OPENAI_API_KEY
+      - OPENROUTER_API_KEY
+      - REPLICATE_API_TOKEN
+      - TOGETHERAI_API_KEY
+      - VERTEXAI_CREDENTIALS
+      - WATSONX_APIKEY
+      - XAI_API_KEY
+tool_defaults:
+  phases: [bfts]
+  side_effects: workspace-write
+  determinism: stochastic
+  timeout_class: slow
+  permissions: [workspace-read, network, model]
+  result_schema: ari.result-envelope/v1
+tools:
+  - name: survey
+    capability_ref: ari.literature.survey
+    determinism: live-data
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write, network]
+  - name: generate_ideas
+    capability_ref: ari.ideation.generate
+    permissions: [workspace-read, workspace-write, network, model]
+  # Same work as generate_ideas' contract step -- one LLM call that a
+  # CLI-backed endpoint answers in minutes -- so it needs the same class.
+  # Undeclared, it inherited the default budget and the client gave up three
+  # times before the skill had answered.
+  - name: mint_contract_for_proposal
+    capability_ref: ari.ideation.generate
+    timeout_class: slow
+    permissions: [workspace-read, network, model]

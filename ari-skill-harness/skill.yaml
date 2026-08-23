@@ -1,0 +1,36 @@
+schema_version: 1
+name: harness-query-skill
+package: ari-skill-harness
+version: 0.1.0
+display_name: Query scientific assurance
+description: Read-only Harness catalog, requirement, and Attestation queries plus non-authoritative auxiliary requests.
+enabled_by_default: false
+environment_policy: complete
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_HARNESS_CATALOG, ARI_ROOT, LANG, LC_ALL, PATH]
+credential_scopes: []
+tool_defaults:
+  phases: [bfts, evaluation, reproduce]
+  side_effects: read-only
+  determinism: deterministic
+  timeout_class: default
+  permissions: [workspace-read]
+  result_schema: ari.result-envelope/v1
+tools:
+  - name: search_harnesses
+    capability_ref: ari.assurance.harness-search/v1
+  - name: describe_harness
+    capability_ref: ari.assurance.harness-describe/v1
+  - name: request_auxiliary_verification
+    capability_ref: ari.assurance.request-auxiliary/v1
+    context_requirement: node
+  - name: read_attestation
+    capability_ref: ari.assurance.attestation-read/v1
+    context_requirement: run
+  - name: list_verification_requirements
+    capability_ref: ari.assurance.requirement-list/v1
+    context_requirement: run

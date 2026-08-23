@@ -1,0 +1,37 @@
+{
+  "clean_task": {
+    "artifact_digests": {
+      "evidence/intel_linux_perf.clean_task.json": "sha256:30daaa1ea26e1f127260c5675d9232a0f023da35d38ec862a50fb748f6de9014"
+    },
+    "detail": "The governed CPU probe ran through the typed Provider (JobRequestV1 to handle to result) on an x86_64 CPU node; perf_event_open opened cycles and instructions under policy level 0 and both counters read back. No sudo was used and no security setting was changed. The recorded artifact is byte-identical to the job's own declared output pin.",
+    "methods": [
+      "hardware-counter-probe",
+      "permission-probe"
+    ],
+    "status": "pass"
+  },
+  "environment_digest": "sha256:77bf7484d2c47dc8864564dcfa2b9aac0ff714c372bd24d923357aeaa4361a4e",
+  "evidence_digest": "sha256:6bc84105aa1f7882878617543fe3b96ddaa374301b6c94e2bf6b8ed14fb7024e",
+  "provider_portability": {
+    "abstraction_report_digest": "sha256:defa7829e96bcca363d264bfd0f0e9be1744f69e77b7cd31b410267e4f511aaa",
+    "binding_lock_digests": [
+      "sha256:163a91afb108e4126ff3edddcd17263b8d83cc691af6141d9f41af3e86834a9a",
+      "sha256:554b4c44855ab6aeb824d8b74e3f6dfded4575458ef03f101fd9cdfe4b14bd37"
+    ],
+    "compatible_provider_ids": [
+      "ari.provider.coding"
+    ],
+    "detail": "Provider independence was established by withdrawing the incumbent ari.provider.coding and re-offering the identical capability contracts under the reserved stand-in identity ari.provider.synthetic-substitute. All 3 capabilities the incumbent had won rebound, deterministically, and none stayed bound to the incumbent. No second implementation was executed, so this is not cross-Provider portability: it shows only that the requirement set names capabilities rather than a Provider. The report is stored beside this file as evidence/intel_linux_perf.abstraction.json.",
+    "method": "synthetic-substitution",
+    "provider_catalog_digest": "sha256:7ebcfaa891983352e2fad1d570cd603517afd462d2962db42ef3d9ed13dd024d",
+    "status": "pass"
+  },
+  "schema_version": "ari.knowledge-skill-registration-evidence/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:c40f2d023c5c34dc57142d8473cb12c9d28efd737d2b2e19c597ce7cff8a1870",
+    "id": "intel.linux-perf",
+    "manifest_sha256": "sha256:1d1e8980f509f3b817582cc07a4d18673a4ba148acb3da5c25219feaaf85ae0d",
+    "version": "0.1.0+git.e9d0b641"
+  },
+  "source_full_commit_sha": "e9d0b6410fb1ad7a50fb81e0868fd23ae886882c"
+}

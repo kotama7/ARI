@@ -1,0 +1,113 @@
+# WHICH PROBLEMS a performance harness measures on, at sizes this instrument
+# still RESOLVES.
+#
+# A SET BESIDE `scored-2026q3`, NOT AN EDIT OF IT. That file's bytes are pinned
+# in `dataset.sha256`, so a size changed there changes the manifest digest and
+# orphans every attestation earned against it — and its revision is pinned by
+# more than one registration. Its own header states the rule this file obeys: a
+# research theme that needs other sizes ADDS a case set beside it. Nothing here
+# retires it, nothing here reaches it, and pointing a harness at this file is a
+# registration of its own.
+#
+# WHY A SECOND CUT. The performance harness's registration control sequence
+# refused with a clean control that did not resolve: the credited time for
+# `2000x500x500` came back at 3.66 ms, under the driver's
+# `_MIN_RESOLVING_SECONDS` of 0.005 s. That constant is not taste — it is where
+# the driver's own calibration sweep first breached the 0.1 spread this
+# instrument is read at, and the driver names the cause in those words: a case
+# too small for this machine rather than a noisy machine. The answer to it is a
+# bigger case, which is this file. Nothing about the instrument is relaxed here.
+#
+# THAT 3.66 ms IS NOT REPRODUCED HERE, and saying so is the argument for the
+# margin below rather than an argument against the refusal. Re-run through the
+# same instrument in the same image, `2000x500x500` credits 14.1 ms at the
+# 8-thread budget the harness registers and 7.0 ms at the widest budget this
+# node has. So one shape credits 3.66 ms somewhere and 14.1 ms here — a factor
+# of four between two readings of the same pinned size — and a set that only
+# just clears the floor at the slow end clears nothing at the fast end.
+#
+# HOW FAR THE FLOOR MOVES, which is what sets the margin. These shapes do not
+# credit one duration; they credit whatever the thread budget leaves them.
+# Measured through this instrument, inside the pinned image, with the frozen
+# reference as its own candidate, on an x86_64 node:
+#
+#                        8 threads    32 threads
+#     1000x1000x1000       31.4 ms       13.8 ms
+#     2000x500x500         14.1 ms        7.0 ms    (3.66 ms in the refusal)
+#     1500x600x1500        43.7 ms       18.1 ms
+#
+# So the shape that refused sits at 2.8x the floor at the registered budget,
+# 1.4x one budget wider, and under it in the run that refused. A set has to
+# clear the floor in the FASTEST regime it will be read in, not the slowest, so
+# these shapes are sized against the 32-thread column.
+#
+# WHAT THIS SET CREDITS, same measurement, same node:
+#
+#                        8 threads    32 threads
+#     1300x1300x1300       68.8 ms       30.6 ms
+#     2800x700x700         33.1 ms       18.5 ms
+#     1600x640x1600        50.7 ms       23.0 ms
+#
+# 6.6x the floor at worst where the harness is registered, 3.7x at worst one
+# budget wider — against 2.8x and 1.4x for the set these ratios come from.
+#
+# WHAT THIS DOES NOT FIX, said here so it is not discovered as a surprise. A
+# longer timed region removes the part of the spread that comes from a FIXED
+# cost — the instrument's own overhead, which is exactly what
+# `_MIN_RESOLVING_SECONDS` bounds. It does nothing about a PROPORTIONAL one.
+# Measured on a node carrying other work: the same clean control, six passes
+# against this set and six against `scored-2026q3`, interleaved so both saw the
+# same machine. Both put their worst per-case spread over 0.1 in five passes of
+# six — at 33-74 ms here and 14-44 ms there. The excursions are +8 to +14 ms on
+# individual launches, roughly one launch in three, and they scale with the
+# case, so a longer case does not dilute them; earlier in the same session, with
+# the node quieter, both sets cleared 0.1. A control that does not resolve at
+# THESE durations is reporting the machine, and the driver's own note sends that
+# reader to a quieter node rather than to a bigger case. This file is the other
+# half: it removes the reading where the case was simply too small.
+#
+# WHAT CAPS THEM, and it is not the clock. The driver stages the generated
+# problem and one output buffer per role in a temporary directory, which inside
+# the pinned image is a 64 MiB tmpfs. Peak occupancy per case is `problem.bin`
+# plus the candidate's output plus the frozen reference's:
+#
+#     1300x1300x1300    27.0 + 13.5 + 13.5 = 54.1 MB
+#     2800x700x700      19.6 + 15.7 + 15.7 = 51.0 MB
+#     1600x640x1600     16.4 + 20.5 + 20.5 = 57.3 MB
+#
+# ~10 MB spare at the widest. That ceiling, not a time target, is why each shape
+# stops where it does. A candidate that crosses a compiler boundary is built a
+# THIRD denominator and given a third output buffer, which none of these leaves
+# room for — nor does `scored-2026q3`'s 1500x600x1500, at 68.4 MB. It is not
+# reachable in this image: `clang` is there, but its OpenMP runtime cannot open
+# its shared-memory segment under the executor's isolation and dies before the
+# first timed call, so the boundary build never writes a buffer. Recorded
+# because an image that handed that third buffer back would make every one of
+# these need re-cutting rather than re-reading.
+#
+# COST, so a certify tier stays usable: one clean certify pass — five
+# repetitions of three cases, each timing the candidate and the frozen
+# reference, thirty timed launches in all — measured 9.97 s inside the driver
+# and 11.1 s of wall including the container launch, at the registered budget.
+#
+# THREE SHAPES AND NOT THREE CUBES, and the same three ratios `scored-2026q3`
+# chose, kept exactly: a cube; a tall-skinny one at n = 4p = 4m, as 2000x500x500
+# was; and a wide one at n = m with p = 0.4n, as 1500x600x1500 was. A shape a
+# candidate could predict is a shape a candidate could specialise for, and three
+# ratios that differ make a kernel tuned for one visibly worse rather than
+# silently untested. They are carried over rather than re-derived so that a
+# score here and a score there differ in size and in nothing else.
+schema_version: ari.harness-case-set/v1
+revision: native-perf-gemm-cases/v1@scored-2026q3-resolved
+kind: gemm
+description: >-
+  The scored GEMM shapes, each ratio enlarged to the biggest instance the timed
+  run's 64 MiB scratch admits, so the credited region clears the resolution
+  floor at both thread budgets it was measured at.
+# (n, p, m) with C[n,m] = A[n,p] * B[p,m]. Fixed, like the set these ratios come
+# from: a shape a candidate could choose is a shape a candidate could choose to
+# be easy.
+cases:
+  - [1300, 1300, 1300]
+  - [2800, 700, 700]
+  - [1600, 640, 1600]

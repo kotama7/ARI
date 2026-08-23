@@ -6,7 +6,19 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/llm/client.py
+    role: implementation
+  - path: ari-core/ari/prompts/agent/system.md
+    role: implementation
+  - path: ari-core/ari/prompts/orchestrator/bfts_expand.md
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # ARI Design Philosophy
@@ -24,26 +36,36 @@ ARI is built on the belief that **the gap between "I have an idea" and "I have a
 
 ### 1. Compute: Laptop → Supercomputer
 
-ARI runs identically on a laptop (`mode: local`) and a SLURM cluster. The same experiment file, the same config format, the same output structure. Switching is one line in `workflow.yaml`.
+ARI runs identically on a laptop and a SLURM cluster. The same experiment file, the same config format, the same output structure. Switching is one line in `workflow.yaml` — or `--profile laptop` / `--profile hpc`.
 
 ```yaml
-hpc:
-  mode: local      # laptop
-  mode: slurm      # HPC cluster
+resources:
+  hpc_enabled: false      # laptop  (true → HPC cluster)
   partition: your_partition
 ```
 
+`resources.hpc_enabled` is what `core.py` reads; a profile's `hpc.enabled`
+is merged into it. Note that `--profile` merges only four keys
+(`bfts.max_total_nodes`, `bfts.max_parallel_nodes`/`parallel`,
+`hpc.enabled`, `hpc.scheduler`) — every other key in a profile YAML,
+`partition` included, is silently ignored.
+
 ### 2. LLM: Local → Commercial
 
-ARI delegates all LLM calls through litellm. The model is configuration — not code.
+ARI delegates LLM calls through litellm. The model is configuration — not code.
 
 ```yaml
 llm:
+  backend: openai           # ollama | openai | claude_code | litellm | cli-shim
   model: qwen3:8b           # Ollama, no API key, runs offline
   model: gpt-5.2            # OpenAI API
   model: claude-sonnet-4-5    # Anthropic API
   base_url: http://...      # Any OpenAI-compatible API
 ```
+
+One backend is not litellm-routed: `backend: claude_code` goes straight to
+the Claude Code CLI provider (`ari/llm/claude_code/`), and tool calling is
+unsupported there — it fails loud rather than silently dropping tools.
 
 ### 3. Expertise: Novice → Expert
 
@@ -89,6 +111,11 @@ The only things ARI's core prescribes:
 - **Format**: JSON for tool calls, Markdown for experiments
 - **Protocol**: MCP for skill communication
 - **Signal**: `scientific_score` (LLM assigns 0.0–1.0) drives BFTS
+- **Results contract**: `emit_results` requires a typed split between INPUT
+  parameters and MEASUREMENTS, bound to an execution receipt — and the agent
+  is told not to finish until `scientifically_admissible=true`. This is a
+  shape requirement, not a domain one: what goes in either bucket is still
+  the LLM's call.
 
 Everything else — what to measure, how to compare, what hardware details matter, what figures to draw, what citations to include — is determined autonomously by the LLM at runtime.
 
@@ -135,11 +162,11 @@ ARI is explicitly not designed to:
 
 ## Corollary: Failed Experiments Are Information
 
-When a node fails, ARI does not retry the same approach. Instead, the failed node enters the frontier and `expand()` generates `debug` child nodes that inherit the failure context. The next generation learns from the failure — this is qualitatively different from retry logic, which treats failure as noise rather than signal.
+When a node fails, ARI does not retry the same approach. Instead, the failed node enters the frontier and `expand()` hands the planner the parent's status (`failed/no-real-data`) with the instruction that `debug` means "parent FAILED or has no real data — diagnose and fix it". The label is the planner's choice, not a hardcoded branch: the prompt strongly prefers the five canonical labels but a custom one is preserved as `raw_label`. The next generation learns from the failure — this is qualitatively different from retry logic, which treats failure as noise rather than signal.
 
 ## Corollary: Reproducibility Is a First-Class Principle
 
-ARI's agent system prompt includes one general scientific principle: *ensure your experiment is reproducible*. This is not a domain rule — it applies equally to chemistry, HPC, and machine learning. The agent decides autonomously what information needs to be captured. The paper reviewer then independently evaluates whether the paper is reproducible, closing the loop without any hardcoded criteria.
+ARI's agent system prompt includes general scientific principles — *ensure your experiment is reproducible*, *never fabricate numeric values*, and the typed `emit_results` split above. None is a domain rule; they apply equally to chemistry, HPC, and machine learning. The agent decides autonomously what information needs to be captured. The paper reviewer then independently evaluates whether the paper is reproducible, closing the loop without any hardcoded criteria.
 
 ## Memory (v0.6.0): P2 relaxed for one skill, P5 scoped
 
@@ -157,10 +184,13 @@ are bounded and documented.
   (`ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true`).
 - **What may differ.** Because retrieval depends on embedding FP
   arithmetic and vector-index state, the BFTS *trajectory* (which nodes
-  are explored, in which order) may diverge across re-runs. The
-  reproducibility verifier records the memory backend in
-  `reproducibility_report.json` so readers can interpret trajectory
-  divergence correctly.
+  are explored, in which order) may diverge across re-runs. Each search
+  carries that fact with it: `MemoryRetrievalV1.provenance` records the
+  `backend` (`"letta"`), its `backend_version` / `server_version`, the
+  embedding `model` / `model_version`, the `ranking` rule, and
+  `deterministic: false`. Every memory read and write is additionally
+  appended to `{checkpoint}/memory_access.jsonl`, so trajectory
+  divergence can be traced back to the retrieval that produced it.
 - **Why this trade.** The deterministic keyword scorer worked but
   did not scale to cross-experiment reasoning. Letta brings structured
   core memory, vector retrieval, and a uniform agent/collection model

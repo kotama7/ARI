@@ -1,0 +1,18 @@
+{
+  "actor_id": "kotama7 <kotamatakanori2@gmail.com>",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:1dce353c8baf7ac03810ee69e73be4b4fb73e478f943391b1352e4893902877f",
+  "approved_date": "2026-08-07",
+  "authorization_basis": "Reviewed the measured clean task: the official PTS 10.8.3 CLI ran pinned c-ray twice in a digest-pinned container with application networking disabled and whole-run averages within 0.6 percent. Reviewed the stored capability-abstraction report. All sixteen registration gates pass.",
+  "from_status": "candidate",
+  "registration_evidence_digest": "sha256:ac2ac750bc97ec4072012d0591284fa60697c72cd7e849f90b3b6c99e65491cc",
+  "registration_report_digest": null,
+  "schema_version": "ari.knowledge-skill-promotion-approval/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:341f9af9e1d38d68d6fdfcca85b33dc621f240a6a0dd834b7fa37b86bce8244d",
+    "id": "intel.phoronix-test-suite",
+    "manifest_sha256": "sha256:0ccd76f6a21d2509cb7027e35b59f10b4863e3fc7baba7294fc7e76301f967b2",
+    "version": "0.1.0+git.e9d0b641"
+  },
+  "to_status": "verified"
+}

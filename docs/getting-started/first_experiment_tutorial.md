@@ -4,9 +4,15 @@ sources:
     role: implementation
   - path: ari-core/ari/agent/loop.py
     role: implementation
+  - path: ari-core/ari/orchestrator/bfts.py
+    role: implementation
+  - path: ari-core/ari/pipeline/claim_gate/policy.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-16
 ---
 
 # Your First Experiment, End to End
@@ -65,7 +71,7 @@ The first node does the framing work, in order:
 3. **`survey`** — searches the literature so the eventual paper can cite real
    references.
 
-Open the **Ideas** page to read what it proposed.
+Open the **Idea** page to read what it proposed.
 
 ## 4. The search (BFTS)
 
@@ -81,17 +87,25 @@ Now ARI explores. It is not a linear script — it is a
 - A peer-reviewer LLM (the **`LLMEvaluator`**) scores each node's
   `_scientific_score`, and that score drives which node gets expanded next.
 
-Watch this live on the **Monitor** and **Tree** pages. Click any node for its
-Overview, Trace (every tool call), Code, and Output tabs.
+Watch this live on the **Live monitor** and **Research tree** pages. For the
+per-node detail panel — Overview, MCP Trace (every tool call), Code, Memory,
+Access and Report — open the legacy tree page at `#/tree`; there is no Output
+tab, the node's files are browsed from the file explorer instead.
 
 Two behaviours surprise newcomers — both are intentional:
 
 - **A failed node is not retried.** ARI expands a `debug` child instead, so the
   fix is recorded as a new node.
-- **A child that produces no new files is marked _sterile_ and pruned.** Output
-  files are not inherited from the parent, so a child must actually re-run the
-  experiment to earn a score. (See the [FAQ](faq.md) and
-  [Glossary → sterile](../reference/glossary.md).)
+- **A child that changes nothing is marked _sterile_ and never expanded again.**
+  Output files are not inherited from the parent, so a child must actually
+  re-run the experiment. When the run names a pinned problem (`ARI_PROBLEM`),
+  that problem declares `score_inputs` and sterility is decided by hashing
+  exactly those files rather than by diffing the whole work_dir — the
+  whole-directory rule practically never fires, because every node rewrites
+  bookkeeping files such as `results.json`.
+  A sterile node keeps its measured score and evaluation status; what it loses
+  is the right to be expanded and the right to retire its parent. (See the
+  [FAQ](faq.md) and [Glossary → sterile](../reference/glossary.md).)
 
 The search stops at your node/depth budget. The full tree is saved as
 `tree.json` / `nodes_tree.json`.
@@ -101,40 +115,67 @@ The search stops at your node/depth budget. The full tree is saved as
 When the search ends, a `workflow.yaml`-driven pipeline turns the tree into a
 paper (see [Publication lifecycle](../concepts/publication-lifecycle.md)):
 
-1. **transform_data** reads the whole tree and extracts hardware, methodology,
+1. **audit_node_provenance** re-hashes every node artifact whose sha256 the
+   node reports recorded and compares it against disk — right at the boundary
+   where node outputs stop being experiment results and start being paper
+   evidence. Per artifact it reports verified / mismatch / missing / unhashed
+   into `node_provenance_audit.json`. It is a signal, not a gate.
+2. **transform_data** reads the whole tree and extracts hardware, methodology,
    and findings into `science_data.json`.
-2. **generate_figures** writes the plotting code; a **VLM** then reviews the
-   main figure and loops back if it scores low.
-3. **write_paper** drafts the LaTeX, revises it, and pulls BibTeX from the
+3. **generate_ear** assembles the reproducibility bundle `ear/` (code, input
+   data, figures, `reproduce.sh`, LICENSE — but not experiment outputs). It
+   runs *before* the paper is written, not after: `write_paper` depends on it,
+   because the bundle is the evidence the paper points at.
+4. **generate_figures** has an LLM pick only *what* each figure shows (metric,
+   chart type, x axis); a fixed renderer then draws it deterministically from
+   `science_data.json`. A **VLM** reviews *every* figure, and because the
+   aggregate score is the minimum across them, one weak figure loops the stage
+   back for regeneration (threshold 0.7, at most 2 extra passes).
+5. **write_paper** drafts the LaTeX, revises it, and pulls BibTeX from the
    survey results → `full_paper.tex` / `.pdf`.
-4. **review_paper** runs one or more reviewer agents against the chosen venue
+6. **review_paper** runs one or more reviewer agents against the chosen venue
    rubric (an Area Chair meta-review aggregates when there is more than one).
-5. **generate_ear** assembles the reproducibility bundle `ear/` (code, input
-   data, figures, `reproduce.sh`, LICENSE — but not experiment outputs).
 
 By default the pipeline now also runs a **claim-evidence verification loop**: a
 deterministic hard gate re-derives the reported numbers, a non-blocking
 evidence-grounded semantic review checks the prose against that evidence, then an
-anchor-preserving refine and re-render close the loop. It runs in report-only
-(**warn**) mode by default — it surfaces findings but does not block finalize
-unless you set `ARI_CLAIM_GATE_MODE=strict` (or `claim_gate_policy.mode: strict`).
+anchor-preserving refine and re-render close the loop. It runs in **warn** mode
+by default, which is *not* the same as report-only: warn still blocks the final
+gate on the objective-integrity tier (`always_block_on` — invariant violations,
+failed or uncovered correctness checks, placeholder denominators, recompute
+mismatches, unbound or mismatched artifacts…), because those findings are
+deterministically false rather than a matter of reviewer taste. Everything else
+is reported and does not block until you set `ARI_CLAIM_GATE_MODE=strict` (or
+`claim_gate_policy.mode: strict`), which additionally blocks the configured
+`block_on` findings and uncovered result numbers in strict sections;
+`mode: off` never blocks, and a draft-phase report never blocks either way.
 See [Publication lifecycle](../concepts/publication-lifecycle.md) for the details.
 
-Read it all on the **Results** page: the Overleaf-like editor, the review score,
-and the EAR browser.
+Read it all from the **Paper & results** sidebar entry. That slot opens the
+run-explicit, **read-only** summary (`#/results2?run=<run_id>`) — review score,
+reproducibility chain, publication lineage. The Overleaf-like editor and the
+EAR browser (and every EAR mutation) live on the legacy page it links out to,
+`#/results`.
 
 ## 6. Verify it reproduces (ORS)
 
 Finally ARI checks its own work the way an independent referee would
 ([ORS](../guides/paperbench/paperbench_quickstart.md)):
 
+- **Phase 0** generates a PaperBench rubric from the final paper, then
+  **audits that rubric** before anything is graded against it: each leaf is
+  flagged `vague_qualifier` / `no_paper_evidence` / `duplicate` / `unverifiable`
+  and the flags are written back into `ors_rubric.json` (summary in
+  `ors_rubric.audit.json`). Grading still proceeds — it is a quality signal, so
+  a reader can see which criteria were unsound.
 - **Phase 1** runs `reproduce.sh` in a sandbox (SLURM if available, else
   docker / apptainer / local) and checks the expected artifacts appear.
-- **Phase 2** grades the result against an auto-generated PaperBench rubric,
-  including a **negative control** (an empty repo must score near zero) so the
-  grade can't be earned by doing nothing.
+- **Phase 2** grades the result against that rubric, including a **negative
+  control** (an empty repo must score near zero) so the grade can't be earned
+  by doing nothing.
 
-The verdict is in `reproducibility_report.json`.
+The verdict is in `ors_grade.json` (grade status, per-leaf scores, and the
+negative-control result), with the phase-1 outcome in `ors_phase1.json`.
 
 ## 7. What you have now
 
@@ -148,7 +189,7 @@ In `workspace/checkpoints/<timestamp>_<slug>/`:
 | `full_paper.tex` / `.pdf` | The generated paper |
 | `review_report.json` | Peer-review score and feedback |
 | `ear/` | Reproducibility bundle |
-| `reproducibility_report.json` | The ORS verdict |
+| `ors_grade.json` | The ORS verdict |
 
 ## Where to go next
 

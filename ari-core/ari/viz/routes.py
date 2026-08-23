@@ -5,6 +5,87 @@ Hosts the ``_Handler`` class (do_GET / do_POST dispatch) and the
 The dispatch chain inside ``do_GET`` / ``do_POST`` is preserved
 verbatim so the HTTP routing order is byte-for-byte identical to
 the pre-Phase-3B build.
+
+CORS policy (gui_refresh task 09, RR-P0-3, MN-4)
+------------------------------------------------
+Responses are **same-origin only**: the request ``Origin`` header is
+echoed back in ``Access-Control-Allow-Origin`` only when it matches the
+server's own origin (the request ``Host`` header, or a loopback form
+``localhost``/``127.0.0.1``/``[::1]`` on the server port). Cross-origin
+requests get **no** ACAO header, so browsers refuse the response. The
+pre-MN-4 behavior was an unconditional ``Access-Control-Allow-Origin: *``
+on ``_json``, OPTIONS preflight, SSE streams, and the manual binary
+responses (``/state`` and ``GET /api/gpu-monitor`` were historically
+ACAO-less and stay that way).
+
+``ARI_GUI_CORS_ANY`` (env kill-switch, ADR-07 register):
+
+* owner: gui_refresh task 09 (security, performance, and operations);
+* default: unset/off — same-origin echo only;
+* rollback: ``ARI_GUI_CORS_ANY=1`` restores the legacy wildcard
+  (needed only for cross-origin tunnel/portal topologies where the
+  page origin cannot match the API origin; the Vite dev server on
+  :5173 does **not** need it — its proxy forwards ``/api``, ``/state``
+  and ``/ws`` same-origin);
+* removal gate: G5 — superseded when shared/remote mode (ADR-05
+  authenticated sessions) lands; until then it is the documented
+  escape hatch for cross-origin deployments.
+
+Browser security headers (gui_refresh task 09, RR-P0-10, MN-7)
+--------------------------------------------------------------
+The SPA index (``_serve_spa_index``) and every ``/static/`` response
+carry ``Content-Security-Policy``, ``X-Content-Type-Options: nosniff``
+and ``Referrer-Policy: no-referrer``. The CSP (built by the pure
+``_csp_policy``) is ``default-src 'self'``-based: scripts must come from
+the bundled build (the CDN d3 tag was removed the same wave — the GUI is
+fully self-contained), ``style-src`` keeps ``'unsafe-inline'`` because
+React inline ``style={}`` attributes are pervasive (accepted residual,
+tightening tracked in RR-P0-10), ``img-src`` adds ``data:`` for inline
+icons, ``connect-src`` names the tree-stream WebSocket origin explicitly
+(it listens on HTTP port + 1 — ``'self'`` alone covers only the page's
+own port), ``frame-src 'self'`` keeps the PaperWorkspace same-origin PDF
+iframes working, and ``frame-ancestors 'none'`` stops the dashboard
+being embedded elsewhere. API/JSON responses are deliberately untouched.
+
+``ARI_GUI_CSP`` (env kill-switch, ADR-07 register):
+
+* owner: gui_refresh task 09 (security, performance, and operations);
+* default: unset/on — the three headers above are sent;
+* rollback: ``ARI_GUI_CSP=0`` drops all three headers (restores the
+  exact pre-MN-7 header set; needed only if a deployment topology the
+  policy cannot see — e.g. a reverse proxy remapping the WS port —
+  breaks under it);
+* removal gate: G5 — reviewed with the deployment trust-mode decision
+  (ADR-05); a per-profile CSP replaces the on/off switch there.
+
+Remote token auth (gui_refresh task 09 Wave 5b, RR-P0-3, MN-8, ADR-13)
+----------------------------------------------------------------------
+When the bind is non-loopback (``ARI_GUI_BIND`` names a remote host —
+see ``ari/viz/auth.py`` for the full trust model and the ``ARI_GUI_AUTH``
+kill-switch register), a single gate at the top of every ``do_GET`` /
+``do_POST`` / ``do_PUT`` / ``do_PATCH`` / ``do_DELETE`` requires
+``Authorization: Bearer <ARI_GUI_TOKEN>`` before any dispatch runs. The
+``/health`` / ``/health/*`` prefix is exempt (liveness probes), and the
+EventSource-consumed SSE streams (``/api/v1/events/stream``, paperbench
+run logs) accept the same token as the ``token`` query parameter
+(``EventSource`` cannot set headers; the WS handshake in
+``websocket.py`` accepts it the same way, while the fetch-consumed
+legacy ``/api/logs`` stream uses the header). Refusals are 401 with a typed
+JSON body; the comparison is constant-time; ``log_request`` redacts any
+``token=`` query value so the token never reaches ``viz_access.jsonl``.
+Loopback binds (the default) resolve to no active token, so the local
+experience — and CORS preflight (``do_OPTIONS``, which browsers send
+without credentials) — is unchanged.
+
+Operational visibility (gui_refresh task 09 Wave 5b, MN-9)
+----------------------------------------------------------
+``GET /health/live`` / ``GET /health/ready`` are JSON probes served by a
+dedicated ``do_GET`` branch ahead of the dispatch chain (liveness is a
+constant; readiness answers ``degraded`` as an honest 200, never a 500),
+inside the MN-8 ``/health`` auth exemption; ``GET /api/v1/diagnostics``
+rides the normal v1 delegation (auth REQUIRED in remote mode). Payloads,
+policy and the ``ARI_GUI_HEALTH`` ADR-07 kill-switch register live in
+``ari/viz/health.py``.
 """
 
 from __future__ import annotations
@@ -13,6 +94,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -24,6 +106,7 @@ from pathlib import Path
 import websockets
 from websockets.server import serve as ws_serve
 
+from . import auth as _auth
 from . import state as _st
 from .api_state import _broadcast, _do_broadcast, _api_models, _api_checkpoints, _api_checkpoint_summary, _api_delete_checkpoint, _api_switch_checkpoint, _api_ear, _watcher_thread, _api_checkpoint_files, _api_checkpoint_file_read, _api_checkpoint_file_save, _api_checkpoint_file_upload, _api_checkpoint_file_delete, _api_checkpoint_compile, _resolve_paper_file, _api_checkpoint_filetree, _api_checkpoint_filecontent, _api_checkpoint_memory, _resolve_checkpoint_dir, _api_lineage_decisions
 from .api_memory import _api_memory_access
@@ -58,11 +141,173 @@ REACT_DIST_DIR = Path(__file__).parent / "static" / "dist"
 REACT_INDEX = REACT_DIST_DIR / "index.html"
 
 
+def _static_content_type(extension: str) -> str:
+    """Content type for bundled dashboard assets.
+
+    Vite emits module workers with ``.mjs``. Serving them as the fallback
+    octet-stream makes browsers reject the module under ``nosniff``.
+    """
+    return {
+        "css": "text/css",
+        "js": "application/javascript",
+        "mjs": "application/javascript",
+        "html": "text/html",
+        "svg": "image/svg+xml",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "woff": "font/woff",
+        "woff2": "font/woff2",
+    }.get(extension.lower(), "application/octet-stream")
+
+
 # Phase 3B PR-3B-1: shared access-log lock so concurrent requests don't
 # interleave their viz_access.jsonl lines.
 _access_log_lock = threading.Lock()
 
 
+
+
+def _cors_wildcard_enabled() -> bool:
+    """True when the ARI_GUI_CORS_ANY kill-switch restores the legacy
+    ``Access-Control-Allow-Origin: *`` wildcard (see module docstring)."""
+    return os.environ.get("ARI_GUI_CORS_ANY", "").strip().lower() in ("1", "true")
+
+
+def _csp_enabled() -> bool:
+    """True unless the ARI_GUI_CSP kill-switch (MN-7) disables the browser
+    security headers on SPA/static responses (see module docstring)."""
+    return os.environ.get("ARI_GUI_CSP", "").strip().lower() not in ("0", "false")
+
+
+def _csp_policy(host_header: str | None, server_port: int | None) -> str:
+    """Build the MN-7 Content-Security-Policy value for SPA/static responses.
+
+    Everything is ``'self'``-based except two justified openings:
+
+    * ``style-src 'unsafe-inline'`` — React inline ``style={}`` attributes
+      are pervasive across the SPA; accepted residual, tracked in RR-P0-10;
+    * ``connect-src`` ws/wss sources — the tree stream listens on HTTP
+      port + 1 (``server.py``), and CSP ``'self'`` covers only the page's
+      own port. The browser builds the ws URL from
+      ``window.location.hostname`` (useWebSocket.ts), which always equals
+      the request Host header's hostname, so the sources are derived from
+      it; without a usable Host header the loopback aliases are allowed
+      instead. When no port is known at all the ws sources are omitted —
+      the GUI degrades to polling, exactly as when WS is unreachable.
+
+    Pure function — unit-tested without sockets in
+    ``tests/test_gui_csp_headers.py``.
+    """
+    host = None
+    port = server_port
+    if host_header:
+        try:
+            parsed = urllib.parse.urlsplit("//" + host_header.strip())
+            if parsed.hostname:
+                host = parsed.hostname
+            if parsed.port:
+                port = parsed.port
+        except ValueError:
+            host = None
+    if host:
+        # urlsplit strips IPv6 brackets; CSP host-sources need them back.
+        hosts = [f"[{host}]" if ":" in host else host]
+    else:
+        hosts = list(_LOOPBACK_HOSTS)
+    ws_sources = ""
+    if port:
+        ws_port = port + 1
+        ws_sources = "".join(
+            f" ws://{h}:{ws_port} wss://{h}:{ws_port}" for h in hosts
+        )
+    return (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        f"connect-src 'self'{ws_sources}; "
+        "frame-src 'self'; "
+        "frame-ancestors 'none'"
+    )
+
+
+# Loopback host forms accepted as "the server's own origin" even when the
+# Origin header names a different loopback alias than the Host header
+# (e.g. page at http://localhost:8765 calling http://127.0.0.1:8765).
+_LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
+
+
+def _origin_allowed(origin: str, host_header: str | None, server_port: int | None) -> bool:
+    """Same-origin check for MN-4 CORS: does ``origin`` name this server?
+
+    Accepts the origin when its ``host[:port]`` equals the request ``Host``
+    header (covers tunnels/reverse proxies that preserve Host) or one of the
+    loopback forms on ``server_port``. Pure function — unit-tested without
+    sockets in ``tests/test_gui_bind_cors.py``.
+    """
+    try:
+        parsed = urllib.parse.urlsplit(origin.strip())
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    netloc = parsed.netloc.lower()
+    if not netloc:
+        return False
+    candidates: set[str] = set()
+    if host_header:
+        candidates.add(host_header.strip().lower())
+    if server_port:
+        for h in _LOOPBACK_HOSTS:
+            candidates.add(f"{h}:{server_port}")
+    return netloc in candidates
+
+
+def _codefile_resolve(
+    raw_path: str,
+    active_checkpoint: "Path | None",
+    search_bases: "list[Path]",
+) -> "Path | None":
+    """Canonical boundary check for ``GET /codefile?path=`` (MN-5, RR-P0-5).
+
+    Returns the canonical (``Path.resolve``, symlink-resolved) target only when
+    it is a regular file whose real path sits under the active checkpoint
+    directory or under one of the checkpoint search bases
+    (``checkpoint_finder._checkpoint_search_bases``). Each boundary root is
+    itself resolved before the prefix comparison, so neither ``..`` segments
+    nor symlinks pointing outside the tree can escape, and a crafted path that
+    merely *contains* a ``checkpoints`` component (the pre-MN-5 loophole) is
+    rejected. Anything disallowed — missing file, directory, traversal,
+    out-of-base path — yields ``None`` (the handler answers 404, as before).
+    Pure function — unit-tested without sockets in
+    ``tests/test_gui_path_proxy_hardening.py``.
+    """
+    if not raw_path:
+        return None
+    candidate = Path(raw_path)
+    if ".." in candidate.parts:
+        return None
+    try:
+        real = candidate.resolve(strict=True)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if not real.is_file():
+        return None
+    roots: "list[Path]" = []
+    if active_checkpoint is not None:
+        roots.append(Path(active_checkpoint))
+    roots.extend(search_bases)
+    for root in roots:
+        try:
+            base = Path(root).resolve()
+        except (OSError, RuntimeError, ValueError):
+            continue
+        try:
+            real.relative_to(base)
+        except ValueError:
+            continue
+        return real
+    return None
 
 
 def _write_access_log(checkpoint_dir: Path, entry: dict) -> None:
@@ -91,7 +336,9 @@ class _Handler(BaseHTTPRequestHandler):
             entry = {
                 "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
                 "method": getattr(self, "command", None) or "-",
-                "path": getattr(self, "path", None) or "-",
+                # MN-8: the SSE/WS auth token may ride in the query string —
+                # redact it so the token never reaches viz_access.jsonl.
+                "path": _auth.redact_token_in_path(getattr(self, "path", None) or "-"),
                 "status": int(code) if str(code).isdigit() else code,
                 "duration_ms": round(
                     (time.monotonic() - getattr(self, "_req_start", time.monotonic())) * 1000, 2
@@ -120,27 +367,99 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Pragma", "no-cache")
         self.send_header("Content-Length", str(len(html_bytes)))
         self.send_header("Expires", "0")
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(html_bytes)
+
+    def _send_security_headers(self) -> None:
+        """Emit the MN-7 browser security headers (CSP + nosniff +
+        referrer policy) on SPA index / static responses. No-op under the
+        ARI_GUI_CSP=0 kill-switch (restores the pre-MN-7 header set)."""
+        if not _csp_enabled():
+            return
+        headers = getattr(self, "headers", None)
+        host = headers.get("Host") if headers is not None else None
+        port = getattr(_st, "_server_port", None)
+        self.send_header("Content-Security-Policy", _csp_policy(host, port))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+
+    def _auth_gate(self) -> bool:
+        """MN-8 remote token gate — thin delegate to ``auth.gate_request``
+        (see the module docstring and ari/viz/auth.py for the policy).
+        Runs first in every method handler, before any dispatch or body
+        read. True = proceed; False = a 401 was already written."""
+        return _auth.gate_request(self)
+
+    def _cors_origin(self) -> str | None:
+        """Value for ``Access-Control-Allow-Origin``, or None to omit it.
+
+        MN-4 same-origin policy: echo the request Origin only when it names
+        this server (Host header or loopback:port forms); ``*`` only under
+        the ARI_GUI_CORS_ANY kill-switch. See the module docstring.
+        """
+        if _cors_wildcard_enabled():
+            return "*"
+        headers = getattr(self, "headers", None)
+        if headers is None:
+            return None
+        origin = headers.get("Origin")
+        if not origin:
+            return None
+        host = headers.get("Host")
+        port = getattr(_st, "_server_port", None)
+        return origin if _origin_allowed(origin, host, port) else None
+
+    def _send_cors_headers(self) -> None:
+        """Emit the MN-4 CORS header(s) — nothing for cross-origin requests."""
+        allow = self._cors_origin()
+        if allow is None:
+            return
+        self.send_header("Access-Control-Allow-Origin", allow)
+        if allow != "*":
+            self.send_header("Vary", "Origin")
 
     def do_OPTIONS(self):
         """Handle CORS preflight requests.
 
-        When users access the dashboard through SSH tunnels, reverse proxies,
-        or HPC web portals the browser may treat API calls as cross-origin and
-        send a preflight OPTIONS request before the actual POST.  Without this
-        handler, Python returns 501 and the browser blocks the request with
-        'TypeError: Failed to fetch'.
+        Browsers preflight cross-origin non-simple requests. Without this
+        handler, Python returns 501 and the browser reports 'TypeError:
+        Failed to fetch'. MN-4: the CORS grant headers are only sent when
+        the Origin passes the same-origin policy (or the ARI_GUI_CORS_ANY
+        wildcard kill-switch is on); disallowed origins still get a 204,
+        just without any Access-Control-* headers, so the browser blocks
+        the actual request.
         """
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Filename")
-        self.send_header("Access-Control-Max-Age", "86400")
+        allow = self._cors_origin()
+        if allow is not None:
+            self.send_header("Access-Control-Allow-Origin", allow)
+            if allow != "*":
+                self.send_header("Vary", "Origin")
+            self.send_header(
+                "Access-Control-Allow-Methods",
+                "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+            )
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                "Content-Type, X-Filename, If-Match, Last-Event-ID",
+            )
+            self.send_header("Access-Control-Max-Age", "86400")
         self.send_header("Content-Length", "0")
         self.end_headers()
 
     def do_GET(self):
+        if not self._auth_gate():  # MN-8: before any dispatch
+            return
+        # ── Operational health probes (task 09 Wave 5b, MN-9) — payloads,
+        # policy + ARI_GUI_HEALTH register in ari/viz/health.py; auth-exempt
+        # via the MN-8 /health prefix exemption. handle_probe returns False
+        # under the kill-switch so both paths fall through to the pre-MN-9
+        # SPA fallback below. Exact matches (probes send no query string).
+        if self.path in ("/health/live", "/health/ready"):
+            from . import health as _health
+            if _health.handle_probe(self):
+                return
         if self.path in ("/logo.png", "/logo"):
             logo_candidates = [
                 _st._ari_root / "docs" / "assets" / "logo.png",
@@ -164,16 +483,11 @@ class _Handler(BaseHTTPRequestHandler):
             return
         elif self.path.startswith("/static/"):
             fname = self.path[len("/static/"):]
-            static_dir = Path(__file__).parent / "static"
+            static_dir = REACT_DIST_DIR.parent
             fpath = static_dir / fname
             if fpath.exists() and fpath.is_file():
                 ext = fpath.suffix.lower().lstrip('.')
-                ct = {
-                    'css': 'text/css', 'js': 'application/javascript',
-                    'html': 'text/html', 'svg': 'image/svg+xml',
-                    'png': 'image/png', 'jpg': 'image/jpeg',
-                    'woff': 'font/woff', 'woff2': 'font/woff2',
-                }.get(ext, 'application/octet-stream')
+                ct = _static_content_type(ext)
                 data = fpath.read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", ct)
@@ -183,6 +497,7 @@ class _Handler(BaseHTTPRequestHandler):
                     self.send_header("Cache-Control", "public, max-age=31536000, immutable")
                 else:
                     self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                self._send_security_headers()
                 self.end_headers()
                 self.wfile.write(data)
             else:
@@ -212,7 +527,7 @@ class _Handler(BaseHTTPRequestHandler):
                 payload = json.dumps({"entries": [], "error": str(ex)}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._send_cors_headers()
             self.end_headers()
             self.wfile.write(payload)
         elif self.path == "/state":
@@ -239,26 +554,22 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         elif self.path.startswith("/codefile"):
-            # Serve file content for artifact file paths
+            # Serve file content for artifact file paths.
+            # MN-5 (RR-P0-5): the boundary is the active checkpoint dir or a
+            # canonical checkpoint search base, compared on resolved realpaths
+            # via _codefile_resolve — a path merely containing "checkpoints"
+            # is no longer sufficient. The search bases are read through the
+            # api_state facade so tests that monkeypatch
+            # api_state._checkpoint_search_bases are honoured (same pattern
+            # as checkpoint_finder._resolve_checkpoint_dir).
             qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             fpath = qs.get("path", [""])[0]
             try:
-                p = Path(fpath).resolve()
-                # Security: allow files inside active checkpoint or any checkpoints/ dir
-                allowed = False
-                if _st._checkpoint_dir:
-                    try:
-                        p.relative_to(_st._checkpoint_dir.resolve())
-                        allowed = True
-                    except ValueError:
-                        pass
-                if not allowed and "checkpoints" in str(p):
-                    # Also allow any file under a checkpoints/ directory
-                    for parent in p.parents:
-                        if parent.name == "checkpoints":
-                            allowed = True
-                            break
-                if allowed and p.exists() and p.is_file() and p.stat().st_size < 20_000_000:
+                from . import api_state as _as
+                p = _codefile_resolve(
+                    fpath, _st._checkpoint_dir, _as._checkpoint_search_bases()
+                )
+                if p is not None and p.stat().st_size < 20_000_000:
                     body = p.read_bytes()
                     ext = p.suffix.lower()
                     ctype_map = {
@@ -270,7 +581,7 @@ class _Handler(BaseHTTPRequestHandler):
                     ctype = ctype_map.get(ext, "text/plain; charset=utf-8")
                     self.send_response(200)
                     self.send_header("Content-Type", ctype)
-                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self._send_cors_headers()
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)
@@ -300,7 +611,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(data)))
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._send_cors_headers()
                 self.end_headers()
                 self.wfile.write(data)
             else:
@@ -321,6 +632,10 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/checkpoint/") and self.path.endswith("/summary"):
             ckpt_id = self.path[len("/api/checkpoint/"):-len("/summary")]
             self._json(_api_checkpoint_summary(urllib.parse.unquote(ckpt_id)))
+        elif self.path.startswith("/api/checkpoint/") and self.path.endswith("/kca"):
+            from .api_kca import _api_checkpoint_kca
+            ckpt_id = self.path[len("/api/checkpoint/"):-len("/kca")]
+            self._json(_api_checkpoint_kca(urllib.parse.unquote(ckpt_id)))
         elif self.path.startswith("/api/checkpoint/") and self.path.endswith("/memory"):
             ckpt_id = self.path[len("/api/checkpoint/"):-len("/memory")]
             self._json(_api_checkpoint_memory(urllib.parse.unquote(ckpt_id)))
@@ -375,7 +690,7 @@ class _Handler(BaseHTTPRequestHandler):
                     self.send_response(200)
                     self.send_header("Content-Type", ctype)
                     self.send_header("Content-Length", str(len(data)))
-                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self._send_cors_headers()
                     self.end_headers()
                     self.wfile.write(data)
                 return
@@ -413,6 +728,11 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_api_node_report(rid, nid))
             else:
                 self._json({"error": "expected /api/nodes/<run_id>/<node_id>/report"})
+        elif self.path == "/api/capabilities":
+            # gui_refresh Wave 1: ARI_GUI_V2 server capability flag
+            # (owner: task 03, removal gate: G6 — see api_capabilities).
+            from .api_capabilities import _api_capabilities
+            self._json(_api_capabilities())
         elif self.path == "/api/settings":
             self._json(_api_get_settings())
         # ── Publish ──
@@ -462,10 +782,17 @@ class _Handler(BaseHTTPRequestHandler):
             env = _api_detect_scheduler()
             self._json(env.get("partitions", []))
         elif self.path == "/api/logs":
+            # MN-8 note: this legacy stream is consumed via fetch +
+            # ReadableStream (MonitorPage), which CAN send the Authorization
+            # header — so it does not take the query-token form (the exact
+            # match, with no query string, predates MN-8 and is pinned by
+            # check_viz_api_schema's route id). The EventSource-consumed SSE
+            # endpoints (/api/v1/events/stream, paperbench run logs) accept
+            # ?token= because EventSource cannot set headers.
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._send_cors_headers()
             self.send_header("Connection", "close")
             self.end_headers()
             _api_logs_sse(self.wfile)
@@ -527,7 +854,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
                 self.send_header("Cache-Control", "no-cache")
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._send_cors_headers()
                 self.send_header("Connection", "close")
                 self.end_headers()
                 idx = since_idx
@@ -545,7 +872,10 @@ class _Handler(BaseHTTPRequestHandler):
                             self.wfile.flush()
                             idx += 1
                         snap = _job_snapshot(jid_sse)
-                        if snap.get("status") in ("completed", "failed"):
+                        # "interrupted" is the disk-fallback status of a job
+                        # whose worker died with a previous server process —
+                        # terminal for the stream (no more log lines can come).
+                        if snap.get("status") in ("completed", "failed", "interrupted"):
                             done_payload = json.dumps({"status": snap.get("status")}, ensure_ascii=False)
                             self.wfile.write(f"event: done\ndata: {done_payload}\n\n".encode("utf-8"))
                             self.wfile.flush()
@@ -580,6 +910,51 @@ class _Handler(BaseHTTPRequestHandler):
             from .api_paperbench import _api_run_status
             jid = self.path[len("/api/paperbench/run/"):]
             self._json(_api_run_status(urllib.parse.unquote(jid)))
+        # ── /api/v1 realtime SSE (gui_refresh Wave 2b, ADR-03) ───────────
+        elif self.path.startswith("/api/v1/events/stream"):
+            # Must precede the /api/v1/ JSON delegation branch: dispatch()
+            # returns dicts, while this endpoint writes a long-lived
+            # text/event-stream (same chunked pattern as /api/logs and the
+            # paperbench job-log stream, incl. Last-Event-ID resume).
+            from .v1 import events as _v1_events
+            parsed_ev = urllib.parse.urlparse(self.path)
+            if parsed_ev.path != "/api/v1/events/stream":
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "not found"}).encode("utf-8"))
+            else:
+                q_ev = dict(urllib.parse.parse_qsl(parsed_ev.query))
+                topics_ev = None
+                if q_ev.get("topics"):
+                    topics_ev = {
+                        t.strip() for t in q_ev["topics"].split(",") if t.strip()
+                    }
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self._send_cors_headers()
+                self.send_header("Connection", "close")
+                self.end_headers()
+                _v1_events.stream_events(
+                    self.wfile,
+                    run_id=q_ev.get("run_id") or None,
+                    topics=topics_ev,
+                    # Header wins (native browser auto-reconnect); the
+                    # frontend's manual backoff reconnect cannot set headers
+                    # on EventSource, so it carries the cursor as the
+                    # last_event_id query param instead (eventStream.ts).
+                    last_event_id=self.headers.get("Last-Event-ID")
+                    or q_ev.get("last_event_id"),
+                )
+        # ── /api/v1 (gui_refresh Wave 2a, ADR-02/ADR-08) ─────────────────
+        elif self.path.startswith("/api/v1/"):
+            # Versioned read-only platform: declarative dispatch lives in
+            # viz/v1/router.py; error envelopes carry their HTTP status via
+            # the same _status pop convention as launch/run-stage.
+            from .v1.router import dispatch as _v1_dispatch
+            r = _v1_dispatch("GET", self.path)
+            self._json(r, status=r.pop("_status", 200))
         else:
             # SPA fallback: serve React index.html for client-side routing
             if not self.path.startswith("/api/"):
@@ -589,13 +964,22 @@ class _Handler(BaseHTTPRequestHandler):
                 self.end_headers()
 
     def do_POST(self):
+        if not self._auth_gate():  # MN-8: before any dispatch/body read
+            return
         length = int(self.headers.get("Content-Length", 0))
         if length > 10 * 1024 * 1024:  # 10MB limit
             self.send_response(413)
             self.end_headers()
             return
         body = self.rfile.read(length) if length else b"{}"
-        if self.path == "/api/settings":
+        # ── /api/v1 mutations (gui_refresh Wave 3b, task 05 config CRUD) ──
+        # Same single-delegation pattern as the do_GET /api/v1/ branch; the
+        # v1 router owns body parsing, If-Match, and the typed envelopes.
+        if self.path.startswith("/api/v1/"):
+            from .v1.router import dispatch as _v1_dispatch
+            r = _v1_dispatch("POST", self.path, body=body, headers=self.headers)
+            self._json(r, status=r.pop("_status", 200))
+        elif self.path == "/api/settings":
             self._json(_api_save_settings(body))
         elif self.path == "/api/memory/start-local":
             from .api_memory import _api_memory_start_local
@@ -621,7 +1005,8 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/upload/delete":
             self._json(_api_upload_delete(body))
         elif self.path == "/api/env-keys":
-            self._json(_api_save_env_key(body))
+            # ADR-11: name-allowlist rejections carry _status 400.
+            r = _api_save_env_key(body); self._json(r, status=r.pop("_status", 200))
         elif self.path == "/api/ssh/test":
             self._json(_api_ssh_test(body))
         elif self.path == "/api/switch-checkpoint":
@@ -706,13 +1091,27 @@ class _Handler(BaseHTTPRequestHandler):
             except json.JSONDecodeError as e:
                 self._json({"error": f"invalid JSON body: {e}"}, status=400); return
             self._json(_api_cost_estimate(fields))
+        elif self.path.startswith("/api/paperbench/run/") and self.path.endswith("/report"):
+            # F6a resolved (gui_refresh Wave 4a): requestPaperbenchReport
+            # POSTs {languages, formats}; delegate to the same handler as
+            # the GET query-string variant (_api_run_report's contract is
+            # "POST body or URL query"). Both methods stay served.
+            from .api_paperbench import _api_run_report
+            jid = self.path[len("/api/paperbench/run/"):-len("/report")]
+            try:
+                fields = json.loads(body or b"{}")
+            except json.JSONDecodeError as e:
+                self._json({"error": f"invalid JSON body: {e}"}, status=400); return
+            self._json(_api_run_report(urllib.parse.unquote(jid), fields))
         elif self.path.startswith("/api/ollama/"):
             _ollama_proxy(self)
             return
         elif self.path == "/api/gpu-monitor":
-            self._json(_api_gpu_monitor_action(body))
+            # MN-6: stop-action challenge refusals carry _status 428.
+            r = _api_gpu_monitor_action(body); self._json(r, status=r.pop("_status", 200))
         elif self.path == "/api/stop":
-            self._json(_api_stop())
+            # MN-6: challenge refusals carry _status 428.
+            r = _api_stop(body); self._json(r, status=r.pop("_status", 200))
         elif self.path == "/api/checkpoint/file/save":
             self._json(_api_checkpoint_file_save(body))
         elif self.path == "/api/checkpoint/file/delete":
@@ -725,7 +1124,8 @@ class _Handler(BaseHTTPRequestHandler):
             fname = self.headers.get("X-Filename", "upload.bin")
             self._json(_api_checkpoint_file_upload(ckpt_id, fname, body))
         elif self.path == "/api/delete-checkpoint":
-            self._json(_api_delete_checkpoint(body))
+            # MN-6: challenge refusals carry _status 428.
+            r = _api_delete_checkpoint(body); self._json(r, status=r.pop("_status", 200))
         elif self.path == "/api/workflow":
             r = _api_save_workflow(body); self._json(r, status=r.pop("_status", 200))
         elif self.path == "/api/workflow/flow":
@@ -750,11 +1150,61 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+    # ── /api/v1 mutations (gui_refresh Wave 3b, task 05 config CRUD; Wave
+    # 4d adds do_PUT for the ADR-05 secret assignment) ─────────────────────
+    # PATCH/PUT/DELETE exist only for the versioned /api/v1 surface;
+    # anything else stays 404 exactly as an unknown method did before.
+
+    def do_PATCH(self):
+        if not self._auth_gate():  # MN-8: before any dispatch/body read
+            return
+        length = int(self.headers.get("Content-Length", 0))
+        if length > 10 * 1024 * 1024:  # 10MB limit (same as do_POST)
+            self.send_response(413)
+            self.end_headers()
+            return
+        body = self.rfile.read(length) if length else b"{}"
+        if self.path.startswith("/api/v1/"):
+            from .v1.router import dispatch as _v1_dispatch
+            r = _v1_dispatch("PATCH", self.path, body=body, headers=self.headers)
+            self._json(r, status=r.pop("_status", 200))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_PUT(self):
+        if not self._auth_gate():  # MN-8: before any dispatch/body read
+            return
+        length = int(self.headers.get("Content-Length", 0))
+        if length > 10 * 1024 * 1024:  # 10MB limit (same as do_POST)
+            self.send_response(413)
+            self.end_headers()
+            return
+        body = self.rfile.read(length) if length else b"{}"
+        if self.path.startswith("/api/v1/"):
+            from .v1.router import dispatch as _v1_dispatch
+            r = _v1_dispatch("PUT", self.path, body=body, headers=self.headers)
+            self._json(r, status=r.pop("_status", 200))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_DELETE(self):
+        if not self._auth_gate():  # MN-8: before any dispatch
+            return
+        if self.path.startswith("/api/v1/"):
+            from .v1.router import dispatch as _v1_dispatch
+            r = _v1_dispatch("DELETE", self.path, headers=self.headers)
+            self._json(r, status=r.pop("_status", 200))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def _json(self, data, status=200):
         body = json.dumps(data, ensure_ascii=False).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._send_cors_headers()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

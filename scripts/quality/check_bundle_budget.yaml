@@ -1,0 +1,51 @@
+# Config for scripts/check_bundle_budget.py — the SPA bundle-weight budget gate
+# (see docs/guides/testing.md "What gets tested at PR time" for the enforcement
+# record, and docs/guides/gui_cutover_runbook.md "2. Pre-cutover checklist" for
+# the deferred browser-metric half).
+#
+# Budgets are KiB (1024 bytes) of gzip level 6 (Vite-reporter-comparable;
+# protocol in the checker docstring). All keys optional — the checker carries
+# the same values as in-code defaults; this file exists so a budget change is
+# a reviewable one-line diff, never a code edit (P2: stdlib + PyYAML only).
+#
+#   entry_kib   — the <script type="module"> chunk index.html references
+#                 (<= 100 KiB gzip).
+#   route_kib   — each lazy <Name>Page-<hash>.js chunk (final budget
+#                 <= 150 KiB gzip).
+#   shared_kib  — every other .js chunk (vendor/locale/component splits);
+#                 only route chunks were ever budgeted individually —
+#                 extending the same cap to shared chunks is a deliberate
+#                 conservative superset.
+#   total_kib   — sum of all .js gzip. 600 = ~2.3x the 2026-07-26 actual
+#                 (~261 KiB / 46 chunks): headroom for G4-G6 feature growth
+#                 while catching cross-chunk dependency duplication that no
+#                 per-chunk budget can see. Ratchet ceiling — tighten at G6.
+#                 Re-measured 2026-08-13: 396.7 KiB across 41 chunks, i.e. 66%
+#                 of the ceiling already spent — the G6 tightening is a real
+#                 decision, not a formality.
+#   route_overrides — per-route tightening keyed by hash-stripped stem
+#                 (Settings/Wizard route chunks <= 50 KiB each).
+#
+# NOT covered by any budget here: assets/*.mjs — Vite emits worker payloads
+# with that extension and the measured surface is *.js. The checker measures
+# them anyway and reports them (summary.unmeasured_js_like / the Markdown
+# "unbudgeted JS-like assets" line) so total_kib is never misread as the whole
+# JS weight of the build. As of 2026-08-13 that is pdf.worker.min-*.mjs at
+# 359.9 KiB gzip — nearly as much as every budgeted chunk combined. Pulling it
+# inside the gate means either raising total_kib or giving workers their own
+# budget; both are reviewed budget changes, so the checker will not do it
+# silently.
+#
+# Run it (the dist must be built first — dist/ is gitignored):
+#   python scripts/check_bundle_budget.py --fail-on-regression
+
+dist: ari-core/ari/viz/static/dist
+route_regex: "^[A-Z][A-Za-z0-9]*Page$"
+budgets:
+  entry_kib: 100
+  route_kib: 150
+  shared_kib: 150
+  total_kib: 600
+  route_overrides:
+    SettingsPage: 50
+    WizardPage: 50

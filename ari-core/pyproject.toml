@@ -38,6 +38,11 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
 ]
+# llm.claude_code.mode=low_overhead (resident Agent SDK worker);
+# strict_reproducibility works without this extra.
+claude-code = [
+    "claude-agent-sdk>=0.2",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["ari"]

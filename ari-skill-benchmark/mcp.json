@@ -1,12 +1,15 @@
 {
+  "description": "Typed deterministic summaries, statistical tests, and provenance-aware run comparison.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
   "name": "benchmark-skill",
-  "version": "0.1.0",
-  "description": "Experiment result analysis, visualization and statistical testing",
+  "package": "ari-skill-benchmark",
+  "runtime": "python",
+  "schema_version": 1,
   "tools": [
     "analyze_results",
-    "plot",
-    "statistical_test"
+    "statistical_test",
+    "compare_runs"
   ],
-  "runtime": "python",
-  "entrypoint": "src/server.py"
+  "version": "0.2.0"
 }

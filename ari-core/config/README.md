@@ -5,14 +5,283 @@ Shipped default config files (YAML) loaded by ari-core.
 ## Contents
 
 - `README.md` — this file.
+- `constitution.yaml` — bundled ARI-RQGM constitution copied into the checkpoint once at run start under `ari_rqgm` mode — a human-readable statement + provenance marker; the authoritative rule tables live in `ari/rqgm/kernel_rules.py` / `transition_rules.py`.
 - `default.yaml` — default settings (e.g. BFTS search parameters).
 - `workflow.yaml` — workflow defaults (LLM backend/model, memory backend, etc.).
+- `capabilities/` — canonical capability ontology, aliases, and role-authority policy.
+  - `legacy_aliases.yaml` — migration aliases from legacy tool names to canonical capability references.
+  - `ontology.yaml` — canonical scientific capability definitions and compatibility relationships.
+  - `resource_derivations.yaml` — reviewed steps from an observed substrate fact to an ontology resource class or runtime-neutral feature, each with the reason it is sufficient; the prober stays fact-only and a row without a rationale is refused at load.
+  - `role_authority.yaml` — allowed capability classes and side effects for each execution role.
+- `harnesses/` — built-in scientific verification harnesses, contracts, approvals, evidence, policies, and registration reports.
+  - `catalog.yaml` — admitted harness catalog and immutable support-record references.
+  - `property_vocabulary.yaml` — canonical scientific properties and their verification semantics, including which concrete properties a correctness obligation is established BY and what each is verified ON. `target_kinds` is one scalar per property and is a DEFAULT, not the whole truth: the same property is honestly verified on a shared library by the three ARI-native harnesses and on a submission by a problem-pinned one, so a run that names a pinned problem overrides this table for the correctness properties (see `build_verification_contract`'s `artifact_target_kind`).
+  - `approvals/` — reviewed human promotion approvals for built-in native harnesses.
+    - `hpc_gemm_correctness.approval.json` — promotion approval for the native GEMM correctness harness.
+    - `hpc_gemm_dense_fp64_problem_correctness.approval.json` — promotion approval for the problem-pinned GEMM correctness harness. Its `authorization_basis` records what the maintainer ACTUALLY saw — the assistant's report of the evidence, 15/15 gates and the four parity controls including the correct-but-slow kernel that must PASS — and says outright that it is not an independent inspection of the artifacts, which are pinned here so a later reader can check them without relying on that report.
+    - `hpc_gemm_performance.approval.json` — promotion approval for the native GEMM performance harness. Its `authorization_basis` records what the maintainer ACTUALLY saw — the assistant's report of the evidence, not the raw artifacts — and pins the artifacts so a later reader can check them independently, because a basis claiming a review that did not happen is the defect the signature exists to prevent.
+    - `hpc_spmm_correctness.approval.json` — promotion approval for the native SpMM correctness harness.
+    - `hpc_stencil_correctness.approval.json` — promotion approval for the native stencil correctness harness.
+  - `builtin/` — built-in native harness manifests. The three correctness manifests spent a period refusing to run with `native Harness driver bytes drifted` — the correctness-family registry had joined the native driver digest and they were deliberately NOT re-pinned, because re-pinning alone would have made three human-maintainer attestations describe code nobody approved. They were re-registered instead, from evidence, and their pinned driver digest matches the driver again.
+    - `hpc_gemm_correctness.yaml` — native dense GEMM correctness harness manifest.
+    - `hpc_gemm_performance.yaml` — the performance harness's manifest, and the first to declare `kind: benchmark`. Until it existed the performance-regression slot six knowledge-skill import profiles require was reserved and empty, and the driver that fills it was unreachable, because resolution keys on driver revision and no manifest named one. It covers `benchmark-submission` rather than an external target: a benchmark scores a SUBMISSION, and a candidate kernel handed to one is exactly that, so no rule was relaxed to make it fit. The oracle slot pins the PROBLEM (contract header, frozen driver, reference, seed, negative controls) and the dataset slot pins WHICH SIZES, so a change to either is a re-registration.
+    - `hpc_gemm_problem_correctness.yaml` — correctness of a candidate against the `gemm-dense-fp64` problem's OWN C contract, which nothing verified before it. Every registered correctness harness checks the ARI-native ABI out of a shared library and every pinned problem submits C source against its own header, so a governed run over a problem reached the one correctness harness available to it, could not load its target, and reported 33 failing cases with every error 0.0 — a mismatch dressed as a verdict about the candidate. It does not reuse `gemm-c-abi/v1`: the interface contract is `problem:gemm-dense-fp64/v1@2026q3`, so the contract and the `oracle` pin name the same object and cannot come to disagree. `registered_placement` is empty on purpose — the performance harness must pin a placement and its driver refuses to run off it, while a residual bound does not depend on the allocation's shape, which is why this one can be registered where a performance harness cannot.
+    - `hpc_spmm_correctness.yaml` — native CSR SpMM correctness harness manifest.
+    - `hpc_stencil_correctness.yaml` — native seven-point stencil correctness harness manifest.
+  - `case_sets/` — the pinned answer to WHICH PROBLEMS a performance harness measures on. A manifest names a revision and pins the file's bytes, so a size is chosen by naming a registered set and never by passing shapes through a request, and changing a size is a re-registration. Each set declares the family its case tuples are meaningful for, so a set cannot be handed to the wrong oracle, and `resolves: false` marks in data the sets that are too cheap to carry a verdict.
+    - `gemm-parity.yaml` — where the GEMM registration parity probe measures: one shape at the scored size. Separate from the scored set so a probe can be cheap, but not cheap here — at a small shape the probe's clean control would be indistinguishable from its negative controls inside the noise.
+    - `gemm-scored-2026q3-resolved.yaml` — the same three GEMM ratios as the 2026q3 set, each enlarged to the largest instance the timed run's 64 MiB scratch admits, so the credited region is 33-74 ms rather than 14-44 ms at the registered thread budget and clears the driver's 5 ms resolution floor by 6.6x at worst instead of 2.8x. A set BESIDE the 2026q3 one, not a re-cut of it: those bytes are pinned by registrations, and pointing a harness at this file is a registration of its own.
+    - `gemm-scored-2026q3.yaml` — the scored GEMM shapes: one 1000-cube and two rectangles, large enough that the timed kernel dominates. Fixed, because a shape a candidate could choose is a shape it could choose to be easy; a theme needing other sizes adds a set beside this one rather than editing it.
+    - `gemm-smoke.yaml` — a cheap 256-cube for wiring checks; declares `resolves: false`, because a single stall of tens of milliseconds dominates a sub-millisecond kernel there. It can say a candidate built and was right; it cannot support a regression verdict.
+    - `spmm-parity.yaml` — where the SpMM parity probe certifies: one uniform matrix, large enough that the timed kernel dominates.
+    - `spmm-scored-2026q3.yaml` — the scored SpMM cases: six matrix families at n=20000, k=64. The family is part of the case because which sparsity structures a run is scored over is a question about the science.
+    - `spmm-smoke.yaml` — a cheap SpMM wiring check; declares `resolves: false`, so it cannot support a regression verdict.
+    - `stencil-parity.yaml` — where the Jacobi parity probe certifies: one 256-cube at 240 sweeps.
+    - `stencil-scored-2026q3.yaml` — the scored Jacobi grids: one cube and two anisotropic boxes of equal volume at 240 sweeps, so a kernel blocked for one layout does not read as a general improvement.
+    - `stencil-smoke.yaml` — a cheap Jacobi wiring check; declares `resolves: false`.
+  - `contracts/` — ABI and oracle contracts used by native HPC harnesses.
+    - `gemm-c-abi-v1.yaml` — dense GEMM C ABI, cases, oracle, and tolerance contract.
+    - `spmm-csr-c-abi-v1.yaml` — CSR SpMM C ABI, cases, oracle, and tolerance contract.
+    - `stencil-7point-c-abi-v1.yaml` — seven-point stencil C ABI, cases, oracle, and tolerance contract.
+  - `datasets/` — deterministic verification datasets and generated-case specifications.
+    - `native-hpc-generated-cases-v1.yaml` — seeded generated cases shared by the native HPC verifiers.
+  - `evidence/` — retained registration and authentic execution evidence for promoted harnesses.
+    - `native_container_license_inventory.json` — reviewed license inventory for the native verifier container environment.
+    - `hpc_gemm_correctness/` — promotion evidence for the native GEMM correctness harness.
+      - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic GEMM results.
+      - `clean-certify.attestation.json` — clean authoritative GEMM certification attestation.
+      - `clean-screen.attestation.json` — clean bounded GEMM screening attestation.
+      - `control_derivation.json` — required versus observed verdict for each of the four labelled container executions, each beside its own attestation digest, and the isolation findings DERIVED from what each request carried and what each run returned -- including the candidate's digest read back AFTER every run, which is held in no other artifact and is what makes `target_write_isolation` recomputable rather than merely derived.
+      - `gate_findings.json` — one record per registration gate: id, verdict, the reason in words, and a digest of the artifact the gate READ, so two registrations agree only if they read the same bytes.
+      - `measurement_environment.json` — the registration commit and the note that this is a DETERMINISTIC verifier: the parity probe ran three times and every clean-control answer was identical, which is what repeating establishes when there is no spread to measure.
+      - `multiple_run_stability.json` — three runs, one distinct clean-control answer, relative spread 0.0, `kind: deterministic`. For a correctness verifier repetition proves identity rather than bounding noise.
+      - `negative-screen.attestation.json` — injected-invalid GEMM screening rejection attestation.
+      - `official_runner_parity.json` — parity comparison with the official GEMM verification runner.
+      - `registration_evidence.json` — complete reviewed evidence bundle for GEMM harness promotion.
+      - `registration_report.json` — the minted report: fifteen gates each with its evidence digest, and the resulting `eligible-for-verified` decision. Minted from evidence rather than handed a decision.
+      - `resource_measurements.json` — measured GEMM verifier runtime and resource envelope.
+      - `logs/` — retained stdout and stderr for GEMM promotion runs.
+        - `clean-certify-repeat-stderr.log` — stderr from repeated clean GEMM certification.
+        - `clean-certify-repeat-stdout.log` — stdout from repeated clean GEMM certification.
+        - `clean-certify-stderr.log` — stderr from clean GEMM certification.
+        - `clean-certify-stdout.log` — stdout from clean GEMM certification.
+        - `clean-screen-stderr.log` — stderr from clean GEMM screening.
+        - `clean-screen-stdout.log` — stdout from clean GEMM screening.
+        - `negative-screen-stderr.log` — stderr from invalid GEMM screening.
+        - `negative-screen-stdout.log` — stdout from invalid GEMM screening.
+    - `hpc_gemm_dense_fp64_problem_correctness/` — registration evidence for the problem-pinned GEMM correctness harness, produced by three parity-probe runs from a clean worktree at the commit the manifest pins. Its `measurement_environment.json` records that this harness pins no placement, because a residual bound does not depend on the allocation's shape — the one field a performance harness's evidence must carry and this one must not.
+      - `clean-certify-repeat.attestation.json` — a second, independently seeded certify instance of the same clean candidate. The two certify runs draw different seeds from their attempt ids, so their report digests legitimately differ; what the repeat shows is that the VERDICT is stable across instances.
+      - `clean-certify.attestation.json` — the problem's own reference kernel at the certify tier. Here a tier buys REPETITIONS per pinned case (screen 1, validate 3, certify 5), not a wider case set: the cases are pinned data and do not grow.
+      - `clean-screen.attestation.json` — the frozen reference scored against ITSELF at the screen tier, which is the one candidate whose answer is known: anything but a pass here means the instrument called its own denominator a regression.
+      - `control_sequence.json` — required versus observed outcome for every labelled run, the ground each negative failed on, and the isolation findings DERIVED from what each request carried and what each run returned. This is the record that makes the registration evidence readable as observation rather than assertion.
+      - `gate_findings.json` — one record per registration gate: id, verdict and the reason in words.
+      - `measurement_environment.json` — the registration commit, the captured environment, and the note that this harness pins NO placement — a residual bound does not depend on the allocation's shape, which is the one field a performance harness's evidence must carry and this one must not.
+      - `multiple_run_stability.json` — three runs of a DETERMINISTIC verifier: there is no spread to measure, so what repeating establishes is that the answers are identical.
+      - `negative-interface-screen.attestation.json` — the driver's own file-scope-global transform of the problem's seed candidate, caught by the object audit BEFORE any case runs. It exists because `wrong_gemm.c` keeps the contract perfectly, so without this run `interface-conformance` would be registered as verified having never once been observed to fail.
+      - `negative-screen.attestation.json` — `wrong_gemm.c`, caught by the ORACLE alone: it builds, it conforms, and it writes every expected element, so neither the build, the audit nor an element-count check is what rejected it — only the residual bound.
+      - `official_runner_parity.json` — the parity probe's four controls — the frozen reference, the wrong kernel that must fail on the residual bound, the correct-but-slow kernel that must PASS, and the extra-symbol kernel the object audit must refuse.
+      - `registration_evidence.json` — the reviewed evidence bundle, pinning every artifact above by digest.
+      - `registration_report.json` — the minted report: fifteen gates, each with its evidence digest.
+      - `resource_measurements.json` — one record per container execution: status, executor wall time and the resources the run was actually given, so the cost of a registration is a measurement rather than an estimate.
+      - `logs/` — the worker's stdout and stderr for each labelled run, tracked past the `logs/` ignore because this bundle PINS them in `evidence_artifact_digests`. The three native bundles pin theirs too, since their re-registration; a log a bundle ships but does not pin could be swapped without the evidence noticing.
+        - `clean-certify-repeat-stderr.log` — anything `clean-certify-repeat` wrote to stderr. Empty on a run that completed, and retained anyway: a silent stream is itself the evidence that nothing was reported outside the typed report.
+        - `clean-certify-repeat-stdout.log` — the typed report the worker emitted for `clean-certify-repeat`: per-case verdicts and residual ratios, the toolchain that built the candidate, the pinned problem and dataset digests, and the placement the run was given.
+        - `clean-certify-stderr.log` — anything `clean-certify` wrote to stderr. Empty on a run that completed, and retained anyway: a silent stream is itself the evidence that nothing was reported outside the typed report.
+        - `clean-certify-stdout.log` — the typed report the worker emitted for `clean-certify`: per-case verdicts and residual ratios, the toolchain that built the candidate, the pinned problem and dataset digests, and the placement the run was given.
+        - `clean-screen-stderr.log` — anything `clean-screen` wrote to stderr. Empty on a run that completed, and retained anyway: a silent stream is itself the evidence that nothing was reported outside the typed report.
+        - `clean-screen-stdout.log` — the typed report the worker emitted for `clean-screen`: per-case verdicts and residual ratios, the toolchain that built the candidate, the pinned problem and dataset digests, and the placement the run was given.
+        - `negative-interface-screen-stderr.log` — anything `negative-interface-screen` wrote to stderr. Empty on a run that completed, and retained anyway: a silent stream is itself the evidence that nothing was reported outside the typed report.
+        - `negative-interface-screen-stdout.log` — the typed report the worker emitted for `negative-interface-screen`: per-case verdicts and residual ratios, the toolchain that built the candidate, the pinned problem and dataset digests, and the placement the run was given.
+        - `negative-screen-stderr.log` — anything `negative-screen` wrote to stderr. Empty on a run that completed, and retained anyway: a silent stream is itself the evidence that nothing was reported outside the typed report.
+        - `negative-screen-stdout.log` — the typed report the worker emitted for `negative-screen`: per-case verdicts and residual ratios, the toolchain that built the candidate, the pinned problem and dataset digests, and the placement the run was given.
+    - `hpc_gemm_performance/` — registration evidence for the native GEMM performance harness, produced by three parity-probe runs on an exclusive compute node from a clean worktree.
+      - `clean-screen.attestation.json` — the same reference kernel at the screen tier, one repetition per case. The cheap end of the ladder, kept so the sequence exercises both tiers a candidate can be judged at.
+      - `clean-validate-repeat.attestation.json` — a second, independently seeded validate instance. Its report digest legitimately differs from the first (the seed derives from the attempt id); what it demonstrates is that the VERDICT is stable across instances, not that the bytes repeat.
+      - `clean-validate.attestation.json` — the same clean control at the validate tier. For a stopwatch a tier buys REPETITIONS, not more cases, and one repetition has no spread and therefore neither resolves nor explains — so the clean controls run where a spread exists.
+      - `control_sequence.json` — required versus observed outcome for every labelled run, the ground each negative failed on, and the isolation findings DERIVED from what each request carried and what each run returned. The whole sequence is refused unless the observed verdicts match in both directions.
+      - `gate_findings.json` — one record per registration gate: id, verdict, the reason in words, and a digest of the artifact the gate READ, so two registrations agree only if they read the same bytes.
+      - `measurement_environment.json` — the node class and registration commit, recorded because a verdict is a statement about a machine: the same commit and the same clean worktree scored 15/15 on the aarch64 node and 13/15 on an exclusive x86 64-core node, where the clean control did not resolve.
+      - `multiple_run_stability.json` — the three clean-control speedups and their relative spread (0.0141), which is what turns stability from a claim into a measurement.
+      - `negative-slow-screen.attestation.json` — `slow_gemm.c`, which is CORRECT and slow. It must fail on the RATIO with every repetition passing the oracle; a failure here on correctness would mean the instrument is scoring the wrong thing.
+      - `negative-wrong-screen.attestation.json` — `wrong_gemm.c`, which is FAST and wrong. It must fail on the residual bound while writing every expected element, so neither the NaN poison nor an element-count check can be what caught it. Two negatives failing the same way would certify a stopwatch wearing a benchmark label; these two failing on different grounds is the separation claim this family exists to make.
+      - `official_runner_parity.json` — the parity probe on the `@parity` case set: the clean control's median speedup and spread beside both negative controls, each with its report digest, plus the problem and driver digests the probe ran against. This is the evidence that the instrument can tell a wrong answer from a slow one.
+      - `registration_evidence.json` — the bundle the gates are computed from: manifest digest, clean and negative control verdicts, oracle visibility, network isolation, environment digest, and a digest per evidence artifact.
+      - `registration_report.json` — the minted report: every gate with its evidence digest, and the resulting `eligible-for-verified` decision. Minted from evidence rather than handed a decision.
+      - `resource_measurements.json` — one record per container execution: status, executor wall time and the resources the run was actually given, so the cost of a registration is a measurement rather than an estimate.
+      - `logs/` — TODO
+        - `clean-screen-stderr.log` — TODO
+        - `clean-screen-stdout.log` — TODO
+        - `clean-validate-repeat-stderr.log` — TODO
+        - `clean-validate-repeat-stdout.log` — TODO
+        - `clean-validate-stderr.log` — TODO
+        - `clean-validate-stdout.log` — TODO
+        - `negative-slow-screen-stderr.log` — TODO
+        - `negative-slow-screen-stdout.log` — TODO
+        - `negative-wrong-screen-stderr.log` — TODO
+        - `negative-wrong-screen-stdout.log` — TODO
+    - `hpc_spmm_correctness/` — promotion evidence for the native SpMM correctness harness.
+      - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic SpMM results.
+      - `clean-certify.attestation.json` — clean authoritative SpMM certification attestation.
+      - `clean-screen.attestation.json` — clean bounded SpMM screening attestation.
+      - `control_derivation.json` — required versus observed verdict for each of the four labelled container executions, each beside its own attestation digest, and the isolation findings DERIVED from what each request carried and what each run returned. This is the record that makes the registration evidence readable as observation rather than assertion.
+      - `gate_findings.json` — one record per registration gate: id, verdict, the reason in words, and a digest of the artifact the gate READ, so two registrations agree only if they read the same bytes.
+      - `measurement_environment.json` — the registration commit and the note that this is a DETERMINISTIC verifier: the parity probe ran three times and every clean-control answer was identical, which is what repeating establishes when there is no spread to measure.
+      - `multiple_run_stability.json` — three runs, one distinct clean-control answer, relative spread 0.0, `kind: deterministic`. For a correctness verifier repetition proves identity rather than bounding noise.
+      - `negative-screen.attestation.json` — injected-invalid SpMM screening rejection attestation.
+      - `official_runner_parity.json` — parity comparison with the official SpMM verification runner.
+      - `registration_evidence.json` — complete reviewed evidence bundle for SpMM harness promotion.
+      - `registration_report.json` — the minted report: fifteen gates each with its evidence digest, and the resulting `eligible-for-verified` decision. Minted from evidence rather than handed a decision.
+      - `resource_measurements.json` — measured SpMM verifier runtime and resource envelope.
+      - `logs/` — retained stdout and stderr for SpMM promotion runs.
+        - `clean-certify-repeat-stderr.log` — stderr from repeated clean SpMM certification.
+        - `clean-certify-repeat-stdout.log` — stdout from repeated clean SpMM certification.
+        - `clean-certify-stderr.log` — stderr from clean SpMM certification.
+        - `clean-certify-stdout.log` — stdout from clean SpMM certification.
+        - `clean-screen-stderr.log` — stderr from clean SpMM screening.
+        - `clean-screen-stdout.log` — stdout from clean SpMM screening.
+        - `negative-screen-stderr.log` — stderr from invalid SpMM screening.
+        - `negative-screen-stdout.log` — stdout from invalid SpMM screening.
+    - `hpc_stencil_correctness/` — promotion evidence for the native stencil correctness harness.
+      - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic stencil results.
+      - `clean-certify.attestation.json` — clean authoritative stencil certification attestation.
+      - `clean-screen.attestation.json` — clean bounded stencil screening attestation.
+      - `control_derivation.json` — required versus observed verdict for each of the four labelled container executions, each beside its own attestation digest, and the isolation findings DERIVED from what each request carried and what each run returned. This is the record that makes the registration evidence readable as observation rather than assertion.
+      - `gate_findings.json` — one record per registration gate: id, verdict, the reason in words, and a digest of the artifact the gate READ, so two registrations agree only if they read the same bytes.
+      - `measurement_environment.json` — the registration commit and the note that this is a DETERMINISTIC verifier: the parity probe ran three times and every clean-control answer was identical, which is what repeating establishes when there is no spread to measure.
+      - `multiple_run_stability.json` — three runs, one distinct clean-control answer, relative spread 0.0, `kind: deterministic`. For a correctness verifier repetition proves identity rather than bounding noise.
+      - `negative-screen.attestation.json` — injected-invalid stencil screening rejection attestation.
+      - `official_runner_parity.json` — parity comparison with the official stencil verification runner.
+      - `registration_evidence.json` — complete reviewed evidence bundle for stencil harness promotion.
+      - `registration_report.json` — the minted report: fifteen gates each with its evidence digest, and the resulting `eligible-for-verified` decision. Minted from evidence rather than handed a decision.
+      - `resource_measurements.json` — measured stencil verifier runtime and resource envelope.
+      - `logs/` — retained stdout and stderr for stencil promotion runs.
+        - `clean-certify-repeat-stderr.log` — stderr from repeated clean stencil certification.
+        - `clean-certify-repeat-stdout.log` — stdout from repeated clean stencil certification.
+        - `clean-certify-stderr.log` — stderr from clean stencil certification.
+        - `clean-certify-stdout.log` — stdout from clean stencil certification.
+        - `clean-screen-stderr.log` — stderr from clean stencil screening.
+        - `clean-screen-stdout.log` — stdout from clean stencil screening.
+        - `negative-screen-stderr.log` — stderr from invalid stencil screening.
+        - `negative-screen-stdout.log` — stdout from invalid stencil screening.
+    - `production_e2e/` — authentic screen/certify, manuscript build, reproduction, decision, and publication-lock evidence.
+      - `authoritative_verification_cost.json` — the run's cost ledger, with `measurement_semantics` spelling out what each unit MEANS (accelerator- and cpu-core-seconds are the declared allocation multiplied by measured wall time, not a metered consumption), so a number cannot be read as more precise than the way it was obtained.
+      - `baseline_harness_lock.json` — the harness set this run was judged against, frozen before execution: the catalog snapshot, coverage proof, oracle bundle and research contract digests, and the producing component. Fixing it first is what stops a run from choosing its own judges.
+      - `certify_attestation.json` — the authoritative certify-tier attestation, binding attempt, epoch, both harness locks, capability-binding lock, container/dataset/driver digests and the evidence artifacts it rests on.
+      - `e2e_report.json` — the chain in one file: every digest from the baseline lock through certify, readiness, paper build, publication decision, lock and published PDF, plus whether physical node identity was persisted. A reader checks the links here and then the artifacts.
+      - `harness_catalog_snapshot.json` — the exact manifests, promotion approvals, registration evidence and reports the catalog held at run start, pinned by `snapshot_digest` and merely LABELLED by `catalog_source_revision`. It carries the manifests' own self-pins, and the seal they form is over THIS RECORD, not over the tree it describes: loading the file recomputes `snapshot_digest` across every field and re-derives each embedded manifest's `manifest_digest`, so rewording an entry here — or adding or dropping one — fails validation rather than quietly restating history. Nothing reads it back against `harnesses/builtin/`, so the live tree moving out from under it fails nothing, which is right for the frozen record of a past run and has already happened: manifests have been edited and a harness added since this one was minted. A live manifest edit is caught elsewhere — `load_harness_catalog` refuses the catalog itself, on the manifest's self-echoed digest and then on the registration report, evidence and approval that each re-pin it — but an entry added or removed moves no digest that either side checks, because `catalog_source_revision` is copied verbatim out of `harnesses/catalog.yaml` and `load_harness_catalog` binds it to nothing. `snapshot_digest` is content-derived and does move; the revision string written beside it does not, so one revision can name two different catalogs — as it does on this tree, where `harnesses/catalog.yaml` and this record both answer to `ari-harness-catalog/1@d303a4ca…` with different content. `tests/test_harness_catalog_revision.py` is what makes that detectable: it pins the declared revision to the content digest it names, so changing the catalog without bumping the revision fails, and it refuses any revision string that names two catalogs at once.
+      - `manuscript_authoring_binding.json` — what the manuscript was authored FROM: profile, readiness, brief bundle and context digests bound to one attempt and backend version, so a paper cannot be attributed to evidence it did not read.
+      - `manuscript_readiness.json` — the per-requirement readiness evaluation with its counts (satisfied / missing / not-applicable / unavailable) and the separate authoring and publication verdicts. `not_applicable` is recorded rather than dropped, so a requirement that never applied cannot be mistaken for one that passed.
+      - `paper_build.json` — the immutable build record: input and final artifacts, the exact compile commands, the gate outcome and `blocking_reasons` (empty here), and the declared limitations.
+      - `publication_decision.json` — the `publishable` verdict with its subverdicts, bound to the readiness, authoring-binding and paper-build digests it was computed from.
+      - `publication_lock.json` — the immutable seal over the decision: the PDF digest, the decision and binding digests, and `freshness_verified`. Publication is the AND of the earlier gates plus this freshness check, and the lock is what records that it held.
+      - `published_paper.pdf` — the PDF the publication lock pins by digest.
+      - `reproduced_paper.pdf` — the PDF produced by re-running the recorded build, kept beside the published one so the digest comparison is checkable rather than asserted.
+      - `reproduction.json` — the reproduction attempt: command identity, exit code, expected and reproduced PDF digests, and `digest_match`. A byte-identical rebuild is the claim; this file is where it is either shown or refuted.
+      - `screen_attestation.json` — the bounded screen-tier attestation for the same candidate, binding the same locks and identities as the certify one. Keeping both is what lets a reader see that the cheap tier and the authoritative tier agreed.
+      - `verification_contract.json` — what the run was obliged to verify: requirements, property vocabulary and research contract digests, admission confidence, and the human review identity. Written before execution, so the obligations cannot be narrowed to fit the result.
+      - `verification_environment.json` — the substrate identity the verdict was established on: architecture, container digest, declared features (`landlock`, `network-namespace`), network classes, resource types and transports, sealed as `identity_digest`. A verdict is a statement about a machine, and this is the machine.
+  - `policies/` — shared scientific verification and numerical tolerance policies.
+    - `hpc-floating-point-v1.yaml` — floating-point comparison, NaN, overflow, and tolerance policy for HPC harnesses.
+  - `problems/` — pinned research problems. One directory per problem: scaffolding, goal text, entry point, case set and axis under a single digest. Added freely — no ARI edit and no approval — because the schema cannot reach the instrument.
+    - `gemm-dense-fp64/` — dense row-major fp64 C = A*B against a frozen competent reference at pinned shapes.
+      - `gemm_kernel.h` — the contract a candidate must keep exactly: `gemm(n, m, p, A, B, C)`, dense row-major fp64, no BLAS. It lives with the problem rather than in ARI because which contract is demanded is part of the question being asked; what ARI keeps is the instrument — the flags, the timed window and the oracle — and this file cannot reach any of them.
+      - `gemm_main.c` — the frozen timing and binary-I/O driver, and the file that makes the timer un-gameable: one cold timed call per process with no warmup to prime from, the output poisoned to NaN so a kernel that skips elements fails the oracle instead of scoring fast, the elapsed time written to a private file the kernel is never handed a path to, and the OpenMP team created before the timer so team creation is not charged to the kernel.
+      - `gemm_main_profiled.c` — NOT scored: `gemm_main.c` plus a counter gate that blocks until the parent has armed the counters, so a profile covers the region rather than starting microseconds inside it. Every added line is marked `/*GATE*/` and a test asserts that deleting the marked lines reproduces the scored driver byte for byte, so wanting a profile can never drift what is measured. Inert when the gate fds are absent, so the binary still runs standalone.
+      - `problem.yaml` — the whole question under one digest: the scaffolding the agent starts from, the goal text, which files determine the score, the case set, and the axis. Pinned but NOT approved — a new problem is a new directory beside this one — which is safe only because the schema is closed: there is no field here for a compiler flag, a repetition count, a timed window or a tolerance, so a problem cannot weaken the instrument that measures it.
+      - `reference_gemm.c` — the score denominator: an MR=4 register-blocked OpenMP kernel, deliberately in contract (plain C, no intrinsics, nothing the agent is forbidden to write) so the agent is not asked to beat something it could not have produced, and deliberately not naive, because against a naive denominator the score says how far a candidate is from doing nothing. Its header records the structural variants that were measured and LOST so they are not retried, and it is withheld from the work dir — a copy of the denominator would score 1.0 for free.
+      - `seed_gemm.c` — where the agent starts: correct, single-threaded, naive ijk. Not the reference, and deliberately not good — a strong seed would compress the range the search has to work in and flatter every arm equally — but correct and building, so a run that improves nothing still yields a scoreable candidate rather than a build failure indistinguishable from an infrastructure fault.
+      - `slow_gemm.c` — parity-probe negative control: correct but SLOW, so it must fail on the ratio. It is half of what separates a performance harness from a stopwatch — a probe carrying only this control would pass on an instrument that never checked an answer — and the probe asserts the two controls fail for different reasons.
+      - `wrong_gemm.c` — parity-probe negative control: FAST but wrong, so it must fail on the oracle. It writes every element, so it clears the NaN poison and the size check and only the residual bound refuses it; without it a probe would pass on an instrument that only timed.
+    - `spmm-csr-fp64/` — Y = A*X with A in CSR and X, Y dense fp64, against a frozen row-parallel reference.
+      - `problem.yaml` — the CSR SpMM question under one digest, on the same closed schema and adding no ARI code. Its goal text states up front that two of the six scored families have heavy-tailed row counts, so a kernel tuned for uniform rows loses for a stated reason rather than by ambush.
+      - `reference_spmm.c` — the score denominator: row-parallel with `schedule(dynamic, 8)`, four-nonzero unrolling, and a unit-stride inner loop over k with the irregular row selection hoisted out of it. The chunk is 8 by measurement and for the score's STABILITY as much as its speed — at a larger chunk the heavy-tailed families' run-to-run spread was several times the others', and candidate and reference draw that thread lottery independently, so it does not cancel in the ratio.
+      - `seed_spmm.c` — the naive single-threaded CSR row loop the agent starts from: one output row at a time, a full k-wide read-modify-write per nonzero. Its own header still calls itself the frozen denominator; `problem.yaml` is what decides, and it names this file `seed_candidate`.
+      - `slow_spmm.c` — parity-probe negative control: correct but SLOW — a naive single-threaded row loop against a row-parallel reference — so it must fail on the ratio rather than on the oracle.
+      - `spmm_kernel.h` — the contract a candidate must keep exactly: `spmm(n, m, k, indptr, indices, values, X, Y)`, A in CSR and X, Y row-major dense fp64. The agent edits only its own translation unit; the timing harness is frozen and checksum-guarded, so the timer and the reference comparison are out of reach.
+      - `spmm_main.c` — the frozen SpMM driver, mirroring the GEMM one: one cold timed call per process with no warmup, Y poisoned to NaN, the timing written to a private file rather than stdout so a destructor cannot forge it, and the OpenMP team created outside the timed window. A fresh random X per rep with every rep verified, so a kernel that caches an answer in static state is wrong rather than fast.
+      - `spmm_main_profiled.c` — NOT scored: `spmm_main.c` plus the same marked counter gate, so obtaining a profile never requires touching the scored driver's pins or timing semantics.
+      - `wrong_spmm.c` — parity-probe negative control: FAST but wrong. It writes every element of Y, so the NaN poison and the output size check both pass and only the per-row backward-error bound refuses it.
+    - `stencil-jacobi7-fp64/` — nt sweeps of a 3-D 7-point Jacobi stencil with fixed boundary planes, against a frozen parallel-first-touch reference.
+      - `problem.yaml` — the Jacobi question under one digest, and the one goal text that has to warn about where memory lives: the kernel's own scratch is allocated inside the timed call, so touching it from a single thread puts every page on one NUMA domain, while the driver's input and output fields are first-touched outside the window.
+      - `reference_stencil.c` — the score denominator, and one property comes before every other in it: PARALLEL FIRST TOUCH, with the touch loop using the same static decomposition over i as the sweep. Measured, that placement is worth about 3x on this bandwidth-bound grid for no added arithmetic, so a reference without it would measure agents against a kernel crippled in exactly the way that dominates the problem. No spatial or temporal blocking — those are real further levers, left for the candidate to find.
+      - `seed_stencil.c` — the textbook naive sweep the agent starts from: single-threaded ijk with a ping-pong buffer initialised by one thread. Its header still describes itself as the frozen 1x denominator; `problem.yaml` names it `seed_candidate` and names `reference_stencil.c` as the reference.
+      - `slow_stencil.c` — parity-probe negative control: correct but SLOW — naive ijk, single-threaded, and its buffers initialised by one thread, so every page also lands on the master's NUMA domain against a reference that first-touches in parallel. It must fail on the ratio.
+      - `stencil_kernel.h` — the contract a candidate must keep exactly: `jacobi(nx, ny, nz, nt, u0, u)` with c0 = 0.5, cw = 1/12 and Dirichlet planes fixed for all sweeps. It grants the one permission that shapes the whole task — the kernel MAY allocate its own scratch — and states that reassociating the six-neighbour sum is allowed while dropping terms, changing coefficients or precomputing the answer is not.
+      - `stencil_main.c` — the frozen Jacobi driver: one cold timed call covering all nt sweeps, a fresh random field per rep with every rep's output verified, the output poisoned to NaN so a kernel that leaves the boundary planes unwritten fails the oracle, timing to a private file, and the OpenMP team created before the timer.
+      - `stencil_main_profiled.c` — NOT scored: `stencil_main.c` plus the same marked counter gate, so a profiled run measures the identical program the scored one does.
+      - `wrong_stencil.c` — parity-probe negative control: FAST but wrong. It applies zero sweeps and hands back the input, which writes every element and so clears the NaN poison and the size check; the nt-scaled residual bound is what refuses it. Every scored case has nt >= 1, so it is wrong by construction rather than by luck.
+  - `reports/` — deterministic promotion gate reports for built-in harnesses.
+    - `hpc_gemm_correctness.registration.json` — GEMM harness registration decisions and promoted identity.
+    - `hpc_gemm_dense_fp64_problem_correctness.registration.json` — the retained registration record for the problem-pinned GEMM correctness harness, binding its manifest, evidence bundle and approval into the catalog entry.
+    - `hpc_gemm_performance.registration.json` — the retained registration record for the GEMM performance harness, binding its manifest, evidence bundle and approval into the catalog entry.
+    - `hpc_spmm_correctness.registration.json` — SpMM harness registration decisions and promoted identity.
+    - `hpc_stencil_correctness.registration.json` — stencil harness registration decisions and promoted identity.
+  - `target_abis/` — candidate-side ABI identity registry, kept independent from the Harness manifests that judge compatibility.
+    - `gemm.yaml` — dense GEMM target identity (`gemm-c-abi/v1`, fp64 C shared library).
+    - `spmm.yaml` — CSR SpMM target identity (`spmm-csr-c-abi/v1`, fp64 C shared library).
+    - `stencil.yaml` — seven-point stencil target identity (`stencil-7point-c-abi/v1`, fp64 C shared library).
+- `knowledge_skills/` — built-in and imported knowledge skills, source profiles, and the admitted catalog.
+  - `catalog.yaml` — canonical knowledge-skill catalog with source and compatibility references.
+  - `bodies/` — the SKILL.md sources for the skills that originate in this repository rather than upstream. The importer treats them as an external source like any other — pinned to a commit, hashed, and copied byte-for-byte into `imports/` — so a run loads the bytes an approval was given over and not whatever happens to be on disk here.
+    - `hpc_gemm_optimization/` — hpc gemm optimization knowledge-skill body.
+      - `SKILL.md` — dense GEMM optimization body: transformation ladder with the reason for each rung, metamorphic equivalence, and the measurement traps that misattribute setup cost to the kernel.
+    - `hpc_spmm_optimization/` — hpc spmm optimization knowledge-skill body.
+      - `SKILL.md` — sparse-dense optimization body: structural validation before measurement, register-blocked accumulation, and why row-length distribution rather than nonzero count decides the workload.
+    - `hpc_stencil_optimization/` — hpc stencil optimization knowledge-skill body.
+      - `SKILL.md` — stencil optimization body: per-step trajectory equivalence, thread placement on simultaneous-multithreading machines, and the paging policy that decides a bandwidth result before the kernel does.
+  - `evidence/` — one promotion record per skill, in five parts: the measured clean task, the registration evidence that resolves the gates, the capability-abstraction report, the recorded human approval, and the append-only candidate-to-verified transition. `catalog.yaml` pins the registration and approval digests, so an edited evidence file stops matching rather than being quietly believed.
+    - `hpc_gemm_optimization.abstraction.json` — GEMM capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
+    - `hpc_gemm_optimization.approval.json` — recorded human approval promoting the GEMM skill, bound to the exact manifest, body, and evidence reviewed.
+    - `hpc_gemm_optimization.clean_task.json` — measured GEMM clean-task record (correctness, metamorphic identities, sanitizers, replay speedups).
+    - `hpc_gemm_optimization.registration.json` — digest-bound GEMM registration evidence; resolves the clean-task and portability gates.
+    - `hpc_gemm_optimization.transition.json` — append-only record of the GEMM skill's candidate-to-verified transition and the approval it acted on.
+    - `hpc_spmm_optimization.abstraction.json` — SpMM capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
+    - `hpc_spmm_optimization.approval.json` — recorded human approval promoting the SpMM skill, bound to the exact manifest, body, and evidence reviewed.
+    - `hpc_spmm_optimization.clean_task.json` — measured SpMM clean-task record (CSR validation, differential, sanitizers, replay speedups).
+    - `hpc_spmm_optimization.registration.json` — digest-bound SpMM registration evidence; resolves the clean-task and portability gates.
+    - `hpc_spmm_optimization.transition.json` — append-only record of the SpMM skill's candidate-to-verified transition and the approval it acted on.
+    - `hpc_stencil_optimization.abstraction.json` — stencil capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
+    - `hpc_stencil_optimization.approval.json` — recorded human approval promoting the stencil skill, bound to the exact manifest, body, and evidence reviewed; its stated basis is that the rewritten body now carries the thread-placement and timed-region discipline this repository established by measurement.
+    - `hpc_stencil_optimization.clean_task.json` — measured stencil clean-task record (trajectory equivalence, linearity, sanitizers including thread, replay speedups).
+    - `hpc_stencil_optimization.registration.json` — digest-bound stencil registration evidence; resolves the clean-task and portability gates.
+    - `hpc_stencil_optimization.transition.json` — append-only record of the stencil skill's candidate-to-verified transition and the approval it acted on.
+    - `intel_linux_perf.abstraction.json` — Intel Linux perf capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
+    - `intel_linux_perf.approval.json` — recorded human approval promoting the Intel Linux perf skill, bound to the exact manifest, body, and evidence reviewed.
+    - `intel_linux_perf.clean_task.json` — measured Intel Linux perf clean-task record: `perf_event_open` opened cycles and instructions through the typed Provider on an x86_64 CPU node and both counters read back. It records the kernel's `perf_event_paranoid` level as it found it, with `security_setting_changed: false` and no node identifier persisted — the profiling authority is a fact the probe observed, not one it arranged for itself.
+    - `intel_linux_perf.registration.json` — digest-bound Intel Linux perf registration evidence; resolves the hardware-counter, permission, and portability gates, and records that the retained artifact is byte-identical to the job's own declared output pin.
+    - `intel_linux_perf.transition.json` — append-only record of the Intel Linux perf skill's candidate-to-verified transition and the approval it acted on.
+    - `intel_performance_patterns.abstraction.json` — Intel performance-pattern capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
+    - `intel_performance_patterns.approval.json` — recorded human approval promoting the Intel performance-pattern skill, bound to the exact manifest, body, and evidence reviewed.
+    - `intel_performance_patterns.clean_task.json` — measured Intel performance-pattern clean-task record: eight independent accumulators against one serial accumulator, exact differential agreement, and four alternating warm replays above the 1.05 gate with timer overhead subtracted and only the kernel call timed. AddressSanitizer is recorded as `infrastructure-limit`, not pass — its shadow reservation was refused by the site virtual-memory limit — so the gap sits in the evidence instead of being papered over by the sanitizers that did run.
+    - `intel_performance_patterns.registration.json` — digest-bound Intel performance-pattern registration evidence; resolves the clean-task and portability gates.
+    - `intel_performance_patterns.transition.json` — append-only record of the Intel performance-pattern skill's candidate-to-verified transition and the approval it acted on.
+    - `intel_phoronix_test_suite.abstraction.json` — Intel Phoronix capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
+    - `intel_phoronix_test_suite.approval.json` — recorded human approval promoting the Intel Phoronix skill, bound to the exact manifest, body, and evidence reviewed.
+    - `intel_phoronix_test_suite.clean_task.json` — measured Intel Phoronix clean-task record: the official PTS CLI ran a pinned c-ray profile twice inside a digest-pinned container image with application networking disabled, and the two whole-run averages differ by 0.57%. It also records what was NOT established — `container_network_namespace_proved: false` — rather than reporting the disabled setting as isolation.
+    - `intel_phoronix_test_suite.registration.json` — digest-bound Intel Phoronix registration evidence; resolves the clean-task and portability gates through the upstream runner and image digests rather than a re-implementation.
+    - `intel_phoronix_test_suite.transition.json` — append-only record of the Intel Phoronix skill's candidate-to-verified transition and the approval it acted on.
+  - `import_profiles/` — pinned external source and extraction policies.
+    - `hpc_gemm_optimization.yaml` — import profile pinning the GEMM optimization body to its commit.
+    - `hpc_spmm_optimization.yaml` — import profile pinning the SpMM optimization body to its commit.
+    - `hpc_stencil_optimization.yaml` — import profile pinning the stencil optimization body to its commit.
+    - `intel_linux_perf.yaml` — import profile for Intel's Linux performance guidance.
+    - `intel_performance_patterns.yaml` — import profile for Intel performance-pattern guidance.
+    - `intel_phoronix_test_suite.yaml` — import profile for Intel Phoronix Test Suite material.
+  - `imports/` — immutable results of approved external knowledge imports.
+    - `hpc_gemm_optimization.json` — GEMM optimization body imported byte-for-byte from its own commit.
+    - `hpc_spmm_optimization.json` — SpMM optimization body imported byte-for-byte from its own commit. Like every import it lands with `decision: candidate` and `authoritative: false`, so importing a body never promotes it — that is the approval's job.
+    - `hpc_stencil_optimization.json` — stencil optimization body imported byte-for-byte from its own commit.
+    - `intel_linux_perf.json` — verified Intel Linux performance knowledge import.
+    - `intel_performance_patterns.json` — verified Intel performance-pattern knowledge import.
+    - `intel_phoronix_test_suite.json` — verified Intel Phoronix Test Suite knowledge import.
 - `paperbench_rubrics/` — Venue-conditioned PaperBench-format rubric templates. Mirrors
 - `profiles/` — environment profile overlays (laptop / hpc / cloud).
   - `README.md` — profiles index.
   - `cloud.yaml` — cloud profile overlay.
   - `hpc.yaml` — HPC profile overlay.
   - `laptop.yaml` — laptop profile overlay.
+- `providers/` — registered scientific provider catalog configuration.
+  - `catalog.yaml` — provider identities, capabilities, environments, and support-record references.
 - `reviewer_rubrics/` — reviewer rubric definitions, one YAML per venue/journal.
   - `README.md` — reviewer_rubrics index.
   - `acl.yaml` — ACL reviewer rubric.
