@@ -14,8 +14,8 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: e628448dfff6e1a65eaa8d59513d5a96d6d30308
-      package_sha256: sha256:3f05941c40043d0b9ecbf008fa436fb6ee058e59a119cfff4fb85a3f1dca5479
+      full_commit_sha: c68088b6af1fcb4a7a49d0c40725dce038436ead
+      package_sha256: sha256:f4b97c555fba6cc3bcd91feadf784c04b2d230dad4b36c916ffea9cee91271ee
       license: MIT
     manifest_sha256: sha256:2f2cba035b0aa931ebd584b0de49e029340ac001919c0fea64e990adc0395fab
     declared_capability_refs_by_tool:
@@ -32,8 +32,8 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: 929a682fa0f41a1b416f9615e35506b6538a54a4
-      package_sha256: sha256:69343dded7ccad76663384659f0f675df9d4199fb04a53f9ef81a6bb4508461b
+      full_commit_sha: c68088b6af1fcb4a7a49d0c40725dce038436ead
+      package_sha256: sha256:af1015e5304d9fe1cac9874907201ae56c8f961eae37572ea6403974ff48dc2e
       license: MIT
     manifest_sha256: sha256:76fe7760e327d4bf2f20e9ae8dd026639d2d76fd14aa9a6803046bcdccdabf79
     declared_capability_refs_by_tool:
@@ -53,10 +53,10 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: d7e62cceac8379b63699061648abae61c440de5d
-      package_sha256: sha256:aca895f9a845be860d6f7686e59ef3eb9be8a5abb9a87691aeaaaa597e21a34a
+      full_commit_sha: e5529fdb7b64a3d0d269b381f44addc4c42775f8
+      package_sha256: sha256:d51398e5ec4c5ec892be771f194acac8e20e6f1dc09dd89002894f20a6bc5561
       license: MIT
-    manifest_sha256: sha256:0e774c87b740ce1107c5bbfb6599a9ce88e06aa8afa774c271cdede704db81f8
+    manifest_sha256: sha256:075b436b38bebb8c8af31f0dff6fa06b4e354756021c59e1866425e395ec990c
     # discover/describe/invoke are the broker's own surface, not ontology
     # capabilities; nothing here is classified.
     declared_capability_refs_by_tool: {}
@@ -103,8 +103,8 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b
-      package_sha256: sha256:f594631048811eed329012b55f2ccf3fa90397a2e2c37c9b0e47727075c6ad45
+      full_commit_sha: c68088b6af1fcb4a7a49d0c40725dce038436ead
+      package_sha256: sha256:2ec6183cc6d729d44c0203842fc18f30ae5ceb6e1d379ba7ed5bf30ce1d16de3
       license: MIT
     manifest_sha256: sha256:2f0b1bfcf99dc4e07c3859b0882caa575ec5e52df51e1619c89808ce1efd9e64
     # Every tool here already names a capability_ref in skill.yaml, and the alias
