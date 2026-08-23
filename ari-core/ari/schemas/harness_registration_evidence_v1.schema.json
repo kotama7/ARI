@@ -5,6 +5,7 @@
   "properties": {
     "attestation_digests": {
       "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
         "type": "string"
       },
       "minItems": 1,
@@ -27,6 +28,7 @@
     },
     "evidence_artifact_digests": {
       "additionalProperties": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
         "type": "string"
       },
       "minProperties": 1,

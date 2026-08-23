@@ -505,6 +505,7 @@
     },
     "promotion_approval_digests": {
       "additionalProperties": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
         "type": "string"
       },
       "title": "Promotion Approval Digests",
@@ -517,6 +518,7 @@
     },
     "registration_evidence_digests": {
       "additionalProperties": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
         "type": "string"
       },
       "title": "Registration Evidence Digests",
@@ -524,6 +526,7 @@
     },
     "registration_report_digests": {
       "additionalProperties": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
         "type": "string"
       },
       "title": "Registration Report Digests",

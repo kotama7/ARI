@@ -88,6 +88,11 @@
       "title": "Report Digest",
       "type": "string"
     },
+    "sandbox": {
+      "additionalProperties": true,
+      "title": "Sandbox",
+      "type": "object"
+    },
     "schema_version": {
       "const": "ari.native-hpc-verification-report/v1",
       "default": "ari.native-hpc-verification-report/v1",
