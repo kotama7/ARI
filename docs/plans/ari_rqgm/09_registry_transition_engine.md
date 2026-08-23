@@ -665,9 +665,15 @@ Verify before deleting this file:
 
 Task-specific items:
 
-- [ ] The §5.2 state-transition table (T1–T19 base + the T20/T21 amendments,
-      i.e. the shipped T1–T21) is reproduced verbatim in the
-      permanent schema reference / architecture doc.
+- [ ] The state-transition table is reproduced in the permanent schema
+      reference, as the SHIPPED `TRANSITION_TABLE` (21 rows) with each row's
+      decision and its reason, and not as this plan's §5.2 prose table.
+      AMENDED 2026-08-22 by the maintainer: the criterion said "verbatim", and
+      §5.2 here is 19 rows of planning prose with guard names the code no
+      longer uses. Reproducing it verbatim would have put a stale table in the
+      permanent reference under a criterion that reads as satisfied — the
+      failure this whole procedure exists to prevent, arriving through the
+      procedure itself.
 - [ ] `epoch_transition.schema.json` is committed and loadable via
       `ari.schemas.load`.
 - [ ] Registration of `rqgm_transitions.jsonl` / `rqgm_registry.json` /
