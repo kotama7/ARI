@@ -87,14 +87,14 @@ properties:
 target_interface_contract: spmm-csr-c-abi/v1
 target_interface_digest: sha256:cce9f969663c13a5913df18df5a6c82e9e6fd8739e307f9a97f8e3d1b2632ad6
 source_repository: https://github.com/kotama7/ARI.git
-source_full_commit_sha: aff7dee48c81f32a1caee4181c09028186c8530f
+source_full_commit_sha: 880566d4e15e39b01dec34ee6f05a6274ee8e005
 implementation_license: MIT
 dataset:
-  revision: native-hpc-generated-cases/v1@aff7dee48c81f32a1caee4181c09028186c8530f
+  revision: native-hpc-generated-cases/v1@880566d4e15e39b01dec34ee6f05a6274ee8e005
   sha256: sha256:bb58fd7ad9dcbdf70de9b66e60e50a4208d2e6e5db201c510e042811b4c20447
   license: MIT
 oracle:
-  revision: ari-native-spmm-oracle/v1@aff7dee48c81f32a1caee4181c09028186c8530f
+  revision: ari-native-spmm-oracle/v1@880566d4e15e39b01dec34ee6f05a6274ee8e005
   sha256: sha256:ac69d70c5dde6630741fa213dcd9ff91e40f3214aa4ba2683941cac4d81a8ed7
   license: MIT
 driver:
@@ -129,9 +129,9 @@ hidden_test_policy: verifier-only
 oracle_independence: independent
 tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
 expected_result_schema: ari.native-hpc-verification-report/v1
-expected_result_schema_digest: sha256:f232e5b1df130cc70b1d905eedadde0b3f60cb5dd05e5868cf90baff3912346c
+expected_result_schema_digest: sha256:94c93f00ac626c32e05e2f03ebe0bd0d9fc22cbefd1670dfaa67bea8802ae6f0
 infrastructure_failure_policy: separate
 retry_limit: 1
 negative_control_report_digest: sha256:b4a90e2a8da95ccd56a502b38177764345d283c3554b6d840fb9da3d311585ae
 upstream_parity_report_digest: sha256:c70fdf7d4c29be4ad5b648a90c0fc5118551d62cf30740c38fdf65bd5c6858b0
-manifest_digest: sha256:265660c18170029a456160a97b2a49f8399021108a103f2a57c36cf9ab85e57f
+manifest_digest: sha256:7669d2dd4485ac13fe49ca4b085dacc61b8906901d68766409202a24175bbbac

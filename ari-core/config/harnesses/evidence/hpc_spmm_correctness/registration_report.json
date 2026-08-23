@@ -56,8 +56,8 @@
       "passed": true
     },
     {
-      "detail": "pinned at aff7dee48c81, an ancestor of aff7dee48c81",
-      "evidence_digest": "sha256:f2636dc67558ab047147acc50b39bb7ed027727547a2781282c5bf7067742c51",
+      "detail": "pinned at 880566d4e15e, an ancestor of 880566d4e15e",
+      "evidence_digest": "sha256:44433fd73eb744d5521a37155d6fd7fe34ec87dbae1821ec3799d881cb2e805b",
       "gate_id": "source_revision_digest_pin",
       "passed": true
     },
@@ -74,8 +74,8 @@
       "passed": true
     },
     {
-      "detail": "schema declares 11 properties, named and pinned by the manifest",
-      "evidence_digest": "sha256:73ad8b7d7a4f11ef285f933350f711c70621e619a1e75697f5b6ab39352803fc",
+      "detail": "schema declares 12 properties, named and pinned by the manifest",
+      "evidence_digest": "sha256:88e706ab248bc1358a7647a33774b4b79d96aa1ff3deba54570f4708a5f07445",
       "gate_id": "result_schema_conformance",
       "passed": true
     },
@@ -93,7 +93,7 @@
     }
   ],
   "harness_id": "hpc/spmm-correctness",
-  "manifest_digest": "sha256:265660c18170029a456160a97b2a49f8399021108a103f2a57c36cf9ab85e57f",
-  "report_digest": "sha256:5b2e32a934de9c0ce336eb494fb924192e9aa10b2b7e6041bf45f841c3c238cd",
+  "manifest_digest": "sha256:7669d2dd4485ac13fe49ca4b085dacc61b8906901d68766409202a24175bbbac",
+  "report_digest": "sha256:9c6989b4ad1febb938f8135effb02d76e32b286286f502b2fd52285e4e9cb866",
   "schema_version": "ari.harness-registration-report/v1"
 }

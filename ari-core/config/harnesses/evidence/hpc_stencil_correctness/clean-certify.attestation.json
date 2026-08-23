@@ -1,8 +1,8 @@
 {
-  "active_harness_lock_digest": "sha256:2ea47a281c20d8de02a863398db84b8fd1682b23193415040b7492e6003afb49",
-  "attempt_id": "har-e29693f9c29dac5437eca04087e29556-0",
-  "attestation_digest": "sha256:22fc561bc5a8f436355314efdf883a95fc78fe9ea614ede999becfa6b25325ae",
-  "baseline_harness_lock_digest": "sha256:2ea47a281c20d8de02a863398db84b8fd1682b23193415040b7492e6003afb49",
+  "active_harness_lock_digest": "sha256:2cb862512ff55f8b01b42e8ea8a952db7524cf4ae60443b4eeffaab87e4891b6",
+  "attempt_id": "har-34de4c046f26de6d809a562abe60efce-0",
+  "attestation_digest": "sha256:1162f4c128e5570a60f3e95d9bb881a4a6bc5bcf87fe055f00c5899bd155bd38",
+  "baseline_harness_lock_digest": "sha256:2cb862512ff55f8b01b42e8ea8a952db7524cf4ae60443b4eeffaab87e4891b6",
   "capability_binding_lock_digest": "sha256:194df4714255447584ae860c72eda00149f947de24df6dcc1812e4fe9acc6980",
   "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
   "dataset_digest": "sha256:a2c98016e19e2073f9157e43fb0d450c1f1b708ef3a4315e44a066d0a987832b",
@@ -10,8 +10,8 @@
   "epoch_id": "registration-epoch",
   "evidence_artifact_refs": [
     {
-      "digest": "sha256:7954448953c7ceedde4ed91a9f9392af3b95974caf072b0061cd167c1b2fbded",
-      "logical_name": ".ari-execution/7954448953c7ceedde4ed91a9f9392af3b95974caf072b0061cd167c1b2fbded.stdout.log",
+      "digest": "sha256:81fa609242bf3bb26ce66dd7512a5a2abd6e4d7caeacc21fe52d5d0261328622",
+      "logical_name": ".ari-execution/81fa609242bf3bb26ce66dd7512a5a2abd6e4d7caeacc21fe52d5d0261328622.stdout.log",
       "media_type": "text/plain; charset=utf-8",
       "role": "harness-stdout",
       "schema_version": "ari.research-artifact-ref/v1",
@@ -26,9 +26,9 @@
       "source_run_id": "harness-registration-hpc-stencil-correctness"
     }
   ],
-  "execution_identity": "sha256:359f81759a013d65b72154df48176bf53fb4b99adbb0f58b3d7a15dca7d7e8f8",
-  "execution_result_digest": "sha256:2eb2a714fa7b618d8895c1668eb92f7928b0519dcdaaeb7937fa1c47676033f7",
-  "harness_manifest_digest": "sha256:f8d3aa3633c52d53c72965e17e30741169fce71f368e9ec51c73f989b9b8d434",
+  "execution_identity": "sha256:15e7bb72902673dae751cd8fb471d1af929a4331f53c7eaa6652c23df1a3f34d",
+  "execution_result_digest": "sha256:636e4ca6f198f1644653a2abba30ed160596559dcc63fa37983fa58d43021cba",
+  "harness_manifest_digest": "sha256:3987ed28959f805310ac6c44ba6115aad050bccad1eafb956b487c77a88e25a5",
   "infrastructure_status": "ready",
   "knowledge_skill_use_digest": "sha256:8e2a116b1daea019352a9ed94735fc604385b48c7d554ce13a812255068422da",
   "node_id": "registration-clean-certify",
@@ -45,8 +45,8 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:7954448953c7ceedde4ed91a9f9392af3b95974caf072b0061cd167c1b2fbded",
-          "logical_name": ".ari-execution/7954448953c7ceedde4ed91a9f9392af3b95974caf072b0061cd167c1b2fbded.stdout.log",
+          "digest": "sha256:81fa609242bf3bb26ce66dd7512a5a2abd6e4d7caeacc21fe52d5d0261328622",
+          "logical_name": ".ari-execution/81fa609242bf3bb26ce66dd7512a5a2abd6e4d7caeacc21fe52d5d0261328622.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -64,13 +64,13 @@
       "measurements": {
         "case_count": 80,
         "failed_case_count": 0,
-        "max_abs_error": 1.0178212073164161e-07,
-        "max_rel_error": 1.8002753840194845e-05
+        "max_abs_error": 1.828760682887065e-07,
+        "max_rel_error": 0.0001709876949332334
       },
       "method": "differential-testing",
       "oracle_comparison": {
         "oracle": "independent Jacobi reference trajectory with explicit halo/boundary semantics",
-        "report_digest": "sha256:0a60428dc5f81742a63e756bfb06c813fcbdf26027f6dc3e877d8e3725318798",
+        "report_digest": "sha256:4bf1e268dcd1c3c377b42930fd899bf1e2c16f9f404d7b9fc36580657946052d",
         "sandbox": {
           "does_not_restrict": [
             "fork",
@@ -122,8 +122,8 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:7954448953c7ceedde4ed91a9f9392af3b95974caf072b0061cd167c1b2fbded",
-          "logical_name": ".ari-execution/7954448953c7ceedde4ed91a9f9392af3b95974caf072b0061cd167c1b2fbded.stdout.log",
+          "digest": "sha256:81fa609242bf3bb26ce66dd7512a5a2abd6e4d7caeacc21fe52d5d0261328622",
+          "logical_name": ".ari-execution/81fa609242bf3bb26ce66dd7512a5a2abd6e4d7caeacc21fe52d5d0261328622.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -141,13 +141,13 @@
       "measurements": {
         "case_count": 80,
         "failed_case_count": 0,
-        "max_abs_error": 1.0178212073164161e-07,
-        "max_rel_error": 1.8002753840194845e-05
+        "max_abs_error": 1.828760682887065e-07,
+        "max_rel_error": 0.0001709876949332334
       },
       "method": "repeated-execution",
       "oracle_comparison": {
         "oracle": "independent Jacobi reference trajectory with explicit halo/boundary semantics",
-        "report_digest": "sha256:0a60428dc5f81742a63e756bfb06c813fcbdf26027f6dc3e877d8e3725318798",
+        "report_digest": "sha256:4bf1e268dcd1c3c377b42930fd899bf1e2c16f9f404d7b9fc36580657946052d",
         "sandbox": {
           "does_not_restrict": [
             "fork",
@@ -194,7 +194,7 @@
       "verdict": "pass"
     }
   ],
-  "research_contract_digest": "sha256:ef0b092ee1303d0ca817971f61a25811417b1d93117311902b8833d6c4e984f0",
+  "research_contract_digest": "sha256:5c2d741970f203306ae3d67a4d0ea584e6683e5c4eecc0f6eef07952410811f2",
   "retry_index": 0,
   "run_id": "harness-registration-hpc-stencil-correctness",
   "schema_version": "ari.harness-attestation/v1",
@@ -202,5 +202,5 @@
   "target_kind": "shared-library",
   "target_logical_name": "candidate.so",
   "verdict": "pass",
-  "verification_contract_digest": "sha256:a6083050fb5746954ac3256329954332a3c8df69e7fa3e67c24455ed0d1ea20f"
+  "verification_contract_digest": "sha256:04e345b3ffc7d5e0828877bc76e14bf89fd6c98d4e6fd5c994afe28d16cb0774"
 }

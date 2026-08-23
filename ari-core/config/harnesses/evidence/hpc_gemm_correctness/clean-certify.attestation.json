@@ -1,8 +1,8 @@
 {
-  "active_harness_lock_digest": "sha256:df6ca981bf0f9bd5c043991841cb309661654abaffd1d4aa8c49cb5fcad78953",
-  "attempt_id": "har-641e135b43dcb886a3b30d4bde77986b-0",
-  "attestation_digest": "sha256:e7e278a481e8ab2e2ba2b62d1cf92503bb21d4c3dd75dfd041399a5d74731a44",
-  "baseline_harness_lock_digest": "sha256:df6ca981bf0f9bd5c043991841cb309661654abaffd1d4aa8c49cb5fcad78953",
+  "active_harness_lock_digest": "sha256:bfa1cf7b1991bf5460a5176f466afaf833ee1e17a33b9cb3d0d8c2423bacc7ba",
+  "attempt_id": "har-3bff298dfd725beeaf53eb26524a133a-0",
+  "attestation_digest": "sha256:08af08213dc1c9b5a9ee02ecbb89c67cc31f62f8708c0c33ee60d17b91e02bb7",
+  "baseline_harness_lock_digest": "sha256:bfa1cf7b1991bf5460a5176f466afaf833ee1e17a33b9cb3d0d8c2423bacc7ba",
   "capability_binding_lock_digest": "sha256:194df4714255447584ae860c72eda00149f947de24df6dcc1812e4fe9acc6980",
   "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
   "dataset_digest": "sha256:933036fefbb98f8dc29a491ce063ab0c56d2315c78667c3f080226eff12afcf7",
@@ -10,8 +10,8 @@
   "epoch_id": "registration-epoch",
   "evidence_artifact_refs": [
     {
-      "digest": "sha256:4c4147f08dd9f6fda7ea30bf3aae6a66cf3677d668b4ff58ca0d2c5295e62a1f",
-      "logical_name": ".ari-execution/4c4147f08dd9f6fda7ea30bf3aae6a66cf3677d668b4ff58ca0d2c5295e62a1f.stdout.log",
+      "digest": "sha256:0802337d86b365839dcfdccc9c6f78b5cbbe9018f88466f7afc51f7ed7666bd0",
+      "logical_name": ".ari-execution/0802337d86b365839dcfdccc9c6f78b5cbbe9018f88466f7afc51f7ed7666bd0.stdout.log",
       "media_type": "text/plain; charset=utf-8",
       "role": "harness-stdout",
       "schema_version": "ari.research-artifact-ref/v1",
@@ -26,9 +26,9 @@
       "source_run_id": "harness-registration-hpc-gemm-correctness"
     }
   ],
-  "execution_identity": "sha256:005caad1c9ebc29f238878d682b6e603c4d28bd71d4de1abaa39c0480d9ecbab",
-  "execution_result_digest": "sha256:af6f7c430a38ab6efe61f2cd86de46c901be191dd36e71a982697a851678a2e6",
-  "harness_manifest_digest": "sha256:f221a7033f244072992319c201d10b89141a114322c1a252b9caa52a1764d162",
+  "execution_identity": "sha256:60eae766ecf966c79162493fb54c97b21ce3be6f19def3378d36a13f48f0eaa4",
+  "execution_result_digest": "sha256:54126d982ec321d92fc9b8bcf2f3536af4883d3de15db076bb8b9f4d8208cbc5",
+  "harness_manifest_digest": "sha256:90ab400a5639b76d7c681cca030f5b93b594227e684d6e71ea8abe5032ed6051",
   "infrastructure_status": "ready",
   "knowledge_skill_use_digest": "sha256:8e2a116b1daea019352a9ed94735fc604385b48c7d554ce13a812255068422da",
   "node_id": "registration-clean-certify",
@@ -45,8 +45,8 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:4c4147f08dd9f6fda7ea30bf3aae6a66cf3677d668b4ff58ca0d2c5295e62a1f",
-          "logical_name": ".ari-execution/4c4147f08dd9f6fda7ea30bf3aae6a66cf3677d668b4ff58ca0d2c5295e62a1f.stdout.log",
+          "digest": "sha256:0802337d86b365839dcfdccc9c6f78b5cbbe9018f88466f7afc51f7ed7666bd0",
+          "logical_name": ".ari-execution/0802337d86b365839dcfdccc9c6f78b5cbbe9018f88466f7afc51f7ed7666bd0.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -64,13 +64,13 @@
       "measurements": {
         "case_count": 73,
         "failed_case_count": 0,
-        "max_abs_error": 1.379028740977617e-06,
-        "max_rel_error": 0.000131910772476913
+        "max_abs_error": 1.0616428580689785e-06,
+        "max_rel_error": 8.676212010487051e-05
       },
       "method": "repeated-execution",
       "oracle_comparison": {
         "oracle": "decimal accumulation over an independently indexed row-major GEMM",
-        "report_digest": "sha256:e557a52f7c2ec03d34d57cd328c6fb88e73144bf06ae1384a5374ac7fd027b84",
+        "report_digest": "sha256:6674dd24ce809cb055744585a7858095f96e07ecea1fd9f3c54c5bc097f30cec",
         "sandbox": {
           "does_not_restrict": [
             "fork",
@@ -122,8 +122,8 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:4c4147f08dd9f6fda7ea30bf3aae6a66cf3677d668b4ff58ca0d2c5295e62a1f",
-          "logical_name": ".ari-execution/4c4147f08dd9f6fda7ea30bf3aae6a66cf3677d668b4ff58ca0d2c5295e62a1f.stdout.log",
+          "digest": "sha256:0802337d86b365839dcfdccc9c6f78b5cbbe9018f88466f7afc51f7ed7666bd0",
+          "logical_name": ".ari-execution/0802337d86b365839dcfdccc9c6f78b5cbbe9018f88466f7afc51f7ed7666bd0.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -141,13 +141,13 @@
       "measurements": {
         "case_count": 73,
         "failed_case_count": 0,
-        "max_abs_error": 1.379028740977617e-06,
-        "max_rel_error": 0.000131910772476913
+        "max_abs_error": 1.0616428580689785e-06,
+        "max_rel_error": 8.676212010487051e-05
       },
       "method": "differential-testing",
       "oracle_comparison": {
         "oracle": "decimal accumulation over an independently indexed row-major GEMM",
-        "report_digest": "sha256:e557a52f7c2ec03d34d57cd328c6fb88e73144bf06ae1384a5374ac7fd027b84",
+        "report_digest": "sha256:6674dd24ce809cb055744585a7858095f96e07ecea1fd9f3c54c5bc097f30cec",
         "sandbox": {
           "does_not_restrict": [
             "fork",
@@ -194,7 +194,7 @@
       "verdict": "pass"
     }
   ],
-  "research_contract_digest": "sha256:ec4141c99191c4155755a42ae40e63f5bc0de685dcb2a5528eaabbab4244d7db",
+  "research_contract_digest": "sha256:90a3c2d38c2eb4249db1025020a1b1ee5fba1080aa1ba288c5faca14289697a4",
   "retry_index": 0,
   "run_id": "harness-registration-hpc-gemm-correctness",
   "schema_version": "ari.harness-attestation/v1",
@@ -202,5 +202,5 @@
   "target_kind": "shared-library",
   "target_logical_name": "candidate.so",
   "verdict": "pass",
-  "verification_contract_digest": "sha256:1c4ee305173c931785aea062078f569608e4b51f343f51262a031678ab5cc123"
+  "verification_contract_digest": "sha256:33ff312c43671503fc281317d691ba6f5e4d39e47db0b534721f851e729724f6"
 }

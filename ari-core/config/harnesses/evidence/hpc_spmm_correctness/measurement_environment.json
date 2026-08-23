@@ -14,5 +14,5 @@
   "environment_note": "variable VALUES are scrubbed of host identity here",
   "placement": null,
   "placement_note": "this harness pins no placement, so its evidence does not describe a machine",
-  "registration_commit": "aff7dee48c81f32a1caee4181c09028186c8530f"
+  "registration_commit": "880566d4e15e39b01dec34ee6f05a6274ee8e005"
 }
