@@ -211,6 +211,7 @@
       "additionalProperties": false,
       "properties": {
         "body_store_key": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Body Store Key",
           "type": "string"
         },

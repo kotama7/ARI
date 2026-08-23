@@ -90,6 +90,7 @@
         },
         "covered_atom_digests": {
           "items": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
             "type": "string"
           },
           "title": "Covered Atom Digests",
@@ -248,6 +249,7 @@
     },
     "unsatisfied_atom_digests": {
       "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
         "type": "string"
       },
       "title": "Unsatisfied Atom Digests",
