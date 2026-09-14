@@ -23,8 +23,13 @@ def load_dotenv_files(
     *,
     strip_quotes: bool,
     swallow_errors: bool,
-) -> None:
+) -> set[str]:
     """Merge ``KEY=VALUE`` lines from existing *candidates* into *proc_env*.
+
+    Returns the names this call introduced, so a caller can tell a value that
+    came from a file on disk apart from one the operator exported. Without that
+    distinction a stale ``~/.env`` is indistinguishable from a deliberate
+    export, and silently outranks whatever the operator has since configured.
 
     Existing non-empty ``proc_env`` values always win — env-file values only
     fill blanks. Two historical parse variants are preserved **verbatim** so the
@@ -40,6 +45,7 @@ def load_dotenv_files(
     file read in ``try/except: pass``; ``_api_launch`` let read errors propagate
     to its own outer handler.
     """
+    from_file: set[str] = set()
     for env_path in candidates:
         if not env_path.exists():
             continue
@@ -57,6 +63,7 @@ def load_dotenv_files(
                     k, v = k.strip(), v.strip().strip("'\"")
                     if k and v and (k not in proc_env or not proc_env[k]):
                         proc_env[k] = v
+                        from_file.add(k)
         else:
             for line in _text.splitlines():
                 if "=" in line and not line.startswith("#"):
@@ -64,3 +71,5 @@ def load_dotenv_files(
                     k = k.strip(); v = v.strip()
                     if k not in proc_env or not proc_env[k]:
                         proc_env[k] = v
+                        from_file.add(k)
+    return from_file

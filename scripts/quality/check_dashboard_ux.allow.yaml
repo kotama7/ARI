@@ -43,10 +43,11 @@ known:
   - id: "env_secret_readback::ari-core/ari/viz/frontend/src/components/Wizard/StepResources.tsx"
     note: "StepResources.tsx:301 autoReadApiKey() -> /api/env-keys, already gated behind `if (devMode)` (071 developer-mode gate applied). Known+mitigated surface."
 
-  # Hardcoded confirmation bypass — SLURM auto-resubmit only guard is window.confirm.
-  # api.ts:585 gpuMonitorAction relocated to services/api/resources.ts by the 063 api split.
-  - id: "confirm_bypass::ari-core/ari/viz/frontend/src/services/api/resources.ts"
-    note: "api/resources.ts:29 gpuMonitorAction always sends confirmed:true (was api.ts:585, moved by 063). 071 REVIEW_REQUIRED backend audit."
+  # (resolved) The hardcoded confirmation bypass in gpuMonitorAction was
+  # removed by the gui_refresh task 09 Wave 5a dangerous-ops audit (MN-6,
+  # RR-P0-6/RR-P0-9): 'confirmed' now forwards the caller's explicit dialog
+  # answer and gpu-monitor stop rides a server-issued challenge, so the
+  # confirm_bypass::services/api/resources.ts entry is gone.
 
   # JSON.stringify render dumps in the components/ tree (059/073 §2). The former
   # single Results/resultSections.tsx dump was split into per-section files by 064.

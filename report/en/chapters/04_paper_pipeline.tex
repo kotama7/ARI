@@ -134,7 +134,8 @@ rather than left as ``not recorded''.
 \Ensure  science record $\Evidence$: typed configurations, per-key
          extrema, methodology narrative
 \State $\bestnode \gets \operatorname*{arg\,max}_{n \in \Nodes}\, \nodescore{n}$
-       \Comment{ties: validated, then deeper}
+       \Comment{ties: validated, then deeper; logically erased nodes
+       (\cref{sec:rqgm:boundary}) are excluded --- all-erased yields no winner}
 \State $L \gets \lineage{\bestnode}$ \Comment{root-to-best ancestor chain}
 \State $\mathcal{C} \gets \{\, n \in L : \textsc{Contributes}(n) \,\}$
        \Comment{role predicate (code)}

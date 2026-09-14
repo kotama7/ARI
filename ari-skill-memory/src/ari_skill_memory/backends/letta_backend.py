@@ -10,17 +10,23 @@ client against ``LETTA_BASE_URL`` at first use; failures raise
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
+
+from ari.public.memory import (
+    MemoryRetrievalProvenanceV1,
+    MemoryRetrievalV1,
+    canonical_memory_digest,
+)
 
 from ari_skill_memory.access_log import (
     AccessLog,
     build_read_event,
     build_write_event,
-    current_node_id,
 )
+from ari_skill_memory import erasure
 from ari_skill_memory.backends.base import MemoryBackend
 from ari_skill_memory.config import MemoryConfig
 
@@ -136,30 +142,20 @@ class LettaBackend(MemoryBackend):
                 self.agent_name,
             )
 
-    # ─ CoW helper ──────────────────────────────────────────────────────
-    def _check_cow(self, node_id: str) -> dict | None:
-        env_node = os.environ.get("ARI_CURRENT_NODE_ID")
-        if env_node is None or env_node == "":
-            return {"ok": False, "error": "ARI_CURRENT_NODE_ID not set"}
-        if node_id != env_node:
-            return {
-                "ok": False,
-                "error": "node_id does not match current node (CoW violation)",
-            }
-        return None
-
     # ─ cost tracker helper ─────────────────────────────────────────────
     def _record_cost(
-        self, *, op: str, latency_ms: float, embedding_tokens: int = 0
+        self,
+        *,
+        op: str,
+        latency_ms: float,
+        node_id: str = "",
+        embedding_tokens: int = 0,
     ) -> None:
         try:
-            try:
-                from ari.public import cost_tracker  # type: ignore[import]
-            except ImportError:
-                from ari import cost_tracker  # type: ignore[import]
+            from ari.public import cost_tracker  # type: ignore[import]
             cost_tracker.record(
                 model="", prompt_tokens=0, completion_tokens=0,
-                node_id=current_node_id(),
+                node_id=node_id,
                 phase="memory", skill="ari-skill-memory",
                 component="memory", op=op, backend="letta",
                 embedding_tokens=embedding_tokens, latency_ms=latency_ms,
@@ -172,31 +168,52 @@ class LettaBackend(MemoryBackend):
 
     # ─ MCP tool surface ────────────────────────────────────────────────
     def add_memory(
-        self, node_id: str, text: str, metadata: dict | None = None
+        self,
+        node_id: str,
+        text: str,
+        metadata: dict | None = None,
+        *,
+        idempotency_key: str | None = None,
     ) -> dict:
-        cow = self._check_cow(node_id)
-        if cow is not None:
-            return cow
         client = self._ensure_client()
         agent_id = self._ensure_agent()
-        t0 = time.time()
-        entry_id = client.archival_insert(
-            agent_id=agent_id,
-            collection=self.node_collection,
-            text=text,
-            metadata={
-                "node_id": node_id,
-                "ari_checkpoint": self.ckpt_hash,
-                "kind": "node_scope",
-                "ari_metadata": metadata or {},
-                "ts": time.time(),
-            },
-        )
+        with self._lock:
+            if idempotency_key is not None:
+                existing = client.archival_list(
+                    agent_id=agent_id,
+                    collection=self.node_collection,
+                    filter={
+                        "node_id": node_id,
+                        "ari_checkpoint": self.ckpt_hash,
+                        "kind": "node_scope",
+                    },
+                )
+                for item in existing:
+                    ari_metadata = (item.get("metadata") or {}).get("ari_metadata") or {}
+                    if ari_metadata.get("record_digest") == idempotency_key:
+                        return {
+                            "ok": True,
+                            "id": item.get("id"),
+                            "deduplicated": True,
+                        }
+            t0 = time.time()
+            entry_id = client.archival_insert(
+                agent_id=agent_id,
+                collection=self.node_collection,
+                text=text,
+                metadata={
+                    "node_id": node_id,
+                    "ari_checkpoint": self.ckpt_hash,
+                    "kind": "node_scope",
+                    "ari_metadata": metadata or {},
+                    "ts": time.time(),
+                },
+            )
         latency_ms = (time.time() - t0) * 1000.0
-        self._record_cost(op="add", latency_ms=latency_ms)
+        self._record_cost(op="add", latency_ms=latency_ms, node_id=node_id)
         self._access.write(
             build_write_event(
-                node_id=current_node_id(),
+                node_id=node_id,
                 collection="node_scope",
                 entry_id=entry_id,
                 text=text,
@@ -204,10 +221,15 @@ class LettaBackend(MemoryBackend):
                 preview_chars=self.cfg.access_log_preview_chars,
             )
         )
-        return {"ok": True, "id": entry_id}
+        return {"ok": True, "id": entry_id, "deduplicated": False}
 
     def search_memory(
-        self, query: str, ancestor_ids: list[str], limit: int = 5
+        self,
+        query: str,
+        ancestor_ids: list[str],
+        limit: int = 5,
+        *,
+        reader_node_id: str = "",
     ) -> dict:
         """Ancestor-scoped retrieval.
 
@@ -242,8 +264,42 @@ class LettaBackend(MemoryBackend):
         only ``node_id ∈ ancestor_ids`` and the ARI checkpoint scope;
         the ranked order is preserved (no ts re-sort).
         """
+        if not 1 <= limit <= 1_000:
+            raise ValueError("memory search limit must be in [1, 1000]")
         if not ancestor_ids:
-            return {"results": []}
+            try:
+                backend_version = version("letta-client")
+            except PackageNotFoundError:
+                backend_version = "unknown"
+            provenance = MemoryRetrievalProvenanceV1(
+                backend="letta",
+                backend_version=backend_version,
+                server_version="not-contacted",
+                model=self.cfg.letta_embedding_config or "letta-default",
+                model_version="not-contacted",
+                ranking="provider semantic embedding rank",
+                deterministic=False,
+                query_digest=canonical_memory_digest(
+                    {
+                        "query": query,
+                        "ancestor_node_ids": [],
+                        "limit": limit,
+                    }
+                ),
+                candidate_count=0,
+                returned_count=0,
+                limit=limit,
+                filter_evidence={
+                    "ancestor_node_ids": [],
+                    "checkpoint_namespace": self.ckpt_hash,
+                    "strategy": "empty-scope-short-circuit",
+                    "overfetch": 0,
+                    "kept_after_filter": 0,
+                },
+            )
+            return MemoryRetrievalV1(
+                results=[], provenance=provenance
+            ).model_dump(mode="json")
         client = self._ensure_client()
         agent_id = self._ensure_agent()
         metadata_filter = {
@@ -261,6 +317,9 @@ class LettaBackend(MemoryBackend):
                 limit=limit,
             )
             filtered = raw  # client applied filter
+            candidate_count = len(raw)
+            filter_strategy = "provider-prefilter"
+            overfetch = limit
         except NotImplementedError:
             # Pre-filter unsupported. Run semantic ``passages.search``
             # over the agent's whole pool with an over-fetch budget,
@@ -282,6 +341,8 @@ class LettaBackend(MemoryBackend):
                 and r.get("metadata", {}).get("ari_checkpoint") == self.ckpt_hash
                 and r.get("metadata", {}).get("kind") == "node_scope"
             ]
+            candidate_count = len(ranked_rows)
+            filter_strategy = "semantic-overfetch-postfilter"
             if len(filtered) < min(limit, len(ranked_rows)):
                 log.debug(
                     "ari-memory: post-filter dropped results below limit "
@@ -299,10 +360,14 @@ class LettaBackend(MemoryBackend):
                 "score": float(r.get("score", 0.0)),
             })
         latency_ms = (time.time() - t0) * 1000.0
-        self._record_cost(op="search", latency_ms=latency_ms)
+        self._record_cost(
+            op="search",
+            latency_ms=latency_ms,
+            node_id=reader_node_id,
+        )
         self._access.write(
             build_read_event(
-                node_id=current_node_id(),
+                node_id=reader_node_id,
                 collection="node_scope",
                 query=query,
                 ancestor_ids=list(ancestor_ids),
@@ -316,9 +381,66 @@ class LettaBackend(MemoryBackend):
                 ],
             )
         )
-        return {"results": results}
+        try:
+            backend_version = version("letta-client")
+        except PackageNotFoundError:
+            backend_version = "unknown"
+        embedding = {}
+        getter = getattr(client, "get_agent_embedding", None)
+        if getter is not None:
+            try:
+                embedding = getter(agent_id) or {}
+            except Exception:
+                embedding = {}
+        model = str(
+            embedding.get("handle")
+            or self.cfg.letta_embedding_config
+            or "letta-default"
+        )
+        model_version = str(
+            embedding.get("embedding_model")
+            or embedding.get("model")
+            or "unavailable"
+        )
+        try:
+            server_version = str((client.health() or {}).get("server_version") or "unavailable")
+        except Exception:
+            server_version = "unavailable"
+        provenance = MemoryRetrievalProvenanceV1(
+            backend="letta",
+            backend_version=backend_version,
+            server_version=server_version,
+            model=model,
+            model_version=model_version,
+            ranking="provider semantic embedding rank",
+            deterministic=False,
+            query_digest=canonical_memory_digest(
+                {
+                    "query": query,
+                    "ancestor_node_ids": list(ancestor_ids),
+                    "limit": limit,
+                }
+            ),
+            candidate_count=candidate_count,
+            returned_count=len(results),
+            limit=limit,
+            filter_evidence={
+                "ancestor_node_ids": list(ancestor_ids),
+                "checkpoint_namespace": self.ckpt_hash,
+                "strategy": filter_strategy,
+                "overfetch": overfetch,
+                "kept_after_filter": len(filtered),
+            },
+        )
+        return erasure.annotate_payload(
+            MemoryRetrievalV1(
+                results=results,
+                provenance=provenance,
+            ).model_dump(mode="json"),
+            "results",
+        )
 
-    def get_node_memory(self, node_id: str) -> dict:
+    def get_node_memory(self, node_id: str, *, reader_node_id: str = "") -> dict:
         client = self._ensure_client()
         agent_id = self._ensure_agent()
         entries = client.archival_list(
@@ -339,7 +461,7 @@ class LettaBackend(MemoryBackend):
         try:
             self._access.write(
                 build_read_event(
-                    node_id=current_node_id(),
+                    node_id=reader_node_id,
                     collection="node_scope",
                     query="inherit:get_node_memory",
                     ancestor_ids=[node_id],
@@ -353,36 +475,16 @@ class LettaBackend(MemoryBackend):
             )
         except Exception:
             pass
-        return {"entries": [
-            {
-                "text": e.get("text", ""),
-                "metadata": (e.get("metadata", {}) or {}).get("ari_metadata", {}),
-                "ts": (e.get("metadata", {}) or {}).get("ts", 0),
-            } for e in entries
-        ]}
-
-    def clear_node_memory(self, node_id: str) -> dict:
-        cow = self._check_cow(node_id)
-        if cow is not None:
-            return {"removed": 0, "error": cow["error"]}
-        client = self._ensure_client()
-        agent_id = self._ensure_agent()
-        entries = client.archival_list(
-            agent_id=agent_id,
-            collection=self.node_collection,
-            filter={
-                "node_id": node_id,
-                "ari_checkpoint": self.ckpt_hash,
-                "kind": "node_scope",
-            },
+        return erasure.annotate_payload(
+            {"entries": [
+                {
+                    "text": e.get("text", ""),
+                    "metadata": (e.get("metadata", {}) or {}).get("ari_metadata", {}),
+                    "ts": (e.get("metadata", {}) or {}).get("ts", 0),
+                } for e in entries
+            ]},
+            "entries", node_id=node_id,
         )
-        for e in entries:
-            client.archival_delete(
-                agent_id=agent_id,
-                collection=self.node_collection,
-                entry_id=e["id"],
-            )
-        return {"removed": len(entries)}
 
     def get_experiment_context(self) -> dict:
         if self._ctx_cache is not None:
@@ -418,7 +520,9 @@ class LettaBackend(MemoryBackend):
             })
         return {"by_node": by_node}
 
-    def bulk_get_node_memory(self, node_ids: list[str]) -> dict:
+    def bulk_get_node_memory(
+        self, node_ids: list[str], *, reader_node_id: str = ""
+    ) -> dict:
         client = self._ensure_client()
         agent_id = self._ensure_agent()
         entries = client.archival_list(
@@ -447,7 +551,7 @@ class LettaBackend(MemoryBackend):
         try:
             self._access.write(
                 build_read_event(
-                    node_id=current_node_id(),
+                    node_id=reader_node_id,
                     collection="node_scope",
                     query="inherit:bulk_get_node_memory",
                     ancestor_ids=list(node_ids),
@@ -586,7 +690,7 @@ class LettaBackend(MemoryBackend):
         )
         self._access.write(
             build_write_event(
-                node_id=current_node_id(),
+                node_id=str((metadata or {}).get("node_id") or ""),
                 collection="react_step",
                 entry_id=entry_id,
                 text=content,
@@ -617,7 +721,7 @@ class LettaBackend(MemoryBackend):
             })
         self._access.write(
             build_read_event(
-                node_id=current_node_id(),
+                node_id="",
                 collection="react_step",
                 query=query,
                 ancestor_ids=None,

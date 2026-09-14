@@ -1,0 +1,79 @@
+# Skill test suites.
+#
+# WHY THIS EXISTS: CI ran `pytest ari-core/tests/` and one prompt test only.
+# `scripts/run_all_tests.sh` (ari-core + 12 skill suites) was invoked by no
+# workflow, so every `ari-skill-*/tests/` directory was dead in CI. Concretely,
+# four of five regression tests written for a batch of shipped-falsehood bugs
+# lived in skill suites and were therefore unguarded:
+#
+#   ari-skill-paper/tests/test_claim_links.py       LaTeX exponent misparse +
+#                                                   the formula-vocabulary check
+#   ari-skill-evaluator/tests/test_s2p_tools.py     a no-op review fabricating
+#                                                   "resolved 2 overclaims"
+#   ari-skill-web/tests/test_collect_references.py  round-1 relevance filter
+#   ari-skill-memory/tests/...                      provenance phantom-missing
+#
+# SCOPE: the skills whose tests guard cross-package contracts, and whose deps
+# are light. `ari-skill-paper-re` is deliberately excluded — it vendors
+# PaperBench via a git+chz pull that the sibling jobs explicitly avoid for job
+# time; add it behind a separate scheduled job if that changes.
+#
+# ISOLATION: each suite runs in its OWN pytest process, because every skill
+# ships its server as `src/server.py` and a shared process lets the first
+# import poison every later `from src.server import ...` (and any
+# `mock.patch('src.server.X')` in a sibling). That is the same reason
+# scripts/run_all_tests.sh forks per path; this job reuses that script so the
+# two cannot drift.
+
+name: skill-tests
+
+on:
+  pull_request:
+    branches:
+      - main
+      - refactoring
+
+jobs:
+  skill-suites:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Runtime deps (mcp, letta-client, websockets, ...) live in the repo
+          # root requirements.txt; mirrors refactor-guards.yml:36.
+          pip install -r requirements.txt
+          # Editable installs in dependency order: skill-memory first (ari-core
+          # imports it directly), then core. ari-core must be importable because
+          # the paper skill now reads the gate's formula vocabulary through
+          # `ari.public.claim_gate` — the seam whose absence let a producer emit
+          # tokens the consumer never knew.
+          pip install -e ari-skill-memory
+          pip install -e ari-core
+          pip install scipy numpy pandas
+          pip install pytest pytest-asyncio pytest-mock respx
+      - name: Run the skill suites (one process per skill)
+        run: |
+          export HOME="$RUNNER_TEMP/fake_home"
+          mkdir -p "$HOME"
+          status=0
+          for path in \
+            ari-skill-paper/tests \
+            ari-skill-evaluator/tests \
+            ari-skill-web/tests \
+            ari-skill-plot/tests \
+            ari-skill-memory/tests \
+            ari-skill-transform/tests \
+            ari-skill-replicate/tests ; do
+            echo "::group::pytest $path"
+            # -p no:randomly: ari-skill-web's collect_references tests share
+            # module-level monkeypatched search stubs and are order-sensitive.
+            pytest "$path" -q -p no:randomly || status=1
+            echo "::endgroup::"
+          done
+          exit $status

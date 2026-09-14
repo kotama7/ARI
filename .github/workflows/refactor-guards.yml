@@ -106,9 +106,9 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Refactor-invariant / boundary gates appended by subtask 049
-  # (add_contract_check_workflows). Authoritative wiring spec:
-  # docs/refactoring/reports/032_quality_script_ci_integration.md §3-§7;
-  # layout in docs/refactoring/012_github_workflow_integration_plan.md §7.3/§15.
+  # (add_contract_check_workflows). Wiring spec (retired, kept as provenance):
+  # the subtask 032 quality-script CI integration report §3-§7; layout in
+  # refactoring plan 012 (GitHub workflow integration) §7.3/§15.
   #
   # These land here (not in a new workflow) because refactor-guards.yml is the
   # ONLY workflow also triggered on the `refactoring` branch, so refactoring

@@ -4,7 +4,13 @@ sources:
     role: doc
   - path: CHANGELOG.md
     role: doc
-last_verified: 2026-06-10
+  - path: LICENSE
+    role: doc
+  - path: SECURITY.md
+    role: doc
+  - path: ari-skill-transform/src/server.py
+    role: implementation
+last_verified: 2026-08-17
 ---
 
 # ARI について
@@ -23,12 +29,16 @@ last_verified: 2026-06-10
 
 ## ライセンス
 
-ARI はリポジトリレベルのライセンスファイルを 1 つだけ同梱するわけではありません。ライセンスは
-**公開アーティファクトごと**に決まります。Experiment Artifact Repository
-(EAR) を公開すると、その `ear/publish.yaml` が SPDX の `license`
-(MIT / Apache-2.0 / BSD-3-Clause / GPL-3.0 / CC-BY-4.0) を宣言し、`generate_ear`
-が対応する `LICENSE` ファイルをバンドルに出力します。
-[Configuration → EAR Curation](../reference/configuration.md#ear-curation-earpublishyaml--v070) を参照してください。
+リポジトリ自体はルートに [`LICENSE`](../../../LICENSE) を同梱しています — MIT License、
+「Copyright (c) 2026 ARI contributors」です。
+
+公開アーティファクトのライセンスは、それとは別に**アーティファクトごと**に決まります。
+Experiment Artifact Repository (EAR) を公開すると、その `ear/publish.yaml` が SPDX の
+`license` (MIT / Apache-2.0 / BSD-3-Clause / GPL-3.0 — `-only` / `-or-later` 付きの表記を含む
+/ CC-BY-4.0) を宣言し、`generate_ear` が対応する `LICENSE` をバンドルに出力します — ただし
+出力されるのはバンドルがまだ `LICENSE` を持っていない場合に限られ、この一覧にない SPDX ID を
+指定すると `LICENSE` ファイルは一切生成されません。
+[Configuration → EAR Curation](../reference/configuration.md#ear-キュレーション-ear-publish-yaml-—-v0-7-0) を参照してください。
 
 ---
 

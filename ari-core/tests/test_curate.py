@@ -4,8 +4,9 @@ Coverage:
 - T-1: include / exclude / max_file_mb behaviour
 - T-built-in-deny: .env*, secrets/**, **/*.pem, **/*.key are filtered even
   when allowlisted
-- T-8: publish.yaml absent → curation is skipped, no ear_published/ left
+- T-8: publish.yaml absent → reproducibility-tuned default allowlist is used
 """
+
 from __future__ import annotations
 
 import json
@@ -23,11 +24,13 @@ if str(_TRANSFORM_SRC) not in sys.path:
     sys.path.insert(0, str(_TRANSFORM_SRC))
 
 import curate as curate_mod  # type: ignore  # noqa: E402
+import ear as ear_mod  # type: ignore  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+
 
 def _write(p: Path, content: bytes | str = b"") -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -58,6 +61,7 @@ def _make_ear(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 # T-1: allowlist / exclude / max_file_mb
 # ---------------------------------------------------------------------------
+
 
 def test_curate_allowlist_and_exclude(tmp_path: Path):
     ckpt = _make_ear(tmp_path)
@@ -135,6 +139,7 @@ max_file_mb: 100
 # T-built-in-deny: built-in deny outranks include
 # ---------------------------------------------------------------------------
 
+
 def test_builtin_deny_outranks_include(tmp_path: Path):
     ckpt = _make_ear(tmp_path)
     (ckpt / "ear" / "publish.yaml").write_text(
@@ -165,12 +170,14 @@ include:
 # back to LLM-only (paper → reproduce.sh) instead of using ARI's own code.
 # ---------------------------------------------------------------------------
 
+
 def test_missing_publish_yaml_uses_default(tmp_path: Path):
     ckpt = _make_ear(tmp_path)
     # No publish.yaml written
     res = curate_mod.curate(ckpt)
     assert res.skipped is False
-    # Default include = reproduce.sh + environment.json + code/** + data/** + ...
+    # Default include = reproduce.sh + environment.json + code/** + data/** +
+    # catalog/** + ...
     # _make_ear writes code/node_a/{train.py,utils.py} → both included.
     paths = set(res.included_files)
     assert "code/node_a/train.py" in paths
@@ -186,6 +193,31 @@ def test_missing_publish_yaml_uses_default(tmp_path: Path):
     # ear_published/ created with manifest.lock.
     assert (ckpt / "ear_published" / "manifest.lock").is_file()
     assert res.bundle_sha256
+
+
+def test_missing_publish_yaml_includes_registry_replay_evidence(tmp_path: Path):
+    ckpt = _make_ear(tmp_path)
+    catalog = ckpt / "ear" / "catalog"
+    _write(catalog / "CATALOG.lock", '{"catalog_digest":"sha256:catalog"}\n')
+    _write(
+        catalog / "catalog-provenance.json",
+        '{"schema_version":"ari.catalog-provenance/v1"}\n',
+    )
+    _write(catalog / "cassettes" / "ab" / "abcdef.json", '{"result":1}\n')
+    _write(
+        catalog / "raw-cassettes" / "sha256" / "cd" / "cdef.txt",
+        "provider result\n",
+    )
+
+    result = curate_mod.curate(ckpt)
+
+    published = set(result.included_files)
+    assert {
+        "catalog/CATALOG.lock",
+        "catalog/catalog-provenance.json",
+        "catalog/cassettes/ab/abcdef.json",
+        "catalog/raw-cassettes/sha256/cd/cdef.txt",
+    } <= published
 
 
 def test_missing_publish_yaml_overwrites_stale_dir(tmp_path: Path):
@@ -207,6 +239,7 @@ def test_missing_publish_yaml_overwrites_stale_dir(tmp_path: Path):
 # ---------------------------------------------------------------------------
 # Atomicity: a failing curate must not corrupt a previously good ear_published/
 # ---------------------------------------------------------------------------
+
 
 def test_curate_atomic_on_size_failure(tmp_path: Path):
     ckpt = _make_ear(tmp_path)
@@ -248,6 +281,7 @@ max_file_mb: 1
 # bundle_sha256 stability: same inputs → same digest
 # ---------------------------------------------------------------------------
 
+
 def test_bundle_sha256_is_stable(tmp_path: Path):
     """Re-curating an unchanged ear/ with the same publish.yaml must produce
     the same bundle digest. This is the property that lets the
@@ -281,3 +315,58 @@ include:
     (ckpt / "ear" / "README.md").write_text("# README v2\n")
     b = curate_mod.curate(ckpt)
     assert a.bundle_sha256 != b.bundle_sha256
+
+
+def test_v2_manifest_binds_locks_cassettes_admission_and_results(tmp_path: Path):
+    ckpt = _make_ear(tmp_path)
+    _write(ckpt / "SKILLS.lock", '{"schema_version":"ari.skills-lock/v1"}\n')
+    _write(
+        ckpt / "catalog" / "CATALOG.lock", '{"schema_version":"ari.catalog-lock/v1"}\n'
+    )
+    _write(ckpt / "catalog" / "cassettes" / "aa" / "call.json", '{"status":"ok"}\n')
+    _write(
+        ckpt / "evaluation" / "claim_evidence_hard_gate_final.json",
+        '{"schema_version":"ari.gate-report/v1"}\n',
+    )
+    _write(ckpt / "artifacts" / "mcp-results" / "sha256" / "aa" / "result.json", "{}\n")
+    ear_mod.materialize_ear_evidence(ckpt, ckpt / "ear")
+
+    result = curate_mod.curate(ckpt)
+    manifest = json.loads(result.manifest_path.read_text())
+    assert manifest["schema_version"] == "ari.ear-manifest/v2"
+    assert manifest["admission_status"] == "complete"
+    assert manifest["evidence_index_digest"].startswith("sha256:")
+    assert manifest["lock_digest"].startswith("sha256:")
+    assert manifest["evidence"]["skills-lock"]
+    assert manifest["evidence"]["catalog-lock"]
+    assert manifest["evidence"]["cassette"]
+    assert manifest["evidence"]["admission"]
+    assert manifest["evidence"]["result-envelope-artifact"]
+
+
+def test_evidence_materialization_drops_removed_owned_sources(tmp_path: Path):
+    ckpt = _make_ear(tmp_path)
+    source = ckpt / "SKILLS.lock"
+    _write(source, '{"schema_version":"ari.skills-lock/v1"}\n')
+    ear_mod.materialize_ear_evidence(ckpt, ckpt / "ear")
+    assert (ckpt / "ear" / "locks" / "SKILLS.lock").is_file()
+
+    source.unlink()
+    result = ear_mod.materialize_ear_evidence(ckpt, ckpt / "ear")
+
+    assert not (ckpt / "ear" / "locks" / "SKILLS.lock").exists()
+    assert all(
+        record["path"] != "locks/SKILLS.lock" for record in result["index"]["records"]
+    )
+
+
+def test_tampered_evidence_index_fails_before_curated_bundle_swap(tmp_path: Path):
+    ckpt = _make_ear(tmp_path)
+    ear_mod.materialize_ear_evidence(ckpt, ckpt / "ear")
+    first = curate_mod.curate(ckpt)
+    previous = first.bundle_sha256
+    (ckpt / "ear" / "README.md").write_text("tampered\n")
+    with pytest.raises(curate_mod.CurateError, match="evidence digest mismatch"):
+        curate_mod.curate(ckpt)
+    manifest = json.loads((ckpt / "ear_published" / "manifest.lock").read_text())
+    assert manifest["bundle_sha256"] == previous

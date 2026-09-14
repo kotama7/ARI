@@ -35,7 +35,7 @@ of the existing `configurations[]` / `experiment_context` / `summary_stats`,
 - `aggregation` (statistic/trials) is **recorded only** in the MVP; true trial
   aggregation needs per-trial raw values (future scope).
 
-### Formula registry (mirrored in `ari-core/ari/pipeline/claim_gate/numeric.py`)
+### Formula registry (canonical in `ari-core`, imported via `ari.public.science_data`)
 
 `identity` (absolute), `relative_speedup`, `relative_gain`,
 `relative_improvement_percent`, `relative_increase_percent`,

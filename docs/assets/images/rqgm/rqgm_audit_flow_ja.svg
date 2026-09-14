@@ -1,0 +1,288 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1900 1450" role="img" aria-labelledby="title desc">
+  <title id="title">Constitutional ARI-RQGM の監査ネットワーク</title>
+  <desc id="desc">通常構成20件と論文モード3件の制裁可能な登録コンポーネントを列挙し、各研究ノードの敵対検査、期境界の証拠整理・動議・弁護・裁定、固定カーネルによる自己監査と制度遷移、固定原稿検証を一つのネットワークとして示す。</desc>
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#64748b" stroke-opacity=".065"/>
+    </pattern>
+    <linearGradient id="headGlow" x1="0" x2="1">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity=".22"/>
+      <stop offset=".55" stop-color="#2563eb" stop-opacity=".1"/>
+      <stop offset="1" stop-color="#a855f7" stop-opacity=".16"/>
+    </linearGradient>
+    <marker id="evidenceArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#22d3ee"/>
+    </marker>
+    <marker id="auditArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#fb7185"/>
+    </marker>
+    <marker id="processArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#c084fc"/>
+    </marker>
+    <marker id="enforceArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#34d399"/>
+    </marker>
+    <style>
+      text{font-family:"Noto Sans JP","Hiragino Sans","Yu Gothic",system-ui,sans-serif;fill:#f1f5f9}
+      .mono{font-family:"IBM Plex Mono","Noto Sans Mono CJK JP",monospace}
+      .eyebrow{font-size:14px;font-weight:700;letter-spacing:.18em;fill:#67e8f9}
+      .title{font-size:38px;font-weight:750}
+      .subtitle{font-size:16px;fill:#94a3b8}
+      .panelTitle{font-size:20px;font-weight:700}
+      .bandTitle{font-size:17px;font-weight:700;letter-spacing:.04em}
+      .groupTitle{font-size:14px;font-weight:700}
+      .nodeTitle{font-size:15px;font-weight:700}
+      .body{font-size:13px;fill:#cbd5e1}
+      .small{font-size:11.5px;fill:#94a3b8}
+      .tiny{font-size:10.7px;fill:#94a3b8}
+      .chip{font-size:12.2px;font-weight:650}
+      .edgeLabel{font-size:11.5px;font-weight:700}
+      .number{font-size:12px;font-weight:700}
+      .evidence{fill:none;stroke:#22d3ee;stroke-width:2;marker-end:url(#evidenceArrow)}
+      .evidenceDash{fill:none;stroke:#22d3ee;stroke-width:1.7;stroke-dasharray:6 5;marker-end:url(#evidenceArrow)}
+      .audit{fill:none;stroke:#fb7185;stroke-width:2.2;marker-end:url(#auditArrow)}
+      .process{fill:none;stroke:#c084fc;stroke-width:2;marker-end:url(#processArrow)}
+      .processDash{fill:none;stroke:#c084fc;stroke-width:1.8;stroke-dasharray:7 5;marker-end:url(#processArrow)}
+      .enforce{fill:none;stroke:#34d399;stroke-width:2.2;marker-end:url(#enforceArrow)}
+      .divider{stroke:#334155;stroke-width:1}
+    </style>
+  </defs>
+
+  <rect width="1900" height="1450" fill="#04060c"/>
+  <rect width="1900" height="1450" fill="url(#grid)"/>
+  <circle cx="1760" cy="90" r="270" fill="#2563eb" opacity=".07"/>
+  <circle cx="70" cy="1370" r="250" fill="#22d3ee" opacity=".045"/>
+
+  <text x="50" y="48" class="eyebrow mono">CONSTITUTIONAL ARI-RQGM · COMPLETE AUDIT NETWORK</text>
+  <text x="50" y="94" class="title">すべての監査主体・対象・証拠・裁定を一枚で追う</text>
+  <text x="50" y="128" class="subtitle">左は制裁可能な全登録コンポーネント。右は、各出力が証拠となり、監査・弁護・裁定・制度変更へ循環する手続ネットワーク。</text>
+
+  <rect x="1260" y="34" width="590" height="104" rx="14" fill="#08111d" stroke="#334155"/>
+  <text x="1282" y="59" class="groupTitle" fill="#a5f3fc">矢印の読み方</text>
+  <line x1="1284" y1="83" x2="1344" y2="83" class="evidence"/><text x="1354" y="87" class="small">証拠・記録</text>
+  <line x1="1460" y1="83" x2="1520" y2="83" class="audit"/><text x="1530" y="87" class="small">監査・動議</text>
+  <line x1="1638" y1="83" x2="1698" y2="83" class="process"/><text x="1708" y="87" class="small">弁護・裁定</text>
+  <line x1="1284" y1="113" x2="1344" y2="113" class="enforce"/><text x="1354" y="117" class="small">固定規則による執行</text>
+  <text x="1530" y="117" class="small">各帯の見出し＝実行時機 ／ 各箱の下段＝判断根拠</text>
+
+  <!-- Network edges are drawn before nodes. -->
+  <!-- Per-node accountability links to the target registry. -->
+  <path d="M620 305H566" class="audit"/>
+  <path d="M620 435H585V410H566" class="audit"/>
+
+  <!-- Per-node trial. -->
+  <path d="M850 310H920V365H948" class="process"/>
+  <path d="M850 440H920V385H948" class="process"/>
+  <path d="M1128 375H1204" class="process"/>
+  <path d="M1414 375H1490" class="process"/>
+  <path d="M1615 423V608H1100" class="evidence"/>
+
+  <!-- Every governed output becomes evidence. -->
+  <path d="M540 615H620V660H760" class="evidence"/>
+  <text x="646" y="646" class="edgeLabel" fill="#67e8f9">全役割の追記記録</text>
+
+  <!-- Epoch-boundary governance chain. -->
+  <path d="M960 695V810H650V845" class="evidence"/>
+  <path d="M820 885H875" class="evidence"/>
+  <path d="M1055 885H1110" class="process"/>
+  <path d="M1285 885H1340" class="process"/>
+  <path d="M1515 885H1570" class="process"/>
+  <path d="M1198 930V1038H566" class="audit"/>
+  <text x="866" y="1025" class="edgeLabel" fill="#fda4af">監査役だけが提出できる対象別動議（同役を除く）</text>
+  <path d="M1660 930V1010H1515" class="process"/>
+  <path d="M1660 1010V1082H1315" class="evidence"/>
+  <path d="M1460 1082H1010V735" class="evidenceDash"/>
+  <text x="1184" y="1068" class="edgeLabel" fill="#67e8f9">手続記録も次期の証拠へ戻る</text>
+
+  <!-- Fixed layer: transition, self-audit, log integrity, manuscript gate. -->
+  <path d="M1570 1082V1200H1210" class="process"/>
+  <path d="M1080 1245H1015" class="process"/>
+  <path d="M1015 1270H1080" class="enforce"/>
+  <path d="M860 1245H760V735" class="evidenceDash"/>
+  <text x="770" y="1208" class="edgeLabel" fill="#67e8f9">連鎖・取引完全性</text>
+  <path d="M900 1200V960H1460" class="processDash"/>
+  <text x="935" y="984" class="edgeLabel" fill="#d8b4fe">統治4役の全記録を自己監査</text>
+  <path d="M1080 1290H566" class="enforce"/>
+  <text x="784" y="1310" class="edgeLabel" fill="#6ee7b7">許可された T1–T21 のみ台帳へ確定</text>
+  <path d="M1345 1260H1415" class="enforce"/>
+  <path d="M1625 1260H1690" class="enforce"/>
+  <path d="M1690 1300H1600V1360H566" class="audit"/>
+
+  <!-- LEFT: all sanctionable registered components -->
+  <rect x="50" y="175" width="500" height="1195" rx="18" fill="#07101b" stroke="#334155"/>
+  <rect x="50" y="175" width="500" height="72" rx="18" fill="url(#headGlow)" stroke="#334155"/>
+  <text x="76" y="207" class="panelTitle">監査対象レジストリ</text>
+  <text x="76" y="232" class="body">通常20件 ＋ 論文モード3件 ／ 全件が名指し・制裁可能</text>
+
+  <rect x="72" y="267" width="456" height="188" rx="14" fill="#09182a" stroke="#1d4ed8"/>
+  <text x="92" y="294" class="groupTitle" fill="#93c5fd">研究・選択・論文</text>
+  <rect x="92" y="310" width="196" height="34" rx="8" fill="#102446"/><text x="105" y="332" class="chip">研究生成役</text>
+  <rect x="300" y="310" width="208" height="34" rx="8" fill="#102446"/><text x="313" y="332" class="chip">提案経路選択役</text>
+  <rect x="92" y="354" width="196" height="34" rx="8" fill="#102446"/><text x="105" y="376" class="chip">効用規則</text>
+  <rect x="300" y="354" width="208" height="34" rx="8" fill="#171337" stroke="#6d28d9"/><text x="313" y="376" class="chip">論文執筆役 *</text>
+  <rect x="92" y="398" width="196" height="34" rx="8" fill="#171337" stroke="#6d28d9"/><text x="105" y="420" class="chip">論文査読役 *</text>
+  <text x="300" y="419" class="small">* 論文モードで追加</text>
+  <text x="92" y="443" class="tiny">成果物・選択・得点・論文判断が監査対象。責任は期固定の作成者来歴で結ぶ。</text>
+
+  <rect x="72" y="475" width="456" height="258" rx="14" fill="#171018" stroke="#be123c"/>
+  <text x="92" y="502" class="groupTitle" fill="#fda4af">ノード単位の敵対検査と対審</text>
+  <text x="92" y="529" class="chip">研究用の敵対検査役 7件</text>
+  <text x="92" y="552" class="body">過大主張・指標攻略・先行研究・再現性</text>
+  <text x="92" y="575" class="body">証拠不足・費用増大・指示文注入</text>
+  <rect x="92" y="590" width="416" height="34" rx="8" fill="#321327"/><text x="105" y="612" class="chip">論文迎合検査役 *（8件目）</text>
+  <rect x="92" y="635" width="196" height="34" rx="8" fill="#26173a"/><text x="105" y="657" class="chip">弁護役</text>
+  <rect x="300" y="635" width="208" height="34" rx="8" fill="#26173a"/><text x="313" y="657" class="chip">成果物裁定役</text>
+  <text x="92" y="696" class="tiny">これらの役自身も登録対象。攻撃・応答・裁定の成績が期境界監査へ戻る。</text>
+  <text x="92" y="716" class="tiny">生の攻撃だけでは得点も制裁も変更できない。</text>
+
+  <rect x="72" y="753" width="456" height="174" rx="14" fill="#19130b" stroke="#b45309"/>
+  <text x="92" y="780" class="groupTitle" fill="#fdba74">期境界の統治司法</text>
+  <rect x="92" y="798" width="128" height="34" rx="8" fill="#38240b"/><text x="105" y="820" class="chip">監査役</text>
+  <rect x="230" y="798" width="138" height="34" rx="8" fill="#38240b"/><text x="243" y="820" class="chip">証拠整理役</text>
+  <rect x="378" y="798" width="130" height="34" rx="8" fill="#38240b"/><text x="391" y="820" class="chip">統治裁定役</text>
+  <text x="92" y="858" class="body">後継生成経路はないが、不変の支配者ではない。</text>
+  <text x="92" y="881" class="body">警告・隔離・退役・禁止の対象になる。</text>
+  <text x="92" y="909" class="tiny">ただし監査役自身と裁定役自身には下記の未閉鎖経路がある。</text>
+
+  <rect x="72" y="947" width="456" height="210" rx="14" fill="#0b1918" stroke="#0f766e"/>
+  <text x="92" y="974" class="groupTitle" fill="#5eead4">制度を更新するメタ役</text>
+  <rect x="92" y="991" width="196" height="34" rx="8" fill="#0d2927"/><text x="105" y="1013" class="chip">指示文変異役</text>
+  <rect x="300" y="991" width="208" height="34" rx="8" fill="#0d2927"/><text x="313" y="1013" class="chip">効用規則変異役</text>
+  <rect x="92" y="1036" width="196" height="34" rx="8" fill="#0d2927"/><text x="105" y="1058" class="chip">隔離再生成役</text>
+  <rect x="300" y="1036" width="208" height="34" rx="8" fill="#0d2927"/><text x="313" y="1058" class="chip">再試験選択役</text>
+  <rect x="92" y="1081" width="196" height="34" rx="8" fill="#0d2927"/><text x="105" y="1103" class="chip">失敗要約役</text>
+  <text x="92" y="1138" class="tiny">候補を提案しても採用権はない。出力は固定カーネルと同じ監査網へ入る。</text>
+
+  <rect x="72" y="1177" width="456" height="166" rx="14" fill="#10131c" stroke="#475569"/>
+  <text x="92" y="1204" class="groupTitle" fill="#cbd5e1">対象を支える共通来歴</text>
+  <text x="92" y="1232" class="body">各記録に：期・役割・構成要素・指示文ハッシュ</text>
+  <text x="92" y="1255" class="body">作成元・参照元・状態・取引識別子</text>
+  <text x="92" y="1285" class="body">イベント連鎖：種類・ID・内容・直前ダイジェスト</text>
+  <text x="92" y="1313" class="tiny">時刻は判断根拠に使わない。外部ログヘッド固定は別途必要。</text>
+
+  <!-- RIGHT A: node-time audit -->
+  <rect x="590" y="175" width="1260" height="405" rx="18" fill="#08101c" stroke="#1e3a5f"/>
+  <rect x="590" y="175" width="1260" height="54" rx="18" fill="#0b1d36" stroke="#1e3a5f"/>
+  <circle cx="620" cy="202" r="15" fill="#172554" stroke="#3b82f6"/><text x="620" y="207" text-anchor="middle" class="number mono">1</text>
+  <text x="648" y="207" class="bandTitle" fill="#93c5fd">各研究ノード／各論文案：評価後、報告・査読判断の直後</text>
+  <text x="1450" y="207" class="small">根拠：成果物・測定値・主張・作成者来歴・固定ゲートの事前兆候</text>
+
+  <rect x="620" y="260" width="230" height="100" rx="14" fill="#21111b" stroke="#be123c"/>
+  <text x="735" y="288" text-anchor="middle" class="nodeTitle" fill="#fda4af">研究用の敵対検査役 ×7</text>
+  <text x="735" y="314" text-anchor="middle" class="body">生成役の成果物を攻撃検査</text>
+  <text x="735" y="338" text-anchor="middle" class="small">7種の固定された検査観点</text>
+
+  <rect x="620" y="390" width="230" height="100" rx="14" fill="#22102b" stroke="#9333ea"/>
+  <text x="735" y="418" text-anchor="middle" class="nodeTitle" fill="#d8b4fe">論文迎合検査役 *</text>
+  <text x="735" y="444" text-anchor="middle" class="body">査読役の過剰受理を検査</text>
+  <text x="735" y="468" text-anchor="middle" class="small">不実な原稿だけ執筆役にも帰属</text>
+
+  <rect x="948" y="330" width="180" height="90" rx="14" fill="#171126" stroke="#7e22ce"/>
+  <text x="1038" y="360" text-anchor="middle" class="nodeTitle" fill="#d8b4fe">弁護役</text>
+  <text x="1038" y="385" text-anchor="middle" class="body">攻撃ごとに応答</text>
+  <text x="1038" y="404" text-anchor="middle" class="small">対象側の反証を記録</text>
+
+  <rect x="1204" y="330" width="210" height="90" rx="14" fill="#171126" stroke="#7e22ce"/>
+  <text x="1309" y="360" text-anchor="middle" class="nodeTitle" fill="#d8b4fe">成果物裁定役</text>
+  <text x="1309" y="385" text-anchor="middle" class="body">攻撃と弁護を裁定</text>
+  <text x="1309" y="404" text-anchor="middle" class="small">有効／一部有効だけを通す</text>
+
+  <rect x="1490" y="330" width="250" height="94" rx="14" fill="#0b2024" stroke="#0891b2"/>
+  <text x="1615" y="359" text-anchor="middle" class="nodeTitle" fill="#67e8f9">検証済み攻撃</text>
+  <text x="1615" y="384" text-anchor="middle" class="body">有限の得点減少・再試験事例</text>
+  <text x="1615" y="405" text-anchor="middle" class="small">対象役の信頼度へ反映</text>
+
+  <text x="884" y="349" class="edgeLabel" fill="#d8b4fe">攻撃</text>
+  <text x="1155" y="359" class="edgeLabel" fill="#d8b4fe">応答</text>
+  <text x="1447" y="359" class="edgeLabel" fill="#d8b4fe">裁定</text>
+  <rect x="930" y="505" width="550" height="47" rx="12" fill="#0b1320" stroke="#334155"/>
+  <text x="1205" y="534" text-anchor="middle" class="body">未裁定の攻撃は得点・信頼度・制裁のいずれにも使わない</text>
+
+  <!-- Evidence hub -->
+  <rect x="760" y="608" width="400" height="127" rx="18" fill="#08202a" stroke="#0891b2" stroke-width="2"/>
+  <text x="960" y="640" text-anchor="middle" class="panelTitle" fill="#67e8f9">追記監査台帳</text>
+  <text x="960" y="669" text-anchor="middle" class="body">成果物・攻撃・弁護・裁定・査読・効用・統治記録</text>
+  <text x="960" y="695" text-anchor="middle" class="body">意味を持つ全フィールドと直前ダイジェストを連鎖</text>
+  <text x="960" y="718" text-anchor="middle" class="small">次の期境界監査が読む唯一の証拠面</text>
+
+  <!-- RIGHT B: epoch-boundary audit -->
+  <rect x="590" y="770" width="1260" height="380" rx="18" fill="#130f0a" stroke="#78350f"/>
+  <rect x="590" y="770" width="1260" height="54" rx="18" fill="#26190a" stroke="#78350f"/>
+  <circle cx="620" cy="797" r="15" fill="#422006" stroke="#f59e0b"/><text x="620" y="802" text-anchor="middle" class="number mono">2</text>
+  <text x="648" y="802" class="bandTitle" fill="#fdba74">期境界：当期の全記録を対象別に集約し、登録コンポーネントを監査</text>
+  <text x="1434" y="802" class="small">根拠：検証済み攻撃・一致率・校正・査読・裁定・再試験／基準事例</text>
+
+  <rect x="620" y="842" width="200" height="88" rx="13" fill="#11202a" stroke="#0891b2"/>
+  <text x="720" y="870" text-anchor="middle" class="nodeTitle" fill="#67e8f9">信頼度集計</text>
+  <text x="720" y="895" text-anchor="middle" class="body">対象ごとの決定的集計</text>
+  <text x="720" y="915" text-anchor="middle" class="small">生の攻撃は除外</text>
+
+  <rect x="875" y="842" width="180" height="88" rx="13" fill="#28200e" stroke="#d97706"/>
+  <text x="965" y="870" text-anchor="middle" class="nodeTitle" fill="#fdba74">証拠整理役</text>
+  <text x="965" y="895" text-anchor="middle" class="body">参照・採否を検証</text>
+  <text x="965" y="915" text-anchor="middle" class="small">同役観察は証拠外</text>
+
+  <rect x="1110" y="842" width="175" height="88" rx="13" fill="#28200e" stroke="#d97706"/>
+  <text x="1198" y="870" text-anchor="middle" class="nodeTitle" fill="#fdba74">監査役</text>
+  <text x="1198" y="895" text-anchor="middle" class="body">閾値と証拠で動議</text>
+  <text x="1198" y="915" text-anchor="middle" class="small">件数枠・対象別</text>
+
+  <rect x="1340" y="842" width="175" height="88" rx="13" fill="#21162d" stroke="#9333ea"/>
+  <text x="1428" y="870" text-anchor="middle" class="nodeTitle" fill="#d8b4fe">弁護役</text>
+  <text x="1428" y="895" text-anchor="middle" class="body">1動議に1応答</text>
+  <text x="1428" y="915" text-anchor="middle" class="small">不在時は手続的推定</text>
+
+  <rect x="1570" y="842" width="210" height="88" rx="13" fill="#21162d" stroke="#9333ea"/>
+  <text x="1675" y="870" text-anchor="middle" class="nodeTitle" fill="#d8b4fe">統治裁定役</text>
+  <text x="1675" y="895" text-anchor="middle" class="body">再試験盤・基準盤で裁定</text>
+  <text x="1675" y="915" text-anchor="middle" class="small">矛盾する判断は固定補正</text>
+
+  <text x="846" y="872" class="edgeLabel" fill="#67e8f9">対象別</text>
+  <text x="1078" y="872" class="edgeLabel" fill="#d8b4fe">証拠束</text>
+  <text x="1308" y="872" class="edgeLabel" fill="#d8b4fe">動議</text>
+  <text x="1538" y="872" class="edgeLabel" fill="#d8b4fe">弁護</text>
+
+  <rect x="1360" y="1000" width="300" height="86" rx="14" fill="#2b1b0c" stroke="#d97706"/>
+  <text x="1510" y="1028" text-anchor="middle" class="nodeTitle" fill="#fdba74">統治報告（助言）</text>
+  <text x="1510" y="1053" text-anchor="middle" class="body">支持／一部支持／棄却／未確定</text>
+  <text x="1510" y="1073" text-anchor="middle" class="small">司法役は台帳を直接変更できない</text>
+
+  <rect x="620" y="1052" width="565" height="68" rx="13" fill="#1d1116" stroke="#9f1239"/>
+  <text x="642" y="1078" class="groupTitle" fill="#fda4af">自己監査の対象</text>
+  <text x="642" y="1103" class="body">証拠整理役・監査役・弁護役・統治裁定役が作った全手続記録</text>
+
+  <!-- RIGHT C: fixed enforcement -->
+  <rect x="590" y="1170" width="1260" height="200" rx="18" fill="#071712" stroke="#065f46"/>
+  <rect x="590" y="1170" width="1260" height="48" rx="18" fill="#09251d" stroke="#065f46"/>
+  <circle cx="620" cy="1194" r="15" fill="#052e2b" stroke="#10b981"/><text x="620" y="1199" text-anchor="middle" class="number mono">3</text>
+  <text x="648" y="1199" class="bandTitle" fill="#6ee7b7">固定層：統治報告後の自己監査・制度変更と、原稿確定前の証拠検証</text>
+
+  <rect x="650" y="1225" width="365" height="112" rx="14" fill="#0b2021" stroke="#0e7490"/>
+  <text x="833" y="1253" text-anchor="middle" class="nodeTitle" fill="#67e8f9">固定憲法カーネル</text>
+  <text x="833" y="1278" text-anchor="middle" class="body">役割分離・権限・T1–T21・期不変性</text>
+  <text x="833" y="1301" text-anchor="middle" class="body">統治記録の自己監査／台帳連鎖検証</text>
+  <text x="833" y="1323" text-anchor="middle" class="small">LLM・ネットワーク・裁量なし</text>
+
+  <rect x="1080" y="1225" width="265" height="112" rx="14" fill="#0b231a" stroke="#059669"/>
+  <text x="1213" y="1253" text-anchor="middle" class="nodeTitle" fill="#6ee7b7">台帳遷移器</text>
+  <text x="1213" y="1278" text-anchor="middle" class="body">変更案を解決する唯一の書き手</text>
+  <text x="1213" y="1301" text-anchor="middle" class="body">検証後に不可分で確定</text>
+  <text x="1213" y="1323" text-anchor="middle" class="small">拒否時は現職を維持</text>
+
+  <rect x="1415" y="1225" width="210" height="112" rx="14" fill="#0b231a" stroke="#059669"/>
+  <text x="1520" y="1253" text-anchor="middle" class="nodeTitle" fill="#6ee7b7">影響修復器</text>
+  <text x="1520" y="1278" text-anchor="middle" class="body">退役由来の子孫を追跡</text>
+  <text x="1520" y="1301" text-anchor="middle" class="body">再採点／選択対象外</text>
+  <text x="1520" y="1323" text-anchor="middle" class="small">履歴自体は削除しない</text>
+
+  <rect x="1690" y="1225" width="130" height="112" rx="14" fill="#13172b" stroke="#6366f1"/>
+  <text x="1755" y="1253" text-anchor="middle" class="nodeTitle" fill="#c7d2fe">固定原稿</text>
+  <text x="1755" y="1274" text-anchor="middle" class="nodeTitle" fill="#c7d2fe">検証器</text>
+  <text x="1755" y="1300" text-anchor="middle" class="small">数値を再計算</text>
+  <text x="1755" y="1321" text-anchor="middle" class="small">不一致は確定拒否</text>
+
+  <!-- Honest limits -->
+  <rect x="50" y="1390" width="1800" height="42" rx="12" fill="#21130c" stroke="#9a3412"/>
+  <text x="72" y="1416" class="groupTitle" fill="#fdba74">未閉鎖：</text>
+  <text x="150" y="1416" class="body">監査役だけが動議を出せる一方、同役動議は禁止。統治裁定役が対象なら忌避するが独立代替裁定役は未実装。どちらも外部裁定を要する。保証範囲は信頼されたホスト上の処理整合性であり、OS隔離・署名・外部ログ固定は含まない。</text>
+</svg>

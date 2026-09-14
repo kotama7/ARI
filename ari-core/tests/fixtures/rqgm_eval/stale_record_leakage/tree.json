@@ -1,0 +1,13 @@
+{
+  "nodes": [
+    {
+      "epoch_id": "ep_000001",
+      "has_real_data": true,
+      "id": "n1",
+      "metrics": {
+        "_scientific_score": 0.7
+      },
+      "status": "SUCCESS"
+    }
+  ]
+}

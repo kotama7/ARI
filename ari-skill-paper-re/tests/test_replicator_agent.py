@@ -17,6 +17,7 @@ the *integration boundaries* with vendor / sandbox / Pydantic instead:
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -34,6 +35,7 @@ import _vendor_path  # noqa: F401, E402
 from _replicator_agent import (  # noqa: E402
     AriPBSolver,
     _bypass_docker_sanity_check,
+    _promote_submission_tree,
     run_replicator_agent,
 )
 from paperbench.solvers.basicagent.solver import BasicAgentSolver  # noqa: E402
@@ -44,6 +46,79 @@ from paperbench.solvers.basicagent.completer import (  # noqa: E402
 
 
 pytestmark = pytest.mark.asyncio
+
+
+def test_promote_submission_tree_keeps_script_dependencies_and_ignores_outputs(
+    tmp_path,
+):
+    workspace = tmp_path / "workspace"
+    submission = workspace / "submission"
+    (submission / "src").mkdir(parents=True)
+    (submission / "reproduce.sh").write_text("#!/bin/sh\npython3 src/run.py\n")
+    (submission / "reproduce.sh").chmod(0o755)
+    (submission / "src" / "run.py").write_text("print('ok')\n")
+    (submission / ".gitignore").write_text("results.csv\n")
+    (submission / "results.csv").write_text("generated\n")
+    subprocess.run(["git", "init", "-q", str(submission)], check=True)
+    subprocess.run(
+        ["git", "-C", str(submission), "add", "reproduce.sh", "src/run.py", ".gitignore"],
+        check=True,
+    )
+
+    promoted = _promote_submission_tree(submission, workspace)
+
+    assert promoted == [".gitignore", "reproduce.sh", "src/run.py"]
+    assert (workspace / "reproduce.sh").is_file()
+    assert (workspace / "reproduce.sh").stat().st_mode & 0o111
+    assert (workspace / "src" / "run.py").read_text() == "print('ok')\n"
+    assert not (workspace / "results.csv").exists()
+    assert not (workspace / ".git").exists()
+
+
+def test_promote_submission_tree_rejects_source_outside_workspace(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    submission = tmp_path / "outside"
+    submission.mkdir()
+    (submission / "reproduce.sh").write_text("#!/bin/sh\n")
+
+    with pytest.raises(ValueError, match="inside workspace"):
+        _promote_submission_tree(submission, workspace)
+
+
+def test_promote_submission_tree_rejects_symlinked_source_root(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "reproduce.sh").write_text("#!/bin/sh\n")
+    submission = workspace / "submission"
+    submission.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlinked source root"):
+        _promote_submission_tree(submission, workspace)
+
+
+def test_promote_submission_tree_rejects_source_and_destination_symlinks(tmp_path):
+    workspace = tmp_path / "workspace"
+    submission = workspace / "submission"
+    submission.mkdir(parents=True)
+    outside_file = tmp_path / "outside.txt"
+    outside_file.write_text("outside\n")
+    (submission / "linked.txt").symlink_to(outside_file)
+
+    with pytest.raises(ValueError, match="source symlink"):
+        _promote_submission_tree(submission, workspace)
+
+    (submission / "linked.txt").unlink()
+    (submission / "src").mkdir()
+    (submission / "src" / "run.py").write_text("print('ok')\n")
+    outside_dir = tmp_path / "destination"
+    outside_dir.mkdir()
+    (workspace / "src").symlink_to(outside_dir, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="destination symlink"):
+        _promote_submission_tree(submission, workspace)
 
 
 def test_aripb_solver_is_real_subclass_with_full_tool_set():

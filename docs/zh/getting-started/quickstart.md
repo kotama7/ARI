@@ -8,7 +8,13 @@ sources:
     role: implementation
   - path: ari-core/ari/viz
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+last_verified: 2026-08-16
 ---
 
 # ARI 快速入门指南
@@ -57,7 +63,7 @@ bash setup.sh
 
 v0.6.0 起，安装脚本同时启动 **[Letta](https://docs.letta.com)** (`ari-skill-memory` 的后端)。它按 Docker → Singularity/Apptainer → pip 顺序自动检测最佳部署路径。如需跳过 Letta 启动（如在 CI 或容器构建中），请在执行 `bash setup.sh` 之前 `export SKIP_LETTA_SETUP=1`；想要完全非交互运行可同时设置 `ARI_NONINTERACTIVE=1`。
 
-安装完成后，你将看到 **"Setup Complete"** 以及后续操作说明。Letta 的连通性可随后通过 `ari memory health` 验证。
+安装完成后，你将看到 **"All good! The ants are ready to work!"** 以及后续操作说明。Letta 的连通性可随后通过 `ari memory health` 验证。
 
 ---
 
@@ -118,54 +124,87 @@ export ANTHROPIC_API_KEY=sk-ant-...  # 从 https://console.anthropic.com/ 获取
 
 ## 第 3 步：启动仪表盘
 
-使用仓库根目录的一键启动脚本同时拉起三个长期运行的服务（Letta 内存后端、ari-registry、Viz GUI）：
+使用仓库根目录的一键启动脚本同时拉起四个长期运行的服务（Letta 内存后端 :8283、ari-registry :8290、Viz GUI :8765、CLI shim :8900）：
 
 ```bash
 ./start.sh
 ```
 
-每次执行都会对三者执行 clean restart（PID 文件位于 `~/.ari/`）。常用子命令：`./start.sh gui`（仅 GUI）、`./start.sh status`（健康检查）、`./start.sh stop` 或 `./shutdown.sh`（全部停止 —— `shutdown.sh` 还会回收 apptainer 留下的 postgres/redis 孤儿进程）。
+每次执行都会对四者执行 clean restart（PID 文件位于 `~/.ari/`）。常用子命令：`./start.sh gui`（仅 GUI；`letta` / `registry` / `shim` 同理）、`./start.sh status`（健康检查）、`./start.sh stop` 或 `./shutdown.sh`（全部停止 —— `shutdown.sh` 还会回收 apptainer 留下的 postgres/redis 孤儿进程）。
 
 打开浏览器，访问：**http://localhost:8765**
 
+> **为什么是 `localhost`？** 仪表盘默认仅绑定回环地址，因此不会向你的网络
+> 暴露任何东西，也不需要登录；用 `ARI_GUI_BIND` 把它绑到别处会自动开启
+> bearer token 认证。
+
 你将看到 ARI 主界面：
 
-![ARI 主页](../../assets/images/zh/dashboard_home.png)
+![ARI 主界面：Total Projects、Best Review Score 与 Total Nodes Explored 三个计数器，一张快捷操作卡片，以及带 View Results 与 View Tree 按钮的最新实验卡片](../../assets/images/zh/dashboard_home.png)
 
-左侧边栏提供了所有仪表盘页面的导航：
+### 找到你的运行：Projects → Overview
 
-| 页面 | 描述 |
-|------|------|
-| **Home** | 概览页面，包含快捷操作和最近的实验 |
-| **Experiments** | 所有过去实验运行的列表 |
-| **Monitor** | 实时管线进度，带 D3 树形可视化 |
-| **Tree** | 完整的 BFTS 实验树 — 点击节点查看详情 |
-| **Results** | 类 Overleaf LaTeX 编辑器、论文 PDF 查看器、评审报告、EAR 浏览器 |
-| **New Experiment** | 创建并启动新实验的向导 |
-| **Ideas** | VirSci 生成的研究假说 |
-| **Workflow** | BFTS 后管线的 React Flow 可视化 DAG 编辑器 |
-| **Settings** | 配置 LLM、API 密钥、SLURM、容器、VLM 和检索后端 |
-| **Sub-Experiments** | 递归子实验树（通过 orchestrator 技能） |
+有两个页面是从「仪表盘已打开」到「我能看到某次运行在做什么」的最短路径：
+
+1. **项目**（`#/projects` —— 侧边栏 **工作区** 分组第一个的 📁 条目）列出 ARI 在你的
+   检查点根目录下找到的每一个运行，以及它的状态、节点数、评审分数与最优
+   指标。这是运行组合视图；不会隐式选中任何东西。
+2. 点击某个运行行上的 **Overview**。这会打开 `#/overview?run=<run_id>`，
+   一个展示该运行生命周期状态、研究阶段、数据新鲜度、关键计数器，以及通往
+   Tree、Config 与（对受治理运行而言）Governance 工作区链接的单一页面。
+
+![Projects 页面：每个运行占一行的表格，列出 run id、状态徽章、节点数、评审分数、最优指标、最后更新时间，以及每行的 Overview 与 Config 链接](../../assets/images/zh/dashboard_projects.png)
+
+![单个运行的 Run Overview 页面：生命周期徽章、研究阶段、最后更新时间，Nodes Explored / Review Score / Best Metric 三个计数器、工作区链接，以及可折叠的日志面板](../../assets/images/zh/dashboard_overview.png)
+
+run id 就在 URL 里，因此一个 Overview 链接是可分享的，并且能在刷新后存活
+—— 你可以在两个标签页中同时打开两个运行而互不干扰。在全新安装上，这个列表
+在你启动任何东西之前都是空的；请继续下面的第 4 步。
+
+关于仪表盘逐页的完整导览，见[仪表盘指南](../guides/dashboard.md)。
+
+左侧边栏是分层的：顶部是一个主操作 **新建实验**，其下是四个分组。
+
+| 侧边栏条目 | 分组 | 描述 |
+|------|------|------|
+| **新建实验** ✨ | （主操作） | 创建并启动新实验的向导 |
+| **项目** 📁 | 工作区 | 跨检查点根目录的运行组合视图 —— 从这里开始 |
+| **仪表盘** 🏠 | 工作区 | 概览页面，包含快捷操作和最近的实验 |
+| **实验归档** 🗂️ | 工作区 | 所有过去实验运行的列表 |
+| **概览** 🧭 | 当前实验 | 一个运行的全貌：生命周期、研究阶段、计数器、工作区链接 |
+| **想法** 💡 | 当前实验 | 某次运行的研究目标、空白分析与生成的假说 |
+| **研究树** 🌳 | 当前实验 | 完整的 BFTS 实验树 — 点击节点查看详情 |
+| **运行监控** 📡 | 当前实验 | 实时管线进度，带 D3 树形可视化 |
+| **论文与结果** 📊 | 当前实验 | 只读的运行摘要：评审分数、可重现性链、发布谱系 |
+| **治理** 🏛️ | 评估与治理 | 只读的 RQGM 治理与得分谱系（仅受治理的运行） |
+| **PaperBench** 📚 | 评估与治理 | 导入论文、运行 PaperBench 复现作业、查看评分 |
+| **工作流** ⚡ | 系统 | 管线的 React Flow 可视化 DAG 编辑器 |
+| **运行配置** 🔧 | 系统 | 某次运行生效配置的只读浏览器 |
+| **配置工作室** 🎛️ | 系统 | 配置工作室：构建一份配置草稿并据此启动 |
+| **设置** ⚙️ | 系统 | 配置 LLM、API 密钥、SLURM、容器、VLM 和检索后端 |
 
 ---
 
 ## 第 4 步：创建你的第一个实验（向导）
 
-点击侧边栏中的 **"New Experiment"**（或主页上的蓝色 **"New Experiment"** 按钮）。
+点击侧边栏中的 **"新建实验"**（或主页上的蓝色 **"新建实验"** 按钮）。
 
-![实验向导](../../assets/images/zh/dashboard_wizard.png)
+![New Experiment 向导的第 1 步：Goal / Scope / Resources / Launch 步骤条，Chat Mode 与 Write MD 两个标签页，询问你想优化什么的对话开场白，以及下方的 Upload files 面板](../../assets/images/zh/dashboard_wizard.png)
 
-向导将引导你完成 4 个步骤：
+向导将引导你完成 4 个步骤 —— **Goal**、**Scope**、**Resources**、**Launch**，顶部的步骤条显示当前位置。
 
-### 步骤 1/4 — 选择模式
+### 步骤 1/4 — Goal（目标）
+
+两个模式标签页决定你如何描述实验：
 
 | 模式 | 适用场景 |
 |------|----------|
-| **Chat** | 适合初学者。用自然语言描述你的需求，AI 将帮助你将其细化为正式的实验。 |
+| **Chat Mode** | 适合初学者。用自然语言描述你的需求，AI 将帮助你将其细化为正式的实验。 |
 | **Write MD** | 直接用 Markdown 编写或粘贴你的实验描述。 |
-| **Upload** | 从你的电脑上传已有的 `experiment.md` 文件。 |
 
-**推荐初学者使用 Chat 模式。** 只需输入你想优化或研究的内容，例如：
+无论选哪个标签页，下方的 **Upload files** 面板都可以上传已有的 `experiment.md` 以及它需要的其他实验文件。
+
+**推荐初学者使用 Chat Mode。** 只需输入你想优化或研究的内容，例如：
 
 > "我想找到在我的笔记本电脑上运行实验的最快方法"
 
@@ -173,14 +212,16 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 ### 步骤 2/4 — 范围
 
-配置实验的规模：
+配置实验的规模。这一步由预设驱动 —— 共五个预设（Quick / Standard / Thorough / Deep / Exhaustive）——
+打开时停在 **Standard**：深度 5、30 个节点、80 步 ReAct、4 个 worker、120 分钟。一旦编辑任意字段，
+该步骤就切换为手动。下表的首次运行建议值即 **Quick** 预设的取值。
 
 | 设置 | 控制内容 | 首次运行建议值 |
 |------|----------|----------------|
 | **Max Depth** | 搜索树的最大深度 | 3 |
 | **Max Nodes** | 运行的总实验数 | 5–10 |
-| **Max ReAct Steps** | 每个实验的推理步数 | 80（默认值） |
-| **Timeout** | 每个实验的超时时间（秒） | 7200（默认值） |
+| **Max ReAct Steps** | 每个实验的推理步数 | 20 |
+| **Timeout (min)** | 每个实验的超时时间（分钟） | 30 |
 | **Parallel Workers** | 同时运行的实验数 | 2–4 |
 
 > **提示：** 首次运行建议从小规模开始（5–10 个节点，深度 3）。之后可以随时增加。
@@ -195,7 +236,7 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 **Paper Review（v0.6.0+）** — 选择论文的审阅方式：
 
-- **Rubric** — 从内置 16 种中选择（`neurips` 默认且 v2 兼容，加上 `iclr`、`icml`、`cvpr`、`acl`、`sc`、`osdi`、`usenix_security`、`stoc`、`siggraph`、`chi`、`icra`、`nature`、`journal_generic`、`workshop`、`generic_conference`）。在 `ari-core/config/reviewer_rubrics/` 放入你自己的 YAML 即可扩展任何会议。
+- **Rubric** — 从内置 23 种中选择（`neurips` 默认且 v2 兼容，加上 `iclr`、`icml`、`cvpr`、`acl`、`sc`、`chi`、`usenix_security`、`osdi`、`stoc`、`icra`、`siggraph`、`nature`、`aer`、`econometrica`、`qje`、`apsr`、`ahr`、`philreview`、`pmla`、`journal_generic`、`workshop`、`generic_conference`）。在 `ari-core/config/reviewer_rubrics/` 放入你自己的 YAML 即可扩展任何会议。
 - **Few-shot mode** — `static`（使用内置示例）或 `dynamic`（Phase 2 OpenReview 检索；评审封闭的会议会回退到 static）。
 - **Reviewer ensemble (N)** — 独立审稿人数。N>1 时还会运行 Area Chair 元审稿。
 - **Reflection rounds** — 每个审稿人 self-reflection 迭代次数（Nature Ablation 默认 5）。
@@ -216,51 +257,54 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 ## 第 5 步：监控实验
 
-启动后，**Monitor** 页面会显示实时进度：
+启动后，**运行监控** 页面会显示实时进度：
 
-![监控页面](../../assets/images/zh/dashboard_monitor.png)
+![Pipeline Monitor：Starting、Idea、BFTS、Paper、Review 的阶段条（当前阶段高亮），实验控制按钮，实验配置卡片，节点数与最优指标计数器，以及系统资源面板](../../assets/images/zh/dashboard_monitor.png)
 
-- **管线阶段** 显示在顶部（Idea → BFTS → Paper → Review）
-- **节点树** 以颜色编码显示实验进度
-- **日志** 实时输出
+- **管线阶段** 显示在顶部（Starting → Idea → BFTS → Paper → Review），当前阶段被高亮
+- **Experiment control** 用于启动与停止各阶段（resume、论文生成、评审 / 验证、GPU 监视器）
+- 下方的 **计数器、系统资源与日志** 实时刷新
 
 ### 实验树
 
-点击侧边栏中的 **Tree** 查看完整的交互式实验树：
+点击侧边栏中的 **研究树** 打开 run 显式的实验树（`#/tree2?run=<run_id>`）：左侧是 D3 画布，右侧是可用键盘操作的节点表格：
 
-![树视图](../../assets/images/zh/dashboard_tree.png)
+![Experiment Tree 工作区：左侧是按 label 着色的节点卡片组成的 D3 节点图，右侧是逐行列出节点 id 与状态的可展开节点表格，再右侧是等待选中节点的检查器列](../../assets/images/zh/dashboard_tree.png)
 
-- **绿色** 节点 = 成功
-- **红色** 节点 = 失败
-- **蓝色** 节点 = 运行中
-- **灰色** 节点 = 等待中
+卡片颜色编码的是节点的 **label**，而不是状态：
 
-点击任意节点查看详情：
+| 颜色 | label |
+|------|-------|
+| **蓝色** | `draft` —— 起始的根尝试 |
+| **紫色** | `improve` |
+| **琥珀色** | `ablation` |
+| **红色** | `debug` |
+| **绿色** | `validation` |
 
-| 标签页 | 显示内容 |
-|--------|----------|
-| **Overview** | 状态、指标、执行时间、评估摘要 |
-| **Trace** | AI 智能体执行的每一个工具调用（逐步详情） |
-| **Code** | 该实验生成的源代码 |
-| **Output** | 任务标准输出、基准测试结果 |
+状态是卡片内单独的小徽章（绿色 `success` / 红色 `failed` / 进行中为蓝色），也显示在侧表每一行的文字里。
+
+选中一个节点（点击，或在表格中按 <kbd>Enter</kbd>）会把 `?node=` 写入 URL，因此地址栏就是指向该节点的可分享链接。右侧检视器随后显示该节点的 status / label / depth、带 utility policy 哈希的指标、节点报告（做了什么、相对父节点的差异、评估者摘要），以及通往 Config 与 Governance 的链接。
+
+要查看智能体逐步的调用轨迹、生成的源代码和原始记忆记录，请打开 legacy 树页面 `#/tree` —— 它的详情面板保留了 **MCP Trace**、**Code**、**Memory**、**Access** 和 **Report** 标签页。
 
 ---
 
 ## 第 6 步：查看结果
 
-实验完成后，前往 **Results** 页面：
+实验完成后，点击侧边栏中的 **论文与结果**。该入口打开的是只读的运行摘要（`#/results2?run=<run_id>`）：
 
-![结果页面](../../assets/images/zh/dashboard_results.png)
+![Results 工作区：结果摘要卡片，含 paper .tex 与 .pdf 链接、accept 判定、rubric 以及各评价轴的评审分数；可重现性（ORS 链）卡片；右侧的 EAR 发布谱系卡片与深链卡片](../../assets/images/zh/dashboard_results.png)
 
 在这里你可以：
 
-- **编辑论文** — 使用内置类 Overleaf LaTeX 编辑器编辑 `.tex`/`.bib` 文件、编译并内嵌预览 PDF
-- 查看自动同行评审的评分和反馈
-- 浏览 Experiment Artifact Repository (EAR)（代码、数据、可重现性元数据）
-- 检查可重现性验证报告
-- 下载所有产物
+- 阅读自动同行评审：录用判定、所依据的 rubric，以及每个评价轴的分数
+- 查看可重现性（ORS）链 —— 通过率、通过的 leaf 数量以及判定所用的 judge 模型
+- 以徽章链的形式跟踪 EAR 发布谱系
+- 直接跳转到同一运行的 Tree 与 Config 工作区
 
-输出文件保存在 `./checkpoints/<run_id>/` 中：
+**编辑论文在 legacy Results 页面进行。** 通过 *完整论文工作区* 深链（或直接打开 `#/results`）即可使用类 Overleaf 的 LaTeX 编辑器（编辑 `.tex`/`.bib`、编译、内嵌预览 PDF）、完整的 Experiment Artifact Repository (EAR) 浏览器，以及所有 EAR 变更操作：curate、publish、promote。这个分工在工作区页面上有明确说明，因此你不会误改。
+
+输出文件保存在 `./workspace/checkpoints/<run_id>/` 中：
 
 | 文件 | 描述 |
 |------|------|
@@ -271,7 +315,9 @@ AI 会提出澄清性问题，并自动生成实验文件。
 | `science_data.json` | 清洗后的数据（无内部术语） |
 | `figures_manifest.json` | 生成的图表 |
 | `ear/` | Experiment Artifact Repository（代码、数据、日志、可重现性元数据） |
-| `experiments/` | 各节点的源代码和输出 |
+
+各节点的工作目录**不在**检查点里面。每个节点的临时目录、生成的源代码与输出位于
+`./workspace/experiments/<run_id>/<node_id>/` —— 与 `checkpoints/` 平级，因此只复制检查点目录会把它们落下。
 
 ---
 
@@ -279,11 +325,13 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 打开 **Settings** 页面自定义 ARI：
 
-![设置页面](../../assets/images/zh/dashboard_settings.png)
+![Settings 页面：Essentials 分组包含仪表盘语言下拉菜单、Developer Mode 开关与 LLM 后端字段，其下的 Project 分组包含论文检索与 VLM 图表审阅](../../assets/images/zh/dashboard_settings.png)
+
+页面被分成若干可折叠分组。**Essentials** 放的是第一天就会用到的设置；**Project** 及其下方的分组放的是按项目区分的部分。
 
 ### 仪表盘语言
 
-通过顶部的语言下拉菜单切换仪表盘语言（英文、日文、中文）。
+通过 **Essentials** 顶部的语言下拉菜单切换仪表盘语言（英文、日文、中文）。紧邻其下的是 **Developer Mode** 开关：默认关闭，打开后会显示原始 JSON、调试转储等仅供开发者使用的内容。
 
 ### LLM 后端
 
@@ -291,8 +339,9 @@ AI 会提出澄清性问题，并自动生成实验文件。
 - 设置默认模型和温度参数
 - 输入你的 API 密钥（本地存储，在界面中以掩码显示）
 
-### 论文搜索
+### 论文检索（Paper Retrieval）
 
+- 选择论文搜索后端：Semantic Scholar（默认）、arXiv 或 AlphaXiv 三选一
 - 可选择设置 Semantic Scholar API 密钥以获取更高的请求限额
 
 ### SLURM / HPC
@@ -308,41 +357,42 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 ### VLM 图表审阅
 
-- 设置图表质量审阅的 VLM 模型（默认：`openai/gpt-4o`）
-- 配置审阅阈值和最大迭代次数
+- 设置图表质量审阅的 VLM 模型（默认：`openai/gpt-4o`）—— 这张卡片里只有这个模型下拉菜单，别无他物
 
-### 检索后端
-
-- 选择论文搜索后端：Semantic Scholar（默认）、AlphaXiv 或 both（并行）
+审阅阈值和最大迭代次数**不在**本页：它们是向导中的字段（步骤 3 —— 资源）。而管线自身的图表回路
+则固定写在 `workflow.yaml` 中：阈值 0.7，最多 2 次重新生成轮次。
 
 ### 按阶段模型覆盖
 
-为不同的管线阶段使用不同的模型（例如，用较便宜的模型进行创意生成，用更好的模型撰写论文）。
+为不同的管线阶段使用不同的模型（例如，用较便宜的模型进行创意生成，用更好的模型撰写论文）。这些设置位于
+**新建实验** 向导中（步骤 3 —— 资源），而不在 Settings 页面上。
 
 ---
 
 ## 其他仪表盘页面
 
-### Ideas 页面
+### Idea 页面
 
-![Ideas 页面](../../assets/images/zh/dashboard_ideas.png)
+![Ideas 工作区：左侧是研究目标、空白分析与主要指标卡片，右侧是生成的各条假说，每条都带新颖性、可行性与总体分数以及可折叠的实验计划](../../assets/images/zh/dashboard_ideas.png)
 
-查看 VirSci 生成的研究假说，包含新颖性和可行性评分。可查看实验配置、研究目标和 BFTS 节点评估。
+**想法** 入口打开的是 run 显式的想法工作区（`#/ideas2?run=<run_id>`）：研究目标、空白分析、附带选取理由的主要指标，以及每一条 VirSci 生成的假说及其新颖性、可行性与总体分数和可折叠的实验计划。研究目标面板只对 *活动* 检查点提供，因此当页面这样提示时，请先在侧边栏把该运行设为活动。
 
 ### Workflow 编辑器
 
-![Workflow 页面](../../assets/images/zh/dashboard_workflow.png)
+![Workflow 编辑器：Save、Reload、Add Node 与 Reset to default 工具栏，正在编辑的 workflow.yaml 路径，由带阶段标签的阶段节点组成的 React Flow 画布，以及下方带 Source 与 Edit 按钮的阶段列表](../../assets/images/zh/dashboard_workflow.png)
 
-BFTS 后管线的 React Flow 可视化 DAG 编辑器。可拖动节点、绘制连线、启用/禁用阶段并分配技能。泳道布局区分 BFTS 和 Paper 阶段。更改将保存为 `workflow.yaml`。
+用于编辑活动检查点管线的 React Flow 可视化 DAG 编辑器 —— 工具栏下方打印的路径是被*读取*的那个 `workflow.yaml`。可拖动节点、绘制连线、启用/禁用阶段并分配技能；每个阶段也在画布下方列出，带 **Source** 与 **Edit** 按钮。节点按阶段（`bfts` / `paper`）打标签。
+
+**Save 绝不会写入所显示的那个路径。** 每一次工作流写入都是向活动检查点的写时复制（copy-on-write）：若 `{checkpoint}/workflow.yaml` 尚不存在，会先把内置的 `ari-core/config/workflow.yaml` 复制过去，你的修改落在那份副本上。内置文件永远不会被写入；而在没有活动检查点时，写入会被直接拒绝。
 
 ---
 
 ## 仪表盘架构与 API
 
-仪表盘是一个由 Python asyncio HTTP 服务器提供服务的 React/TypeScript SPA（使用 Vite 构建）。它由两个组件组成：
+仪表盘是一个由 Python 标准库 HTTP 服务器提供服务的 React/TypeScript SPA（使用 Vite 构建）。它由两个组件组成：
 
-- **HTTP 服务器** (`ari/viz/server.py`): REST API + SSE 日志流（在主端口上）
-- **WebSocket 服务器**: 实时树更新（端口+1，例如仪表盘在 8765 时为 8766）
+- **HTTP 服务器** (`ari/viz/server.py`): 基于线程的 `http.server`（`ThreadingHTTPServer`）—— REST API + SSE 日志流（在主端口上）。包括长时间保持的 SSE 流在内，每个请求在其整个生命周期内都会独占一个线程；不存在可供慢处理程序让出控制权的事件循环。
+- **WebSocket 服务器**: 实时树更新（端口+1，例如仪表盘在 8765 时为 8766）—— 唯一运行在 asyncio 上的监听器（通过 `websockets` 包）。
 
 ### API 端点
 
@@ -352,10 +402,10 @@ BFTS 后管线的 React Flow 可视化 DAG 编辑器。可拖动节点、绘制�
 
 | 端点 | 方法 | 描述 |
 |------|------|------|
-| `/state` | GET | 完整的应用状态：当前阶段（idle/idea/bfts/paper/review）、节点数、实验配置、成本数据、LLM 模型信息 |
-| `/api/logs` | GET (SSE) | 来自 `ari.log` 和 `cost_trace.jsonl` 的实时日志 Server-Sent Events 流 |
+| `/state` | GET | 完整的应用状态：当前阶段（`idle`/`starting`/`bfts`/`paper`/`review` —— 没有 `idea` 这个取值；阶段由标记文件推导，因此只要 `idea.json` 存在就已报告为 `bfts`）、节点数、实验配置、成本数据、LLM 模型信息 |
+| `/api/logs` | GET (SSE) | 来自本次运行的 `ari_run_*.log` 和 `cost_trace.jsonl` 的实时日志 Server-Sent Events 流。一个处理程序 tail 约 10 分钟后结束该流 —— 由客户端重新连接 |
 | `/memory/<node_id>` | GET | 节点的内存存储条目（工具调用追踪、指标、父链） |
-| `/codefile?path=<path>` | GET | 读取检查点目录中的文件（限制在检查点范围内，最大 2MB） |
+| `/codefile?path=<path>` | GET | 读取检查点目录中的文件（限制在检查点范围内，最大 20MB） |
 
 #### Experiment Management
 
@@ -379,12 +429,12 @@ BFTS 后管线的 React Flow 可视化 DAG 编辑器。可拖动节点、绘制�
 |------|------|------|
 | `/api/settings` | GET | 当前设置：LLM 提供商/模型、Ollama 主机、SLURM 配置、MCP 技能 |
 | `/api/settings` | POST | 将设置保存到 `{checkpoint}/settings.json` 和 `.env`（需要选中项目）。请求体：`{llm_model, llm_provider, ollama_host, slurm_partition, ...}` |
-| `/api/env-keys` | GET | 来自 `.env` 文件的所有 API 密钥及来源信息 |
+| `/api/env-keys` | GET | 在 `.env` 链中找到的密钥*名称*，以及各自来自哪个文件。每个非空值都会被替换为 `***configured***`，返回体带有 `redacted: true` —— 密钥值绝不通过 HTTP 提供 |
 | `/api/env-keys` | POST | 保存单个 API 密钥：`{key, value}` |
 | `/api/profiles` | GET | 可用的环境配置文件（laptop, hpc, cloud） |
 | `/api/models` | GET | 可用的 LLM 提供商和模型 |
 | `/api/workflow` | GET | 包含管线阶段和技能元数据的完整 workflow.yaml |
-| `/api/workflow` | POST | 保存修改后的 workflow.yaml：`{path, pipeline}` |
+| `/api/workflow` | POST | 保存修改后的工作流：`{path, pipeline}`。`path` 指的是作为基底被读取的文件；写入始终落到 `{checkpoint}/workflow.yaml`，没有活动检查点时以 400 拒绝 |
 | `/api/skills` | GET | 列出可用的 MCP 技能及其描述 |
 | `/api/skill/<name>` | GET | 技能详情：README、SKILL.md、server.py 源码 |
 
@@ -395,7 +445,7 @@ BFTS 后管线的 React Flow 可视化 DAG 编辑器。可拖动节点、绘制�
 | `/api/chat-goal` | POST | 用于实验目标细化的多轮 LLM 对话：`{messages, context_md}` |
 | `/api/config/generate` | POST | 从自然语言目标生成 experiment.md：`{goal}` |
 | `/api/ssh/test` | POST | 测试 SSH 连接：`{ssh_host, ssh_port, ssh_user, ssh_key, ssh_path}` |
-| `/api/scheduler/detect` | GET | 自动检测计算环境（SLURM, PBS, LSF, Kubernetes） |
+| `/api/scheduler/detect` | GET | 自动检测计算环境（SLURM, PBS, LSF, SGE, Kubernetes） |
 | `/api/slurm/partitions` | GET | 可用的 SLURM 分区 |
 | `/api/ollama-resources` | GET | GPU 信息（nvidia-smi）、可用的 Ollama 模型 |
 | `/api/gpu-monitor` | GET/POST | 启动/停止 GPU 监控守护进程 |
@@ -431,23 +481,24 @@ ari run experiment.md --profile hpc
 ari run experiment.md --config ari-core/config/workflow.yaml
 
 # 恢复中断的运行
-ari resume ./checkpoints/20260328_matrix_opt/
+ari resume ./workspace/checkpoints/20260328_matrix_opt/
 
 # 仅运行论文管线（实验已完成）
-ari paper ./checkpoints/20260328_matrix_opt/
+ari paper ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 ### 监控与结果
 
 ```bash
 # 显示节点树和状态
-ari status ./checkpoints/20260328_matrix_opt/
+ari status ./workspace/checkpoints/20260328_matrix_opt/
 
-# 列出所有项目
-ari projects
+# 列出所有项目。以下两条命令都默认使用 ./checkpoints 而非
+# ./workspace/checkpoints，因此请显式传入基准目录。
+ari projects --checkpoints ./workspace/checkpoints
 
 # 显示详细结果（树 + 评审）
-ari show 20260328_matrix_opt
+ari show 20260328_matrix_opt --checkpoints-dir ./workspace/checkpoints
 
 # 列出可用工具
 ari skills-list
@@ -455,29 +506,31 @@ ari skills-list
 
 ### 配置
 
+`ari settings` 读取并重写一份配置 YAML —— 未传 `--config` 时即 `./config.yaml`。若该文件不存在，它会以退出码 1 结束；它绝不会创建配置文件。
+
 ```bash
 # 查看当前设置
-ari settings
+ari settings --config ./config.yaml
 
 # 更改模型
-ari settings --model openai/gpt-4o
+ari settings --config ./config.yaml --model openai/gpt-4o
 
-# 设置 SLURM 选项
-ari settings --partition gpu --cpus 64 --mem 128
+# 设置 SLURM 选项（写在 `resources:` 之下）
+ari settings --config ./config.yaml --partition gpu --cpus 64 --mem 128
 ```
 
 ### 环境变量
 
 | 变量 | 描述 | 默认值 |
 |------|------|--------|
-| `ARI_BACKEND` | LLM 后端：`ollama` / `openai` / `anthropic` | `ollama` |
+| `ARI_BACKEND` | LLM 后端：`ollama` / `openai` / `anthropic`（别名 `claude`） / `claude_code` / `cli-shim` | `ollama` |
 | `ARI_MODEL` | 模型名称（例如 `qwen3:8b`、`openai/gpt-4o`） | `qwen3:8b` |
 | `OPENAI_API_KEY` | OpenAI API 密钥 | -- |
 | `ANTHROPIC_API_KEY` | Anthropic API 密钥 | -- |
 | `OLLAMA_HOST` | Ollama 服务器 URL | `http://localhost:11434` |
 | `ARI_MAX_NODES` | 最大实验总数 | `50` |
 | `ARI_PARALLEL` | 并行实验数 | `4` |
-| `ARI_MAX_REACT` | 每个节点的最大 ReAct 步数 | `80` |
+| `ARI_MAX_REACT` | 每个节点的最大 ReAct 步数 | `20` |
 | `ARI_TIMEOUT_NODE` | 每个节点的超时时间（秒） | `7200` |
 
 ---
@@ -504,9 +557,9 @@ ari settings --partition gpu --cpus 64 --mem 128
 
 | 问题 | 解决方案 |
 |------|----------|
-| 所有节点都失败了 | 打开 Tree 视图，点击失败的节点，查看 Trace 标签页 |
-| 没有结果 | 检查 Monitor 页面 — 实验可能仍在运行中 |
-| 运行被中断 | 前往 Experiments 页面，找到该运行，点击 Resume |
+| 所有节点都失败了 | 打开研究树，点击失败的节点，再转到 `#/tree` 查看 MCP Trace 标签页 |
+| 没有结果 | 检查运行监控页面 — 实验可能仍在运行中 |
+| 运行被中断 | 在侧边栏把该运行设为活动，打开运行监控，点击 **Resume Experiment**（未在运行时才显示） |
 
 ### 论文生成问题
 
@@ -527,7 +580,7 @@ git clone https://github.com/kotama7/ARI.git && cd ARI && bash setup.sh
 ollama pull qwen3:8b && ollama serve &
 export ARI_BACKEND=ollama ARI_MODEL=qwen3:8b
 
-# 3. 启动所有服务（Letta + registry + GUI 在 :8765）
+# 3. 启动所有服务（Letta + registry + CLI shim + GUI 在 :8765）
 ./start.sh
 # 打开 http://localhost:8765 并使用向导创建你的实验！
 # 停止：./shutdown.sh

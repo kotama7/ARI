@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from pydantic import ConfigDict
 from typing_extensions import override
@@ -38,8 +38,7 @@ from nanoeval.solvers.computer_tasks.code_execution_interface import (
     NetworkMode,
     RuntimeConfig,
 )
-from nanoeval.solvers.computer_tasks.task import Grade
-from paperbench.monitor.monitor import BasicMonitor, MonitorResult
+from paperbench.monitor.monitor import BasicMonitor
 from paperbench.nano.structs import (
     JudgeConfig,
     PaperBenchGrade,
@@ -196,11 +195,9 @@ def make_local_pbtask(
     failed with "reproduce.sh missing" — the SC41406 BasicAgent
     dogfood surfaced this; see CHANGELOG v0.7.4.
 
-    Stage 3 grading scope adapts on the JUDGE call:
-    ``server.grade_with_simplejudge`` auto-enables ``code_only`` when
-    no ``reproduce.log`` is present (commit caae252) — so a
-    rollout-only run still scores correctly against Code Development
-    leaves without requiring this Stage 1 flag to be flipped.
+    Stage 3 requires a verified successful reproduction record. A rollout-only
+    directory is deliberately not scored; callers that want a code-only study
+    must still execute Stage 2 and pass ``code_only=True`` explicitly.
     """
     if not run_dir:
         run_dir = work_dir

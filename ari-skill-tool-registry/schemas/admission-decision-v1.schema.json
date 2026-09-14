@@ -1,0 +1,64 @@
+{
+  "$id": "https://ari.dev/schemas/tool-registry/admission-decision-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Policy result kept separate from a descriptor's execution identity.",
+  "properties": {
+    "evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Digest",
+      "type": "string"
+    },
+    "level": {
+      "enum": [
+        "discovered",
+        "callable",
+        "reproducible",
+        "scientifically_admitted"
+      ],
+      "title": "Level",
+      "type": "string"
+    },
+    "policy_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Digest",
+      "type": "string"
+    },
+    "reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Reasons",
+      "type": "array"
+    },
+    "required_level": {
+      "default": "callable",
+      "enum": [
+        "discovered",
+        "callable",
+        "reproducible",
+        "scientifically_admitted"
+      ],
+      "title": "Required Level",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.admission-decision/v1",
+      "default": "ari.admission-decision/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tool_ref": {
+      "title": "Tool Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tool_ref",
+    "level",
+    "policy_digest",
+    "evidence_digest"
+  ],
+  "title": "ARI Admission Decision v1",
+  "type": "object"
+}

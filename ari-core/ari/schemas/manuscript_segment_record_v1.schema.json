@@ -1,0 +1,208 @@
+{
+  "$defs": {
+    "ManuscriptArtifactRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "item_id": {
+          "title": "Item Id",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "maxProperties": 128,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "relative_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Path"
+        },
+        "schema_version": {
+          "const": "ari.manuscript-artifact-ref/v1",
+          "default": "ari.manuscript-artifact-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size Bytes"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "status": {
+          "default": "present",
+          "enum": [
+            "present",
+            "missing",
+            "mismatch",
+            "unhashed",
+            "stale",
+            "invalid"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "kind"
+      ],
+      "title": "ManuscriptArtifactRefV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable transaction record for one selected pipeline segment set.",
+  "properties": {
+    "blocking_reason": {
+      "default": "",
+      "title": "Blocking Reason",
+      "type": "string"
+    },
+    "disabled_stages": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1000,
+      "title": "Disabled Stages",
+      "type": "array"
+    },
+    "enabled_stages": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1000,
+      "title": "Enabled Stages",
+      "type": "array"
+    },
+    "execution_index": {
+      "maximum": 100000,
+      "minimum": 0,
+      "title": "Execution Index",
+      "type": "integer"
+    },
+    "input_artifacts": {
+      "items": {
+        "$ref": "#/$defs/ManuscriptArtifactRefV1"
+      },
+      "maxItems": 100000,
+      "title": "Input Artifacts",
+      "type": "array"
+    },
+    "invocation_id": {
+      "title": "Invocation Id",
+      "type": "string"
+    },
+    "output_artifacts": {
+      "items": {
+        "$ref": "#/$defs/ManuscriptArtifactRefV1"
+      },
+      "maxItems": 100000,
+      "title": "Output Artifacts",
+      "type": "array"
+    },
+    "record_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Record Digest",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-segment-record/v1",
+      "default": "ari.manuscript-segment-record/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "segments": {
+      "items": {
+        "enum": [
+          "evidence",
+          "authoring",
+          "verification"
+        ],
+        "type": "string"
+      },
+      "maxItems": 3,
+      "minItems": 1,
+      "title": "Segments",
+      "type": "array"
+    },
+    "source_attempt_id": {
+      "title": "Source Attempt Id",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "workflow_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Workflow Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "source_attempt_id",
+    "invocation_id",
+    "execution_index",
+    "segments",
+    "workflow_digest",
+    "status",
+    "record_digest"
+  ],
+  "title": "ManuscriptSegmentRecordV1",
+  "type": "object"
+}

@@ -1,0 +1,9 @@
+{
+  "schema_version": "ari.manuscript-fixture/v1",
+  "fixture_id": "mc_rqgm_assured",
+  "origin": "synthetic",
+  "generator_version": "manuscript-fixture-factory-v1",
+  "measurement_disclaimer": "Synthetic values and attestations are test data, never authentic certification.",
+  "properties": {"frontiers": ["scientific_frontier", "debug_frontier", "uncertified_frontier"], "screen_and_certify": true, "target_mismatch": true},
+  "expected_labels": ["rqgm", "kca", "high-score-nonpublishable", "certification-target-mismatch"]
+}

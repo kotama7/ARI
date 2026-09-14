@@ -11,6 +11,7 @@ are skipped on CI by default.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -282,49 +283,15 @@ def test_load_dotenv_file_handles_comments_quotes_and_empty():
         path.unlink()
 
 
-def test_reproduce_submission_signature_includes_tarball_and_salvage():
-    """Regression for the (b) tarball capture and (a) salvage retries
-    Stage 2 fixes: both flags must be on the bridge surface so a
-    caller (wizard / CLI / external orchestrator) can opt in/out.
-    """
+def test_reproduce_submission_signature_includes_tarball_not_unsafe_salvage():
+    """Tar capture remains, while source-mutating salvage is absent."""
     import inspect
     sig = inspect.signature(B.reproduce_submission)
     params = set(sig.parameters)
-    for required in (
-        "capture_tarball", "tarball_dir",
-        "salvage_retries", "retry_threshold_sec",
-    ):
+    for required in ("capture_tarball", "tarball_dir"):
         assert required in params, f"reproduce_submission missing {required!r}"
-    # Defaults: tarball ON, salvage OFF (preserves existing dogfood
-    # behaviour and only adds work when caller asks).
     assert sig.parameters["capture_tarball"].default is True
-    assert sig.parameters["salvage_retries"].default == 0
-
-
-def test_install_and_restore_salvage_wrapper_roundtrip(tmp_path):
-    """The salvage wrapper must wrap reproduce.sh with a venv prelude
-    AND restore the original byte-for-byte on cleanup."""
-    sub = tmp_path / "sub"
-    sub.mkdir()
-    repro = sub / "reproduce.sh"
-    original_body = "#!/usr/bin/env bash\necho original\n"
-    repro.write_text(original_body)
-    repro.chmod(0o755)
-
-    B._install_salvage_wrapper(sub)
-    wrapped = repro.read_text()
-    assert "ari-skill-paper-re salvage retry" in wrapped
-    assert ".salvage_venv" in wrapped
-    assert "original reproduce.sh body" in wrapped
-    assert wrapped.endswith(original_body)
-    # Backup preserved exactly
-    backup = repro.with_suffix(repro.suffix + B._SALVAGE_WRAPPER_SUFFIX)
-    assert backup.is_file()
-    assert backup.read_text() == original_body
-
-    B._restore_salvage_wrapper(sub)
-    assert repro.read_text() == original_body
-    assert not backup.is_file()
+    assert "salvage_retries" not in params
 
 
 def test_write_executed_tarball_round_trip(tmp_path):
@@ -476,13 +443,13 @@ def test_env_block_for_slurm_describes_module_load_path():
     env = {
         "kind": "slurm",
         "has_apt": False, "has_sudo": False, "has_module": True,
-        "slurm_partition": "ai-l40s",
-        "module_path": "/cloud_opt/modulefiles/ai-l40s:...",
+        "slurm_partition": "<partition>",
+        "module_path": "<modulepath><partition>:...",
     }
     block = B._build_truthful_env_block(env)
     assert "NO root access" in block
     assert "SLURM" in block or "HPC" in block
-    assert "ai-l40s" in block  # partition surfaced
+    assert "<partition>" in block  # partition surfaced
     assert "module avail" in block  # the exploration instruction
     assert "module load" in block  # generic load command
     # The vendor's misleading line MUST be entirely replaced (we are
@@ -899,12 +866,12 @@ def test_parse_module_names_keeps_namespaced_skips_builtins():
     avail = (
         "------------------------ /usr/share/Modules/modulefiles ------------------------\n"
         "dot  module-git  module-info  modules  null  use.own\n"
-        "------------------------- /cloud_opt/misc/modulefiles --------------------------\n"
-        "system/a100  system/ai-l40s <L>  system/qc-a100  mpi/mpich-x86_64\n"
+        "------------------------- <modulepath> --------------------------\n"
+        "system/<module>  system/<partition> <L>  system/<partition>  mpi/mpich-x86_64\n"
     )
     names = B._parse_module_names(avail)
-    assert "system/ai-l40s" in names  # <L> marker stripped
-    assert "system/a100" in names
+    assert "system/<partition>" in names  # <L> marker stripped
+    assert "system/<module>" in names
     assert "mpi/mpich-x86_64" in names
     assert "dot" not in names and "null" not in names  # builtins skipped
     assert all("/" in n for n in names)
@@ -916,16 +883,16 @@ def test_expand_modulepath_tier2_reveals_hidden_modules_read_only():
     The expansion must use ONLY `module show` / `module avail` — never
     `module load` (read-only philosophy)."""
     avail = (
-        "---- /cloud_opt/misc/modulefiles ----\n"
-        "system/ai-l40s\n"
+        "---- <modulepath> ----\n"
+        "system/<partition>\n"
     )
     calls: list[str] = []
 
     def fake_run(cmd: str) -> str:
         calls.append(cmd)
-        if cmd.startswith("module show system/ai-l40s"):
+        if cmd.startswith("module show system/<partition>"):
             return (
-                "/cloud_opt/misc/modulefiles/system/ai-l40s:\n"
+                "<modulepath><partition>:\n"
                 "conflict\tsystem\n"
                 "prepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
             )
@@ -940,7 +907,7 @@ def test_expand_modulepath_tier2_reveals_hidden_modules_read_only():
 
     out = B._expand_modulepath_tier2(fake_run, avail)
     assert "nvhpc/25.7" in out  # tier-2 module surfaced
-    assert "module load system/ai-l40s" in out  # tells agent the entry
+    assert "module load system/<partition>" in out  # tells agent the entry
     # Read-only invariant: NO `module load` was ever issued.
     assert not any("module load" in c for c in calls), \
         "tier-2 expansion must be read-only (no module load)"
@@ -952,11 +919,11 @@ def test_expand_modulepath_tier2_shared_dir_lists_all_entries_with_conflict_note
     arbitrary entry misled the agent into loading multiple conflicting
     entries (which unloaded everything). The output must list ALL entries
     that reach the shared dir AND warn they are mutually exclusive."""
-    avail = "---- /cloud_opt/misc/modulefiles ----\nsystem/a100  system/ai-l40s\n"
+    avail = "---- <modulepath> ----\nsystem/<module>  system/<partition>\n"
 
     def fake_run(cmd: str) -> str:
         # Both entries prepend the SAME shared hpc_sdk MODULEPATH.
-        if cmd.startswith("module show system/a100") or cmd.startswith("module show system/ai-l40s"):
+        if cmd.startswith("module show system/<module>") or cmd.startswith("module show system/<partition>"):
             return "x:\nprepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
         if "MODULEPATH=/opt/nvidia/hpc_sdk/modulefiles" in cmd and "module avail" in cmd:
             return "---- /opt/nvidia/hpc_sdk/modulefiles ----\nnvhpc/25.7\n"
@@ -965,7 +932,7 @@ def test_expand_modulepath_tier2_shared_dir_lists_all_entries_with_conflict_note
     out = B._expand_modulepath_tier2(fake_run, avail)
     assert "nvhpc/25.7" in out
     # Both reaching entries listed, not just the first.
-    assert "system/a100" in out and "system/ai-l40s" in out
+    assert "system/<module>" in out and "system/<partition>" in out
     # Mutual-exclusion guidance present so the agent loads only ONE.
     assert "MUTUALLY EXCLUSIVE" in out or "load exactly\n  ONE" in out or "load exactly ONE" in out
     # The shared dir is enumerated only once (not duplicated per entry).
@@ -1028,24 +995,6 @@ def test_env_patch_is_installed_on_vendor_get_instructions():
     )
 
 
-def test_resolve_container_image_alias():
-    """``pb-env`` / ``pb-reproducer`` short aliases must resolve to the
-    canonical ``image:latest`` tags that ``scripts/build_pb_images.sh``
-    produces. Anything else (URIs, paths, arbitrary tags, empty) must
-    pass through verbatim — operators rely on supplying their own
-    images for non-vendor workflows.
-    """
-    assert B._resolve_container_image_alias("pb-env") == "pb-env:latest"
-    assert B._resolve_container_image_alias("pb-reproducer") == "pb-reproducer:latest"
-    assert B._resolve_container_image_alias("") == ""
-    assert B._resolve_container_image_alias("ubuntu:24.04") == "ubuntu:24.04"
-    assert B._resolve_container_image_alias("docker://nvcr.io/nvidia/pytorch:24.05-py3") == \
-        "docker://nvcr.io/nvidia/pytorch:24.05-py3"
-    assert B._resolve_container_image_alias("/scratch/img.sif") == "/scratch/img.sif"
-    # Whitespace tolerance (operators pasting wizard input):
-    assert B._resolve_container_image_alias("  pb-env  ") == "pb-env:latest"
-
-
 def test_rollout_submission_signature_includes_blacklist_urls():
     """(g) regression: bridge surface exposes blacklist_urls so the
     wizard / CLI can forbid the agent from accessing the paper's own
@@ -1071,6 +1020,7 @@ def test_blacklist_urls_prepend_into_paper_md_smoke(tmp_path, monkeypatch):
         # Snapshot the values the bridge handed off.
         captured["env"] = dict(kwargs.get("env") or {})
         captured["paper_md_path"] = kwargs.get("paper_md_path")
+        captured["completer_config"] = kwargs.get("completer_config")
         return {"populated": False, "warnings": [], "files": []}
 
     # _replicator_agent is imported lazily inside rollout_submission.
@@ -1078,6 +1028,7 @@ def test_blacklist_urls_prepend_into_paper_md_smoke(tmp_path, monkeypatch):
     fake_mod = type(_sys)("_replicator_agent")
     fake_mod.run_replicator_agent = fake_run_replicator_agent  # type: ignore
     monkeypatch.setitem(_sys.modules, "_replicator_agent", fake_mod)
+    monkeypatch.setenv("ARI_LLM_API_BASE", "http://127.0.0.1:8911/v1")
 
     # Stub out the OpenAI Responses completer + LiteLLM completer so
     # the bridge does not try to import them for a non-OpenAI fake
@@ -1085,7 +1036,7 @@ def test_blacklist_urls_prepend_into_paper_md_smoke(tmp_path, monkeypatch):
     asyncio.run(B.rollout_submission(
         paper_md="hello paper body",
         work_dir=tmp_path / "wd",
-        agent_model="anthropic/test",  # routes through LiteLLM branch
+        agent_model="openai/codex-cli:gpt-5.6-sol",
         sandbox_kind="local",
         blacklist_urls=[
             "https://github.com/author/original-repo",
@@ -1098,6 +1049,10 @@ def test_blacklist_urls_prepend_into_paper_md_smoke(tmp_path, monkeypatch):
     assert "ARI_BLACKLIST_URLS" in env, env
     assert "github.com/author/original-repo" in env["ARI_BLACKLIST_URLS"]
     assert "huggingface.co/author/original-model" in env["ARI_BLACKLIST_URLS"]
+    config = captured["completer_config"]
+    assert config.api_base == "http://127.0.0.1:8911/v1"
+    assert config.tool_choice == "required"
+    assert config.extra_kwargs == {"allowed_openai_params": ["tool_choice"]}
 
     # paper_md on disk has the FORBIDDEN URLS prelude
     pm = Path(captured["paper_md_path"]).read_text()
@@ -1196,7 +1151,7 @@ def test_probe_env_on_computer_sudo_password_required_is_not_available():
         ("sudo -n true", 1, "sudo: a password is required\n"),  # unusable
         ("command -v docker", 127, ""),           # no docker
         ("command -v module", 0, "HASMOD\nMP=/cloud_opt/x"),
-        ("SLURM_JOB_ID", 0, "JID=123|PART=ai-l40s"),
+        ("SLURM_JOB_ID", 0, "JID=123|PART=<partition>"),
         ("/.dockerenv", 1, ""),
         ("nvidia-smi --query-gpu=name,compute_cap", 0, "NVIDIA L40S, 8.9, 1, 46068 MiB\n"),
     ])
@@ -1225,35 +1180,35 @@ def test_expand_modulepath_tier2_scopes_to_allocated_partition():
     """Now that the partition is auto-detected, the tier-2 expansion must
     scope to the allocated entry (system/<partition>) instead of dumping
     every GPU's stack (A100/H100/MI250/...) — that was prompt noise."""
-    avail = ("---- /cloud_opt/misc/modulefiles ----\n"
-             "system/a100  system/ai-l40s  system/qc-mi250  system/qc-gh200\n")
+    avail = ("---- <modulepath> ----\n"
+             "system/<module>  system/<partition>  system/<module>  system/<partition>\n")
 
     def fake_run(cmd):
-        if cmd.startswith("module show system/ai-l40s"):
+        if cmd.startswith("module show system/<partition>"):
             return "x:\nprepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
         if cmd.startswith("module show "):
             # other entries also prepend a (different) dir — should be skipped
-            return "x:\nprepend-path\tMODULEPATH /cloud_opt/modulefiles/other\n"
+            return "x:\nprepend-path\tMODULEPATH <modulepath>\n"
         if "MODULEPATH=/opt/nvidia/hpc_sdk/modulefiles" in cmd and "module avail" in cmd:
             return "---- /opt/nvidia/hpc_sdk/modulefiles ----\nnvhpc/25.7\n"
-        if "MODULEPATH=/cloud_opt/modulefiles/other" in cmd and "module avail" in cmd:
+        if "MODULEPATH=<modulepath>" in cmd and "module avail" in cmd:
             return "---- other ----\nshould_not_appear/1.0\n"
         return ""
 
-    out = B._expand_modulepath_tier2(fake_run, avail, partition="ai-l40s")
+    out = B._expand_modulepath_tier2(fake_run, avail, partition="<partition>")
     assert "nvhpc/25.7" in out                     # the allocated entry's stack
-    assert "system/ai-l40s" in out
+    assert "system/<partition>" in out
     assert "should_not_appear" not in out          # other partitions skipped
-    assert "system/a100" not in out and "system/qc-mi250" not in out
+    assert "system/<module>" not in out and "system/<module>" not in out
 
 
 def test_expand_modulepath_tier2_falls_back_when_partition_unmatched():
     """If no entry name matches the partition (naming mismatch), keep all
     entries rather than silently dropping everything."""
-    avail = "---- x ----\nsystem/a100\n"
+    avail = "---- x ----\nsystem/<module>\n"
 
     def fake_run(cmd):
-        if cmd.startswith("module show system/a100"):
+        if cmd.startswith("module show system/<module>"):
             return "x:\nprepend-path\tMODULEPATH /opt/nvidia/hpc_sdk/modulefiles\n"
         if "MODULEPATH=/opt/nvidia/hpc_sdk/modulefiles" in cmd and "module avail" in cmd:
             return "---- d ----\nnvhpc/25.7\n"
@@ -1308,6 +1263,51 @@ def test_resolve_submission_repo_root_descends_into_nested(tmp_path):
     assert resolved == repo.resolve(), (
         f"must descend to the nested self-contained repo; got {resolved}")
     assert (resolved / "src" / "main.cu").is_file()
+
+
+def test_resolve_submission_repo_root_prefers_fully_promoted_root(tmp_path):
+    """A complete promotion must be graded at the Phase-1 root; the nested
+    rollout tree can contain measurements from the agent's earlier smoke run.
+    """
+    work = tmp_path / "submission"
+    repo = work / "submission"
+    repo.mkdir(parents=True)
+    script = "cc kernel.c -o kernel\n./kernel > results.csv\n"
+    source = "int main(void) { return 0; }\n"
+    (repo / "reproduce.sh").write_text(script)
+    (repo / "kernel.c").write_text(source)
+    (repo / ".gitignore").write_text("results.csv\n")
+    (repo / "results.csv").write_text("stale\n")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "reproduce.sh", "kernel.c", ".gitignore"],
+        check=True,
+    )
+    (work / "reproduce.sh").write_text(script)
+    (work / "kernel.c").write_text(source)
+    (work / ".gitignore").write_text("results.csv\n")
+    (work / "results.csv").write_text("fresh\n")
+
+    assert B._resolve_submission_repo_root(work) == work.resolve()
+
+
+def test_resolve_submission_repo_root_rejects_partial_git_promotion(tmp_path):
+    work = tmp_path / "submission"
+    repo = work / "submission"
+    (repo / "src").mkdir(parents=True)
+    (repo / "reproduce.sh").write_text("python3 src/run.py\n")
+    (repo / "README.md").write_text("fixture\n")
+    (repo / "src" / "run.py").write_text("print('ok')\n")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "reproduce.sh", "README.md", "src/run.py"],
+        check=True,
+    )
+    # The script and one sibling match, but a tracked dependency is absent.
+    (work / "reproduce.sh").write_text("python3 src/run.py\n")
+    (work / "README.md").write_text("fixture\n")
+
+    assert B._resolve_submission_repo_root(work) == repo.resolve()
 
 
 def test_resolve_submission_repo_root_no_nesting_is_identity(tmp_path):

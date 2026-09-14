@@ -2,7 +2,7 @@
   "artifact": "hardcoded_prompt_inventory",
   "subtask": "036_inventory_hardcoded_prompts",
   "planning_date": "2026-07-01",
-  "repo_root": "/home/t-kotama/workplace/ARI",
+  "repo_root": "/home/<user>",
   "branch": "whole_refactoring",
   "read_only": true,
   "note": "Read-only inventory. Classifications and target_subtask values are RECOMMENDATIONS for subtasks 037-044 only; 036 changes no runtime code and no prompt bytes. Line/byte lengths for templates are exact (wc); inline-prompt lengths are approximate literal spans. prompt_id namespace is a PROPOSAL (see id_namespace_policy).",

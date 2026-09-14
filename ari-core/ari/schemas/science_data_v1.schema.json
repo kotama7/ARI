@@ -1,0 +1,1090 @@
+{
+  "$defs": {
+    "MeasurementRecordV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_digests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Artifact Digests",
+          "type": "array"
+        },
+        "execution_attempt_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Attempt Id"
+        },
+        "execution_identity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Identity"
+        },
+        "execution_status": {
+          "default": "unreported",
+          "enum": [
+            "completed",
+            "failed",
+            "timed_out",
+            "cancelled",
+            "unreported"
+          ],
+          "title": "Execution Status",
+          "type": "string"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "metric_id": {
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provenance"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "unit_status": {
+          "enum": [
+            "declared",
+            "missing"
+          ],
+          "title": "Unit Status",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "metric_id",
+        "value",
+        "unit_status"
+      ],
+      "title": "MeasurementRecordV1",
+      "type": "object"
+    },
+    "ScienceArtifactRefV1": {
+      "additionalProperties": false,
+      "description": "A content-addressed input or output under the run checkpoint.",
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.science-artifact-ref/v1",
+          "default": "ari.science-artifact-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "relative_path",
+        "digest",
+        "media_type",
+        "role",
+        "size_bytes"
+      ],
+      "title": "ScienceArtifactRefV1",
+      "type": "object"
+    },
+    "ScienceClaimEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/ScienceArtifactRefV1"
+          },
+          "maxItems": 10000,
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "figures": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Figures",
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Nodes",
+          "type": "array"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/ScienceEvidenceResultV1"
+          },
+          "maxItems": 100000,
+          "title": "Results",
+          "type": "array"
+        }
+      },
+      "title": "ScienceClaimEvidenceV1",
+      "type": "object"
+    },
+    "ScienceClaimV1": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "numeric_assertions": {
+          "items": {
+            "$ref": "#/$defs/ScienceNumericAssertionV1"
+          },
+          "maxItems": 10000,
+          "title": "Numeric Assertions",
+          "type": "array"
+        },
+        "risk": {
+          "default": "",
+          "maxLength": 10000,
+          "title": "Risk",
+          "type": "string"
+        },
+        "section": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Section",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "supported",
+            "unsupported",
+            "rejected"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "supported_by": {
+          "$ref": "#/$defs/ScienceClaimEvidenceV1"
+        },
+        "text": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "section",
+        "status",
+        "supported_by"
+      ],
+      "title": "ScienceClaimV1",
+      "type": "object"
+    },
+    "ScienceConfigurationV1": {
+      "additionalProperties": false,
+      "description": "One executed configuration and its exact evidence sources.",
+      "properties": {
+        "claim_eligible": {
+          "title": "Claim Eligible",
+          "type": "boolean"
+        },
+        "config_id": {
+          "title": "Config Id",
+          "type": "string"
+        },
+        "environment": {
+          "$ref": "#/$defs/ScienceEnvironmentV1"
+        },
+        "label": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Label",
+          "type": "string"
+        },
+        "legacy_metrics": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "maxProperties": 10000,
+          "title": "Legacy Metrics",
+          "type": "object"
+        },
+        "measurement_records": {
+          "items": {
+            "$ref": "#/$defs/MeasurementRecordV1"
+          },
+          "maxItems": 10000,
+          "title": "Measurement Records",
+          "type": "array"
+        },
+        "measurements": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "maxProperties": 10000,
+          "title": "Measurements",
+          "type": "object"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "maxProperties": 10000,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "predictions": {
+          "additionalProperties": true,
+          "maxProperties": 10000,
+          "title": "Predictions",
+          "type": "object"
+        },
+        "provenance_labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 10000,
+          "title": "Provenance Labels",
+          "type": "object"
+        },
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "scores": {
+          "additionalProperties": true,
+          "maxProperties": 10000,
+          "title": "Scores",
+          "type": "object"
+        },
+        "source_artifacts": {
+          "items": {
+            "$ref": "#/$defs/ScienceArtifactRefV1"
+          },
+          "maxItems": 10000,
+          "title": "Source Artifacts",
+          "type": "array"
+        },
+        "source_kind": {
+          "enum": [
+            "typed-measurement",
+            "legacy-untyped"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config_id",
+        "run_id",
+        "node_id",
+        "rank",
+        "source_kind",
+        "claim_eligible"
+      ],
+      "title": "ScienceConfigurationV1",
+      "type": "object"
+    },
+    "ScienceDerivedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "anomalies": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 100000,
+          "title": "Anomalies",
+          "type": "array"
+        },
+        "claims": {
+          "items": {
+            "$ref": "#/$defs/ScienceClaimV1"
+          },
+          "maxItems": 100000,
+          "title": "Claims",
+          "type": "array"
+        },
+        "derived_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Derived Digest",
+          "type": "string"
+        },
+        "formula_registry_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Formula Registry Digest",
+          "type": "string"
+        },
+        "metric_summaries": {
+          "items": {
+            "$ref": "#/$defs/ScienceMetricSummaryV1"
+          },
+          "maxItems": 10000,
+          "title": "Metric Summaries",
+          "type": "array"
+        },
+        "numeric_assertions": {
+          "items": {
+            "$ref": "#/$defs/ScienceNumericAssertionV1"
+          },
+          "maxItems": 100000,
+          "title": "Numeric Assertions",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "ari.science-derived/v1",
+          "default": "ari.science-derived/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "summary_stats": {
+          "additionalProperties": true,
+          "maxProperties": 10000,
+          "title": "Summary Stats",
+          "type": "object"
+        }
+      },
+      "required": [
+        "derived_digest",
+        "formula_registry_digest"
+      ],
+      "title": "ScienceDerivedV1",
+      "type": "object"
+    },
+    "ScienceEnvironmentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "arch": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Arch",
+          "type": "string"
+        },
+        "cpu_model": {
+          "default": "",
+          "maxLength": 1024,
+          "title": "Cpu Model",
+          "type": "string"
+        },
+        "environment_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Environment Digest"
+        },
+        "executor": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Executor",
+          "type": "string"
+        },
+        "hostname": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Hostname",
+          "type": "string"
+        },
+        "scheduler_job_id": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Scheduler Job Id",
+          "type": "string"
+        },
+        "scheduler_partition": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Scheduler Partition",
+          "type": "string"
+        }
+      },
+      "title": "ScienceEnvironmentV1",
+      "type": "object"
+    },
+    "ScienceEvidenceResultV1": {
+      "additionalProperties": false,
+      "properties": {
+        "metric_path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Metric Path",
+          "type": "string"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "node_id",
+        "metric_path"
+      ],
+      "title": "ScienceEvidenceResultV1",
+      "type": "object"
+    },
+    "ScienceInterpretationV1": {
+      "additionalProperties": false,
+      "description": "Non-authoritative model annotation; never a numeric evidence source.",
+      "properties": {
+        "claim_eligible": {
+          "const": false,
+          "default": false,
+          "title": "Claim Eligible",
+          "type": "boolean"
+        },
+        "error_kind": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Kind"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Message"
+        },
+        "evaluation_protocol": {
+          "additionalProperties": true,
+          "maxProperties": 10000,
+          "title": "Evaluation Protocol",
+          "type": "object"
+        },
+        "experiment_context": {
+          "additionalProperties": true,
+          "maxProperties": 10000,
+          "title": "Experiment Context",
+          "type": "object"
+        },
+        "implementation_overview": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Implementation Overview"
+        },
+        "input_raw_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Input Raw Digest",
+          "type": "string"
+        },
+        "interpretation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Interpretation Digest",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "model_revision": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Revision"
+        },
+        "prompt_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Digest"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider"
+        },
+        "raw_response_artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScienceArtifactRefV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sampling": {
+          "additionalProperties": true,
+          "maxProperties": 128,
+          "title": "Sampling",
+          "type": "object"
+        },
+        "schema_version": {
+          "const": "ari.science-interpretation/v1",
+          "default": "ari.science-interpretation/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "unavailable",
+            "invalid",
+            "legacy-migrated"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "interpretation_digest",
+        "status",
+        "input_raw_digest"
+      ],
+      "title": "ScienceInterpretationV1",
+      "type": "object"
+    },
+    "ScienceMetricSummaryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "best_value": {
+          "title": "Best Value",
+          "type": "number"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "direction": {
+          "default": "unspecified",
+          "enum": [
+            "higher",
+            "lower",
+            "unspecified"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "maximum": {
+          "title": "Maximum",
+          "type": "number"
+        },
+        "metric_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "minimum": {
+          "title": "Minimum",
+          "type": "number"
+        },
+        "source_config_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "minItems": 1,
+          "title": "Source Config Ids",
+          "type": "array"
+        },
+        "unit": {
+          "default": "unknown",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric_id",
+        "minimum",
+        "maximum",
+        "best_value",
+        "count",
+        "source_config_ids"
+      ],
+      "title": "ScienceMetricSummaryV1",
+      "type": "object"
+    },
+    "ScienceNumericAssertionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregation": {
+          "additionalProperties": true,
+          "maxProperties": 128,
+          "title": "Aggregation",
+          "type": "object"
+        },
+        "claim_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Claim Id"
+        },
+        "cross_environment": {
+          "default": false,
+          "title": "Cross Environment",
+          "type": "boolean"
+        },
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metric": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Metric",
+          "type": "string"
+        },
+        "operands": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ScienceOperandV1"
+          },
+          "title": "Operands",
+          "type": "object"
+        },
+        "text_span": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Text Span",
+          "type": "string"
+        },
+        "tolerance": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Tolerance",
+          "type": "object"
+        },
+        "unit": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "metric",
+        "value",
+        "unit",
+        "formula",
+        "operands"
+      ],
+      "title": "ScienceNumericAssertionV1",
+      "type": "object"
+    },
+    "ScienceOperandV1": {
+      "additionalProperties": false,
+      "properties": {
+        "environment": {
+          "$ref": "#/$defs/ScienceEnvironmentV1"
+        },
+        "metric_path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Metric Path",
+          "type": "string"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "node_id",
+        "metric_path"
+      ],
+      "title": "ScienceOperandV1",
+      "type": "object"
+    },
+    "ScienceProvenanceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "admission_artifacts": {
+          "items": {
+            "$ref": "#/$defs/ScienceArtifactRefV1"
+          },
+          "maxItems": 100000,
+          "title": "Admission Artifacts",
+          "type": "array"
+        },
+        "cassette_artifacts": {
+          "items": {
+            "$ref": "#/$defs/ScienceArtifactRefV1"
+          },
+          "maxItems": 100000,
+          "title": "Cassette Artifacts",
+          "type": "array"
+        },
+        "catalog_lock": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScienceArtifactRefV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "input_artifacts": {
+          "items": {
+            "$ref": "#/$defs/ScienceArtifactRefV1"
+          },
+          "maxItems": 100000,
+          "minItems": 1,
+          "title": "Input Artifacts",
+          "type": "array"
+        },
+        "producer_tool_ref": {
+          "title": "Producer Tool Ref",
+          "type": "string"
+        },
+        "producer_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Producer Version",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.science-provenance/v1",
+          "default": "ari.science-provenance/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "skills_lock": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScienceArtifactRefV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "producer_tool_ref",
+        "producer_version",
+        "input_artifacts"
+      ],
+      "title": "ScienceProvenanceV1",
+      "type": "object"
+    },
+    "ScienceRawV1": {
+      "additionalProperties": false,
+      "properties": {
+        "configurations": {
+          "items": {
+            "$ref": "#/$defs/ScienceConfigurationV1"
+          },
+          "maxItems": 100000,
+          "minItems": 1,
+          "title": "Configurations",
+          "type": "array"
+        },
+        "measurement_status": {
+          "enum": [
+            "complete",
+            "partial",
+            "missing",
+            "legacy"
+          ],
+          "title": "Measurement Status",
+          "type": "string"
+        },
+        "node_report_status": {
+          "enum": [
+            "complete",
+            "partial",
+            "missing",
+            "legacy"
+          ],
+          "title": "Node Report Status",
+          "type": "string"
+        },
+        "raw_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Raw Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.science-raw/v1",
+          "default": "ari.science-raw/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "tree_artifact": {
+          "$ref": "#/$defs/ScienceArtifactRefV1"
+        }
+      },
+      "required": [
+        "raw_digest",
+        "tree_artifact",
+        "configurations",
+        "node_report_status",
+        "measurement_status"
+      ],
+      "title": "ScienceRawV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/science-data-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Immutable hand-off from executed experiments to figures and papers.",
+  "properties": {
+    "derived": {
+      "$ref": "#/$defs/ScienceDerivedV1"
+    },
+    "deterministic_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Deterministic Digest",
+      "type": "string"
+    },
+    "interpretation": {
+      "$ref": "#/$defs/ScienceInterpretationV1"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10000,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "metric_contract": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Metric Contract"
+    },
+    "migration_status": {
+      "default": "native-v1",
+      "enum": [
+        "native-v1",
+        "legacy-explicit"
+      ],
+      "title": "Migration Status",
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/ScienceProvenanceV1"
+    },
+    "raw": {
+      "$ref": "#/$defs/ScienceRawV1"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.science-data/v1",
+      "default": "ari.science-data/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "science_data_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Science Data Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "raw",
+    "derived",
+    "interpretation",
+    "provenance",
+    "deterministic_digest",
+    "science_data_digest"
+  ],
+  "title": "ARI Science Data v1",
+  "type": "object"
+}

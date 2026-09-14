@@ -4,14 +4,15 @@ import { useDevMode } from '../../hooks/useDevMode';
 import * as api from '../../services/api';
 import type { ContainerImage } from '../../services/api';
 import { OrsModelPicker, FewshotManager } from './stepResourcesSections';
+import { useModelCatalog, CUSTOM_MODEL_VALUE } from '../../hooks/useModelCatalog';
 
-export const PROVIDER_MODELS: Record<string, string[]> = {
-  openai: ['gpt-5.2', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'gpt-4o-2024-08-06', 'gpt-4o-mini', 'o3', 'o1-mini'],
-  anthropic: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-3-5'],
-  ollama: ['qwen3:8b', 'qwen3:32b', 'llama3.3', 'gemma3:27b', 'mistral'],
-  'cli-shim': ['claude-cli', 'claude-cli-agent', 'codex-cli', 'codex-cli-agent'],
-  custom: [],
-};
+export { CUSTOM_MODEL_VALUE };
+
+// The model lists live on the server (ari/viz/v1/catalogs.py) and arrive
+// through useModelCatalog. A table here was a second copy of them, and it had
+// already drifted: this file offered gpt-5.4-mini and o1-mini, the server
+// offered o4-mini and o3-mini, and the Settings screen held a third list that
+// agreed with neither.
 
 // Default API base URL per provider (used when switching providers). The CLI
 // shim (ari.llm.cli_server) listens on :8900 by default; see start.sh.
@@ -49,7 +50,6 @@ export interface OrsSettings {
   judge_model: string;
   rubric_gen_temperature: number;
   rubric_gen_target_leaves: number;     // 0 = auto
-  rubric_gen_two_stage: boolean;        // skeleton + parallel subtrees
   judge_n_runs: number;                 // PaperBench paper §4.1: single-pass; ari default >1 is independent variance reduction
   phase1_max_runtime_sec: number;       // ARI's reproduce.sh wall cap (ors_run_reproduce)
   phase1_sandbox_kind: 'auto' | 'docker' | 'apptainer' | 'singularity' | 'local';
@@ -62,12 +62,15 @@ export interface OrsSettings {
 
 export const ORS_DEFAULTS: OrsSettings = {
   replicator_model: 'claude-opus-4-7',
-  rubric_gen_model: 'gemini-2.5-pro',
+  // Prefixed, matching ari-skill-replicate's own DEFAULT_MODEL. Bare
+  // `gemini-2.5-pro` is not the same model to litellm -- it routes to
+  // vertex_ai, which needs GCP project credentials rather than the
+  // GOOGLE_API_KEY this provider is configured with.
+  rubric_gen_model: 'gemini/gemini-2.5-pro',
   rubric_audit_model: 'claude-opus-4-7',
   judge_model: 'gpt-4o-2024-11-20',
   rubric_gen_temperature: 0.0,
   rubric_gen_target_leaves: 0,
-  rubric_gen_two_stage: true,
   judge_n_runs: 1,                      // PaperBench parity (paper §4.1 single-pass)
   phase1_max_runtime_sec: 43200,        // 12 h, matches paper §2.2 reproduce.sh cap
   phase1_sandbox_kind: 'auto',
@@ -237,6 +240,7 @@ export function StepResources({
   const [cpuPlaceholder, setCpuPlaceholder] = useState('auto');
   const [memPlaceholder, setMemPlaceholder] = useState('auto');
   const [initialized, setInitialized] = useState(false);
+  const catalog = useModelCatalog();
   const [containerImages, setContainerImages] = useState<ContainerImage[]>([]);
   const [containerRuntime, setContainerRuntime] = useState('none');
   const [pullStatus, setPullStatus] = useState('');
@@ -246,10 +250,10 @@ export function StepResources({
   const handleSetLlm = useCallback(
     (provider: string) => {
       setLlm(provider);
-      const models = PROVIDER_MODELS[provider] || [];
-      if (models.length > 0) {
-        setModel(models[0]);
-      }
+      const models = catalog.modelsFor(provider);
+      // A provider the catalog serves no models for hands the operator the
+      // free-text field rather than the screen inventing a model for them.
+      setModel(models.length > 0 ? models[0] : CUSTOM_MODEL_VALUE);
       // Point the base URL at the new provider's default so a stale value
       // (e.g. the Ollama URL) isn't carried over to the CLI shim — but only
       // when the field still holds a known default, never a user-typed URL.
@@ -297,9 +301,11 @@ export function StepResources({
     // Re-loading them here would clobber the user's manual model selection
     // every time StepResources remounts (e.g. when navigating Launch ↔ Resources).
 
-    // Auto-read API key — developer-only (071): never auto-pull secrets from
-    // /api/env-keys on mount unless Developer Mode is on. Manual key entry
-    // stays available to everyone.
+    // Auto-read API key readiness — developer-only (071). RR-P0-2 / ADR-11 /
+    // MN-2: this no longer pulls secret VALUES (the legacy /api/env-keys is
+    // redacted server-side); it asks /api/v1/secrets/status whether the
+    // provider's key is configured and displays readiness only. Manual key
+    // entry stays available to everyone.
     if (devMode) autoReadApiKey();
 
     // Load container info & images
@@ -334,24 +340,39 @@ export function StepResources({
     }
   }, [llm]);
 
+  // RR-P0-2 / ADR-11 / MN-2 (gui_refresh Wave 3a): readiness display only.
+  // Secret values can no longer be read over HTTP, so this never prefills the
+  // API-key field — it reports configured / not-configured for the provider's
+  // env key via GET /api/v1/secrets/status.
   const autoReadApiKey = async () => {
     const keyMap: Record<string, string> = {
       openai: 'OPENAI_API_KEY',
       anthropic: 'ANTHROPIC_API_KEY',
+      // claude_code: a key is OPTIONAL (OAuth login works); when present it
+      // enables the hermetic --bare profile.
+      claude_code: 'ANTHROPIC_API_KEY',
       google: 'GOOGLE_API_KEY',
     };
+    const envKey = keyMap[llm];
+    if (!envKey) {
+      setApiKeyStatus('');
+      setApiKeyColor('var(--muted)');
+      return;
+    }
     try {
-      const r = await api.fetchEnvKeys();
-      const envKey = keyMap[llm];
-      const val = envKey ? (r.keys[envKey] || '') : '';
-      if (val) {
-        setApiKey(val);
-        setApiKeyStatus('✓ Loaded from .env (' + (envKey || '') + ')');
+      const r = await api.fetchSecretsStatus();
+      const status = (r.secrets || []).find((s) => s.name === envKey);
+      if (status && status.configured) {
+        setApiKeyStatus(
+          '✓ ' +
+            envKey +
+            ' configured (' +
+            (status.source_class || 'unknown') +
+            ') — leave blank to use it',
+        );
         setApiKeyColor('var(--green)');
       } else {
-        setApiKeyStatus(
-          llm === 'ollama' ? '' : 'Not found in .env — enter manually',
-        );
+        setApiKeyStatus(envKey + ' not configured — enter manually');
         setApiKeyColor('var(--muted)');
       }
     } catch {
@@ -407,8 +428,24 @@ export function StepResources({
     }
   };
 
-  const currentModels = PROVIDER_MODELS[llm] || [];
-  const isFreeEntry = llm === 'ollama' || llm === 'custom';
+  const currentModels = catalog.modelsFor(llm);
+
+  // A model the catalog does not list -- one saved from a previous run, or one
+  // typed by hand -- moves into the free-text field instead of disappearing.
+  // Without this the <select> holds a value no <option> matches and the browser
+  // silently shows the first one, changing the operator's model for them.
+  useEffect(() => {
+    if (!catalog.loaded) return;
+    if (!model || model === CUSTOM_MODEL_VALUE) return;
+    if (currentModels.includes(model)) return;
+    setCustomModel(model);
+    setModel(CUSTOM_MODEL_VALUE);
+  }, [catalog.loaded, currentModels, model, setCustomModel, setModel]);
+
+  // The free-text field is offered for providers that never have a suggestion
+  // list, and whenever the current selection is the custom entry.
+  const isFreeEntry =
+    llm === 'ollama' || llm === 'custom' || model === CUSTOM_MODEL_VALUE;
 
   const handlePhaseModelChange = (phase: string, value: string) => {
     const pm = { ...phaseModels };
@@ -610,7 +647,7 @@ export function StepResources({
         <div className="form-row">
           <label>Provider</label>
           <div className="toggle-group">
-            {['openai', 'anthropic', 'ollama', 'cli-shim', 'custom'].map((p) => (
+            {['openai', 'anthropic', 'claude_code', 'ollama', 'cli-shim', 'custom'].map((p) => (
               <div
                 key={p}
                 className={`toggle-btn${llm === p ? ' active' : ''}`}
@@ -620,11 +657,13 @@ export function StepResources({
                   ? 'OpenAI'
                   : p === 'anthropic'
                     ? 'Anthropic'
-                    : p === 'ollama'
-                      ? 'Ollama'
-                      : p === 'cli-shim'
-                        ? 'CLI Shim'
-                        : 'Custom'}
+                    : p === 'claude_code'
+                      ? 'Claude Code'
+                      : p === 'ollama'
+                        ? 'Ollama'
+                        : p === 'cli-shim'
+                          ? 'CLI Shim'
+                          : 'Custom'}
               </div>
             ))}
           </div>
@@ -645,7 +684,7 @@ export function StepResources({
                 </option>
               ))}
               {isFreeEntry && (
-                <option value="__custom__">{t('custom_entry')}</option>
+                <option value={CUSTOM_MODEL_VALUE}>{t('custom_entry')}</option>
               )}
             </select>
             {isFreeEntry && (
@@ -672,8 +711,10 @@ export function StepResources({
                 style={{ flex: 1 }}
                 onChange={(e) => setApiKey(e.target.value)}
               />
-              {/* Env-key secret readback — developer-only (071). Reads real
-                  secrets from /api/env-keys into the field; hidden by default. */}
+              {/* Env-key readiness check — developer-only (071). RR-P0-2 /
+                  ADR-11: asks /api/v1/secrets/status whether the provider's
+                  key is configured; values are never readable, so nothing is
+                  prefilled. Hidden by default. */}
               {devMode && (
                 <button
                   className="btn btn-outline btn-sm"
@@ -892,23 +933,6 @@ export function StepResources({
                     }
                   />
                 </div>
-              </div>
-              <div style={{ marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                <input
-                  id="ors-rubric-two-stage"
-                  type="checkbox"
-                  checked={ors.rubric_gen_two_stage}
-                  onChange={(e) =>
-                    setOrs({ ...ors, rubric_gen_two_stage: e.target.checked })
-                  }
-                  style={{ marginTop: 3 }}
-                />
-                <label htmlFor="ors-rubric-two-stage" style={{ fontSize: '.75rem', lineHeight: 1.4 }}>
-                  <div style={{ fontWeight: 500 }}>{t('ors_rubric_two_stage')}</div>
-                  <div style={{ color: 'var(--muted)', fontSize: '.7rem', marginTop: 2 }}>
-                    {t('ors_rubric_two_stage_help')}
-                  </div>
-                </label>
               </div>
             </div>
 

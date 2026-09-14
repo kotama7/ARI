@@ -13,7 +13,7 @@ from unittest import mock
 import pytest
 import yaml
 
-from ari.config import ARIConfig, BFTSConfig, auto_config, load_config
+from ari.config import BFTSConfig, auto_config, load_config
 from ari.viz import state as _st
 from ari.viz.api_experiment import _api_launch
 
@@ -108,15 +108,15 @@ class TestEnvToConfig:
         assert cfg.bfts.max_react_steps == 42
 
     def test_auto_config_default(self, monkeypatch):
-        """auto_config() defaults to 80 when ARI_MAX_REACT not set."""
+        """auto_config() defaults to 20 when ARI_MAX_REACT not set."""
         monkeypatch.delenv("ARI_MAX_REACT", raising=False)
         cfg = auto_config()
-        assert cfg.bfts.max_react_steps == 80
+        assert cfg.bfts.max_react_steps == 20
 
     def test_bfts_config_default(self):
-        """BFTSConfig() default is 80."""
+        """BFTSConfig() default is 20."""
         bfts = BFTSConfig()
-        assert bfts.max_react_steps == 80
+        assert bfts.max_react_steps == 20
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -139,7 +139,7 @@ class TestYamlToConfig:
         assert cfg.bfts.max_react_steps == 120
 
     def test_yaml_without_max_react_uses_default(self):
-        """YAML without max_react_steps → default 80."""
+        """YAML without max_react_steps → default 20."""
         data = {
             "llm": {"backend": "openai", "model": "gpt-4o"},
             "bfts": {"max_depth": 7},
@@ -148,7 +148,7 @@ class TestYamlToConfig:
             yaml.dump(data, f)
             fpath = f.name
         cfg = load_config(fpath)
-        assert cfg.bfts.max_react_steps == 80
+        assert cfg.bfts.max_react_steps == 20
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -170,8 +170,14 @@ class TestConfigToAgentLoop:
         )
         assert loop.max_react_steps == 42
 
-    def test_agent_loop_default_80(self):
-        """AgentLoop without explicit max_react_steps defaults to 80."""
+    def test_agent_loop_default_20(self):
+        """AgentLoop without explicit max_react_steps defaults to 20.
+
+        Cut from 80 on measured evidence: the step at which a node reached
+        its OWN best result was p50=3, p90=13, p95=15, p99=20 on the previous
+        campaign, and raising the cap from 25 to 40 bought about 28 more
+        nodes rather than the 101 a linear reading would predict.
+        """
         from ari.agent.loop import AgentLoop
         loop = AgentLoop.__new__(AgentLoop)
         loop.__init__(
@@ -179,7 +185,7 @@ class TestConfigToAgentLoop:
             memory=mock.MagicMock(),
             mcp=mock.MagicMock(),
         )
-        assert loop.max_react_steps == 80
+        assert loop.max_react_steps == 20
 
     def test_build_runtime_passes_max_react(self, monkeypatch, tmp_path):
         """build_runtime passes cfg.bfts.max_react_steps to AgentLoop."""
@@ -188,24 +194,24 @@ class TestConfigToAgentLoop:
         ckpt = tmp_path / "checkpoints" / "test_run"
         ckpt.mkdir(parents=True, exist_ok=True)
 
-        captured = {}
-        orig_init = None
-
         from ari.agent.loop import AgentLoop
-        orig_init = AgentLoop.__init__
+        from ari.core import build_runtime
 
-        def spy_init(self, *args, **kwargs):
-            captured["max_react_steps"] = kwargs.get("max_react_steps")
-            orig_init(self, *args, **kwargs)
+        # This is a constructor-wiring test, not an MCP integration test. Keep
+        # it independent of optional external providers such as Letta so a
+        # clean CI runner reaches the AgentLoop boundary deterministically.
+        with (
+            mock.patch("ari.mcp.client.MCPClient") as mcp_cls,
+            mock.patch.object(AgentLoop, "__init__", return_value=None) as agent_init,
+        ):
+            mcp_cls.return_value.list_tools.return_value = []
+            build_runtime(
+                cfg,
+                experiment_text="test experiment",
+                checkpoint_dir=ckpt,
+            )
 
-        with mock.patch.object(AgentLoop, "__init__", spy_init):
-            from ari.core import build_runtime
-            try:
-                build_runtime(cfg, experiment_text="test experiment", checkpoint_dir=ckpt)
-            except Exception:
-                pass  # MCP/skill init may fail — we only care about the constructor call
-
-        assert captured.get("max_react_steps") == 55
+        assert agent_init.call_args.kwargs["max_react_steps"] == 55
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -228,10 +234,10 @@ class TestJsMaxReactStatic:
             "maxReact input not found in StepScope"
 
     def test_wiz_max_react_default_value(self):
-        """maxReact default value should be 80."""
+        """maxReact default value should be 20 (matching the backend)."""
         src = (REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").read_text()
-        assert "maxReact: 80" in src, \
-            "maxReact default should be 80 in WizardPage"
+        assert "maxReact: 20" in src, \
+            "maxReact default should be 20 in WizardPage"
 
     def test_wiz_max_react_passed_to_launch(self):
         """WizardPage must pass maxReact to StepLaunch."""
@@ -476,19 +482,15 @@ class TestLaunchConfigBftsPersistence:
 
     def _run_launch_and_get_config(self, setup_state, monkeypatch, launch_body):
         """Launch and return the launch_config dict that would be written."""
-        captured_cfg = {}
-
         def fake_popen(cmd, **kw):
             return FakeProc()
 
         monkeypatch.setattr(subprocess, "Popen", fake_popen)
         body = json.dumps(launch_body).encode()
         # Capture _launch_cfg via the watch thread
-        with mock.patch("threading.Thread") as mock_thread, \
+        with mock.patch("threading.Thread"), \
              mock.patch("builtins.open", mock.mock_open()):
             _api_launch(body)
-        # Access _launch_cfg from api_experiment module scope
-        from ari.viz import api_experiment
         # The _launch_cfg is local, but it's embedded in _watch_for_checkpoint closure.
         # Instead, verify the launch_config content by inspecting what would be written.
         # We need to check that the module-level code sets up launch_cfg correctly.
@@ -518,7 +520,6 @@ class TestLaunchConfigBftsPersistence:
             return FakeProc()
 
         # Patch Path.write_text to capture launch_config.json content
-        original_path_write = Path.write_text
         def capture_path_write(self_path, content, *a, **kw):
             if self_path.name == "launch_config.json":
                 captured_cfg.update(json.loads(content))
@@ -528,8 +529,6 @@ class TestLaunchConfigBftsPersistence:
         # Create checkpoint structure so _watch_for_checkpoint finds a new dir
         ckpt_root = setup_state / "checkpoints"
         ckpt_root.mkdir(exist_ok=True)
-        before_dirs = {d.name for d in ckpt_root.iterdir() if d.is_dir()}
-
         body = json.dumps({
             "experiment_md": "test",
             "max_react": 25,

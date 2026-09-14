@@ -21,12 +21,8 @@ so the child sees entries most relevant to its query first.
 
 from __future__ import annotations
 
-import pytest
-
-
 def _add_as(b, monkeypatch, node_id, text, metadata=None):
-    """Helper: write to the given node_id, satisfying the CoW check."""
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", node_id)
+    """Helper: seed the trusted backend directly for retrieval tests."""
     return b.add_memory(node_id=node_id, text=text, metadata=metadata or {})
 
 
@@ -164,5 +160,7 @@ def test_empty_ancestors_short_circuits(fake_letta_backend, monkeypatch):
     fake.supports_pre_filter = False
     _add_as(b, monkeypatch, "P", "hi")
     out = b.search_memory(query="anything", ancestor_ids=[], limit=5)
-    assert out == {"results": []}
+    assert out["results"] == []
+    assert out["schema_version"] == "ari.memory-retrieval/v1"
+    assert out["provenance"]["returned_count"] == 0
     assert len(fake.search_calls) == 0

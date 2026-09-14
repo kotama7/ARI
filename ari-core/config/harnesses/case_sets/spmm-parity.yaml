@@ -1,0 +1,12 @@
+# The set the parity probe certifies at. Separate from the scored set so a probe
+# can be cheap without changing what a scored run measures, and pinned like any
+# other so the probe cannot certify at a size no scored run uses.
+#
+# One family, not six: the probe asks whether the instrument can tell a wrong
+# answer from a slow one, which is not a per-family property.
+schema_version: ari.harness-case-set/v1
+revision: native-perf-spmm-cases/v1@parity
+kind: spmm
+description: One uniform matrix, large enough that the timed kernel dominates.
+cases:
+  - [uniform, 20000, 64]

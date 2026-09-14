@@ -1,0 +1,77 @@
+{
+  "provider_releases": [
+    {
+      "dependency_lock_digest": "sha256:26366868703a781fc9636f7a65d42a8154844d0f137e91e2a2d1b4175c5d895c",
+      "direct_dependencies": [
+        "fastmcp>=3.2.0,<4",
+        "nest-asyncio>=1.5.0",
+        "pydantic>=2.0.0",
+        "python-dotenv>=1.0.0",
+        "qiskit-qasm3-import>=0.5.0",
+        "qiskit>=1.3.0"
+      ],
+      "distribution_name": "qiskit-mcp-server",
+      "license_digest": "sha256:c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "license_id": "Apache-2.0",
+      "mcp_contract_digest": "sha256:ab3ff5d3b10c6871cc78587c4366f4d032705295743f54e494d514a87931d52b",
+      "package_tree_digest": "sha256:f5f66a46a6bdac9b5e751e045440f13cb336e6b5f7031926de5b2b0c17498d53",
+      "python_requires": ">=3.10,<3.15",
+      "repository_commit": "8c1abcec04ea5d504cc178c42441c8363c6935b5",
+      "repository_tag": "qiskit-v0.3.1",
+      "repository_url": "https://github.com/Qiskit/mcp-servers",
+      "role": "circuit",
+      "source_archive_digest": "sha256:cb060f55e373c03292b11fee8b6338edf763d69aadae83f51b6abdd6e1ab9051",
+      "version": "0.3.1",
+      "wheel_digest": "sha256:82b9ab1361e7255278b0db849bb763136ee823f5b4c12298b2f4595cef9f92b1"
+    },
+    {
+      "dependency_lock_digest": "sha256:ea49a5ed45bd8d8603e426bbb1cc8f42fbbd99d68d157016e05d6977cf21d8e9",
+      "direct_dependencies": [
+        "fastmcp>=3.2.0,<4",
+        "nest-asyncio>=1.5.0",
+        "pydantic>=2.0.0",
+        "python-dotenv>=1.0.0",
+        "qiskit-ibm-runtime>=0.40.0",
+        "qiskit-mcp-server"
+      ],
+      "distribution_name": "qiskit-ibm-runtime-mcp-server",
+      "license_digest": "sha256:c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "license_id": "Apache-2.0",
+      "mcp_contract_digest": "sha256:0ee8157eb125592fc11024e47ed738933295ccd5876ff8f0e859a47380b3e7fa",
+      "package_tree_digest": "sha256:5da128113be9049d93b6a187c39f5b9b1809c03ec196ff1beddcf70f34341597",
+      "python_requires": ">=3.10,<3.15",
+      "repository_commit": "8c1abcec04ea5d504cc178c42441c8363c6935b5",
+      "repository_tag": "runtime-v0.6.1",
+      "repository_url": "https://github.com/Qiskit/mcp-servers",
+      "role": "runtime",
+      "source_archive_digest": "sha256:1003d1af694114bb09c11a3e7b565d1d579ea9afdcd8e55deec3a8413885315a",
+      "version": "0.6.1",
+      "wheel_digest": "sha256:6d0697548504d8823d712ff6c9a44a5b1e431e51988896c0144803177d859005"
+    }
+  ],
+  "schema_version": "ari.qiskit-support/v1",
+  "software_releases": [
+    {
+      "distribution_name": "qiskit",
+      "license_id": "Apache-2.0",
+      "python_requires": ">=3.10",
+      "source_archive_digest": "sha256:923e11f02c6720da4f9435cbfc78b6d2c4a106198175a16d32ae730eaa007fa6",
+      "version": "2.5.1"
+    },
+    {
+      "distribution_name": "qiskit-aer",
+      "license_id": "Apache-2.0",
+      "maintenance_status": "reduced-maintenance",
+      "python_requires": ">=3.7",
+      "source_archive_digest": "sha256:134eef8e509311955a15be543d2ba368f988f3583a2bc1f548af3196da820eb4",
+      "version": "0.17.2"
+    },
+    {
+      "distribution_name": "qiskit-ibm-runtime",
+      "license_id": "Apache-2.0",
+      "python_requires": ">=3.10",
+      "source_archive_digest": "sha256:b6b5944c7698cdce147b16bdef1fcae773490c271c8a5ae26c3fd302bb3e94cb",
+      "version": "0.48.0"
+    }
+  ]
+}

@@ -91,7 +91,12 @@ async def test_async_completion_coerces_tool_calls_to_typed_subclass(monkeypatch
     from openai.types.chat import ChatCompletionMessageFunctionToolCall
 
     cls = get_litellm_basicagent_completer_config()
-    cfg = cls(model="gpt-5-mini", basicagent_tools=[BashTool()])
+    cfg = cls(
+        model="openai/codex-cli:gpt-5.6-sol",
+        basicagent_tools=[BashTool()],
+        tool_choice="required",
+        extra_kwargs={"allowed_openai_params": ["tool_choice"]},
+    )
     completer = cfg.build()
 
     # Simulate a litellm response with a tool_call. We construct a minimal
@@ -135,6 +140,8 @@ async def test_async_completion_coerces_tool_calls_to_typed_subclass(monkeypatch
         # Verify our completer is passing tools through to litellm.
         assert "tools" in kwargs, "tools were not forwarded to litellm.acompletion"
         assert kwargs["tools"][0]["function"]["name"] == "bash"
+        assert kwargs["tool_choice"] == "required"
+        assert kwargs["allowed_openai_params"] == ["tool_choice"]
         return _Resp()
 
     import litellm

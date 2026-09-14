@@ -1,0 +1,39 @@
+{
+  "clean_task": {
+    "artifact_digests": {
+      "evidence/intel_phoronix_test_suite.clean_task.json": "sha256:c51e41710b51f7bb7a15f791f45d2504cc2e7d9c6178e2213657858cb815b7c2"
+    },
+    "detail": "The official PTS 10.8.3 CLI ran pinned c-ray-2.0.0 twice in a digest-pinned SIF with application networking disabled; whole-run averages differed by 0.575 percent and no imported attachment executed.",
+    "methods": [
+      "benchmark-comparison",
+      "digest-validation",
+      "official-runner",
+      "repeated-execution"
+    ],
+    "status": "pass"
+  },
+  "environment_digest": "sha256:9579d62b2662834cbf425f515b4c851e5457f38ad2ba7400a6a3b6d69d8bbacc",
+  "evidence_digest": "sha256:ac2ac750bc97ec4072012d0591284fa60697c72cd7e849f90b3b6c99e65491cc",
+  "provider_portability": {
+    "abstraction_report_digest": "sha256:23f2ee7436a9421cea238c80b7483312b90da81e3789efe7ead676059a3f921a",
+    "binding_lock_digests": [
+      "sha256:41bfcd00893ee6202809cc56501ace647a2e3cdbf3effeef55607fa9c901cc3f",
+      "sha256:4b9a6379ef101c51d0924182fe093184fd17247e0afbd1fd51ab12b1954d3738"
+    ],
+    "compatible_provider_ids": [
+      "ari.provider.coding"
+    ],
+    "detail": "Provider independence was established by withdrawing the incumbent ari.provider.coding and re-offering the identical capability contracts under the reserved stand-in identity ari.provider.synthetic-substitute. All 4 capabilities the incumbent had won rebound, deterministically, and none stayed bound to the incumbent. No second implementation was executed, so this is not cross-Provider portability: it shows only that the requirement set names capabilities rather than a Provider. The report is stored beside this file as evidence/intel_phoronix_test_suite.abstraction.json.",
+    "method": "synthetic-substitution",
+    "provider_catalog_digest": "sha256:7ebcfaa891983352e2fad1d570cd603517afd462d2962db42ef3d9ed13dd024d",
+    "status": "pass"
+  },
+  "schema_version": "ari.knowledge-skill-registration-evidence/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:341f9af9e1d38d68d6fdfcca85b33dc621f240a6a0dd834b7fa37b86bce8244d",
+    "id": "intel.phoronix-test-suite",
+    "manifest_sha256": "sha256:0ccd76f6a21d2509cb7027e35b59f10b4863e3fc7baba7294fc7e76301f967b2",
+    "version": "0.1.0+git.e9d0b641"
+  },
+  "source_full_commit_sha": "e9d0b6410fb1ad7a50fb81e0868fd23ae886882c"
+}

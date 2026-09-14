@@ -1,7 +1,8 @@
 # External-contract regression gates — subtask 049 (add_contract_check_workflows).
 #
-# Design inputs (authoritative): docs/refactoring/reports/032_quality_script_ci_integration.md
-# and docs/refactoring/012_github_workflow_integration_plan.md (§7/§8/§15).
+# Design inputs (retired, kept as provenance): the subtask 032 quality-script CI
+# integration report and refactoring plan 012 (GitHub workflow integration,
+# §7/§8/§15).
 # This is a NEW, additive workflow; the five existing workflows are untouched.
 #
 # It hosts the external-contract regression gates that protect the surfaces most
@@ -45,7 +46,7 @@ jobs:
       - name: ari.public.* contract snapshot (advisory at Stage 1)
         continue-on-error: true
         # Advisory by default: without --strict the checker always exits 0, so it
-        # reports drift vs docs/refactoring/reports/public_api_snapshot.json without
+        # reports drift vs scripts/quality/baselines/public_api_snapshot.json without
         # blocking. Promotion = add --strict. Emit the shared JSON envelope to a file
         # named for the aggregator (generate_quality_report.yaml `check_public_api_contracts`).
         run: python scripts/check_public_api_contracts.py --json > check_public_api_contracts.json
@@ -106,9 +107,33 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+      - name: Install manifest validation dependencies
+        run: python -m pip install pydantic pyyaml
+      - name: Canonical Skill manifest conformance
+        # Hard gate: an invalid/unversioned manifest, runtime tool drift,
+        # workflow drift, version drift, generated mcp.json drift, or a
+        # default-enabled collision is an admission failure.
+        run: python scripts/check_skill_manifests.py
+      - name: Generated Skill and execution schema drift
+        run: python scripts/sync_skill_metadata.py
+      - name: Generated HPC contract schema drift
+        run: python ari-skill-hpc/scripts/sync_contracts.py
+      - name: Provider catalog source pins
+        # The catalog loader verifies manifest_sha256 only, so a package edit
+        # that leaves the manifest untouched passes silently and the commit and
+        # package digests quietly stop describing the code. Checking here is
+        # what makes those pins mean anything.
+        run: python scripts/repin_provider_catalog.py
       - name: MCP tool-schema snapshot verify (advisory at Stage 1)
         continue-on-error: true
         run: python scripts/snapshot_contracts.py --surface mcp --check
+      - name: Provider capability pins vs the ontology (advisory)
+        # Advisory because it starts red: two bundles are bound to contracts
+        # that have since been corrected and three never recorded a contract at
+        # all. Ratchet to --strict once re-promotion has caught up; until then
+        # the point is that a lock going stale is visible instead of silent.
+        continue-on-error: true
+        run: python scripts/check_provider_capability_pins.py
 
   quality-report:
     # subtask 031 — aggregation reporter. Reads the per-job --json artifacts and

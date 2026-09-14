@@ -1,0 +1,151 @@
+schema_version: 1
+# source.package_sha256 is canonical_digest({package-relative path:
+# bytes_digest(blob)}) over every git-tracked file of the package at
+# source.full_commit_sha. The previous values predate this definition and
+# were not reproducible from the repository; these are.
+catalog_source_revision: ari-provider-catalog/4
+source_of_truth: existing-skill-manifests-and-SKILLS.lock
+entries:
+  - provider_id: ari.provider.coding
+    runtime_name: coding-skill
+    package: ari-skill-coding
+    package_version: 0.2.0
+    status: verified
+    maintainer: ARI maintainers
+    source:
+      repository: https://github.com/kotama7/ARI.git
+      full_commit_sha: c68088b6af1fcb4a7a49d0c40725dce038436ead
+      package_sha256: sha256:f4b97c555fba6cc3bcd91feadf784c04b2d230dad4b36c916ffea9cee91271ee
+      license: MIT
+    manifest_sha256: sha256:2f2cba035b0aa931ebd584b0de49e029340ac001919c0fea64e990adc0395fab
+    declared_capability_refs_by_tool:
+      emit_results: [ari.result.emit/v1]
+      read_file: [ari.code.inspect/v1, ari.data.read/v1]
+      run_bash: [ari.execution.benchmark/v1, ari.execution.compile/v1, ari.execution.run/v1]
+      run_code: [ari.execution.benchmark/v1, ari.execution.run/v1]
+      write_code: [ari.code.edit/v1]
+  - provider_id: ari.provider.hpc-slurm
+    runtime_name: hpc-skill
+    package: ari-skill-hpc
+    package_version: 0.3.1
+    status: verified
+    maintainer: ARI maintainers
+    source:
+      repository: https://github.com/kotama7/ARI.git
+      full_commit_sha: c68088b6af1fcb4a7a49d0c40725dce038436ead
+      package_sha256: sha256:af1015e5304d9fe1cac9874907201ae56c8f961eae37572ea6403974ff48dc2e
+      license: MIT
+    manifest_sha256: sha256:76fe7760e327d4bf2f20e9ae8dd026639d2d76fd14aa9a6803046bcdccdabf79
+    declared_capability_refs_by_tool:
+      container_submit: [ari.execution.slurm-submit/v1]
+      job_submit: [ari.execution.slurm-submit/v1]
+      measure_counters: [ari.profiling.hardware-counters/v1]
+      slurm_submit: [ari.execution.slurm-submit/v1]
+  - provider_id: ari.provider.tool-registry
+    runtime_name: tool-registry-skill
+    package: ari-skill-tool-registry
+    package_version: 0.3.0
+    # Same basis as the three entries around it: an in-repo package owned by ARI
+    # maintainers, pinned by manifest, commit, and package digest. It says
+    # nothing about the third-party leaves behind it -- those are admitted by
+    # the federated lock's own evidence, which this loader re-authenticates.
+    status: verified
+    maintainer: ARI maintainers
+    source:
+      repository: https://github.com/kotama7/ARI.git
+      full_commit_sha: e5529fdb7b64a3d0d269b381f44addc4c42775f8
+      package_sha256: sha256:d51398e5ec4c5ec892be771f194acac8e20e6f1dc09dd89002894f20a6bc5561
+      license: MIT
+    manifest_sha256: sha256:075b436b38bebb8c8af31f0dff6fa06b4e354756021c59e1866425e395ec990c
+    # discover/describe/invoke are the broker's own surface, not ontology
+    # capabilities; nothing here is classified.
+    declared_capability_refs_by_tool: {}
+    brokered:
+      # The packaged lock is empty. A site points ARI and the broker at the same
+      # materialized catalog with ARI_TOOL_REGISTRY_LOCK; that lock records
+      # absolute local paths and must never be committed.
+      catalog_lock: ../../../ari-skill-tool-registry/CATALOG.lock
+      dispatch_tool: invoke
+      # A leaf that submits work to a scheduler is dispatched through the
+      # surface that declares scheduler authority. Routing per leaf keeps
+      # that authority off every other leaf: a Provider's side-effect class
+      # follows its permissions, so one shared elevated surface would raise
+      # the envelope of the workspace-write capabilities behind it.
+      dispatch_tool_by_leaf:
+        ? >-
+          ari-tool://ari-cuda-environment-validator/ari-cuda-environment-validator%3Aari_cuda_validate__exclusive_node_sm121@sha256:02a0432a3c2c724c86700ccbbd45deeec488d6e0d4fac36e3e21cc74c31a4ca2
+        : invoke_scheduled
+      # An asynchronous leaf is submitted through `invoke` and completed through
+      # these. Without them a bound async Capability starts work whose result
+      # the run is not authorized to collect.
+      lifecycle_tools: [get_status, get_result]
+      # Every leaf named here must be present in whatever lock is in force, so a
+      # site that wants both domains materializes one lock over all its sources
+      # rather than a lock per domain.
+      declared_capability_refs_by_brokered_tool:
+        ? >-
+          ari-tool://openroad-mcp/openroad-profile%3Agcd-nangate45-26q3%3Asha256%3A4a6478f89886d91f36a45622fba01d3bc5b66ce5a1ce7f180acffed8f4633577@sha256:a1fe96a25819b0d8893aa138f27d9314ba2cdf6e8748bc9cdd30e36444091f5d
+        : [ari.eda.openroad.place-route/v1]
+        ? >-
+          ari-tool://qiskit-mcp-servers/qiskit-profile%3Alocal-ideal%3Asha256%3A68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b@sha256:5f4ec7861a2bf7a290831c295586559b08482e547a27a9e1f0246728cd8a1391
+        : [ari.quantum.sample.local-ideal/v1]
+        # The CUDA environment validator. Its promoted bundles named a tool that
+        # existed nowhere but in the string that generated it; `cuda_mcp_server`
+        # is that tool, served over stdio-mcp so no new source kind was needed.
+        ? >-
+          ari-tool://ari-cuda-environment-validator/ari-cuda-environment-validator%3Aari_cuda_validate__exclusive_node_sm121@sha256:02a0432a3c2c724c86700ccbbd45deeec488d6e0d4fac36e3e21cc74c31a4ca2
+        : [ari.environment.cuda.validate/v1]
+  - provider_id: ari.provider.web
+    runtime_name: web-skill
+    package: ari-skill-web
+    package_version: 0.2.0
+    status: verified
+    maintainer: ARI maintainers
+    source:
+      repository: https://github.com/kotama7/ARI.git
+      full_commit_sha: c68088b6af1fcb4a7a49d0c40725dce038436ead
+      package_sha256: sha256:2ec6183cc6d729d44c0203842fc18f30ae5ceb6e1d379ba7ed5bf30ce1d16de3
+      license: MIT
+    manifest_sha256: sha256:2f0b1bfcf99dc4e07c3859b0882caa575ec5e52df51e1619c89808ce1efd9e64
+    # Every tool here already names a capability_ref in skill.yaml, and the alias
+    # table already resolves most of them -- but nothing reached the binder,
+    # because a provision is created from this table alone. The four below are
+    # the ones whose locked policy actually satisfies the contract they claim:
+    # matching side-effect class, and permissions that cover what the contract
+    # requires. The other three are deliberately absent; see the note at the end
+    # of this file.
+    declared_capability_refs_by_tool:
+      list_uploaded_files: [ari.data.read/v1]
+      read_uploaded_file: [ari.data.read/v1]
+      search_papers: [ari.literature.search/v1]
+      walk_citations: [ari.literature.search/v1]
+notes:
+  - Provider launch identity remains in skill.yaml and live tool identity remains in SKILLS.lock.
+  - This catalog stores reviewed semantic projections only; it never repeats entrypoints or schemas.
+  - manifest_sha256 is the only field the loader verifies; a package edit that leaves the manifest
+    untouched does not fail the load, so source.* must be re-pinned deliberately after a package change.
+  - An entry that federates third-party instruments may add an optional `brokered` block with
+    `catalog_lock` (path relative to this file), `dispatch_tool` (a tool name in the run lock), and
+    `declared_capability_refs_by_brokered_tool` (leaf tool_ref -> ARI capability refs). The loader
+    re-authenticates the federated lock and emits composite provisions; see
+    docs/reference/knowledge_capability_assurance.md.
+  - >-
+    Three web-skill tools are unclassified on purpose, not by oversight.
+    rerank_retrieval_records declares ari.literature.rerank, which the alias
+    table maps onto ari.literature.search/v1 -- but its locked policy is
+    read-only with a `model` permission, while that contract is workspace-write
+    and requires network-read. It consumes retrieval records rather than
+    fetching them, so the alias asserts a mapping this loader would refuse and
+    would be refusing correctly. fetch_url and web_search name
+    ari.web.url.fetch and ari.web.search, for which the ontology declares no
+    contract; an unprovenanced live fetch is not something a scientific
+    requirement should be able to bind to, and inventing a contract to make the
+    table look complete would admit exactly that. All three remain callable --
+    classification governs what a Capability requirement may bind, not what the
+    agent may invoke.
+  - >-
+    The tool-registry entry is inert until two things are true. tool-registry-skill must be in the
+    run's skills config so it reaches SKILLS.lock, and ARI_TOOL_REGISTRY_LOCK must point at a
+    materialized catalog. The packaged CATALOG.lock is empty on purpose -- a real one records
+    absolute local paths. Both ARI and the broker read that variable, so they cannot disagree
+    about which lock is in force.

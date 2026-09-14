@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { useDevMode } from '../../hooks/useDevMode';
-import { fetchGpuMonitor, gpuMonitorAction } from '../../services/api';
+import { fetchGpuMonitor, gpuMonitorAction, requestConfirmationChallenge } from '../../services/api';
 
 // ── Component ─────────────────────────────────────
 
@@ -46,10 +46,13 @@ export function GpuMonitor() {
   // ── Start / Stop ─────────────────────────────
 
   const handleStart = useCallback(async () => {
-    if (!window.confirm(t('gpu_confirm'))) return;
+    // MN-6: the confirmed flag forwards the user's actual dialog answer —
+    // it is no longer hardcoded inside the API layer.
+    const didConfirm = window.confirm(t('gpu_confirm'));
+    if (!didConfirm) return;
     setStatusText(t('gpu_starting'));
     try {
-      await gpuMonitorAction('start');
+      await gpuMonitorAction('start', { confirmed: didConfirm });
     } catch {
       // ignore
     }
@@ -59,7 +62,9 @@ export function GpuMonitor() {
   const handleStop = useCallback(async () => {
     setStatusText(t('gpu_stopping'));
     try {
-      await gpuMonitorAction('stop');
+      // MN-6 two-step: server-issued challenge, then the stop action.
+      const ch = await requestConfirmationChallenge('gpu-monitor-stop', '*');
+      await gpuMonitorAction('stop', { challengeId: ch.challenge_id });
     } catch {
       // ignore
     }

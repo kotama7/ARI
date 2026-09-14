@@ -115,7 +115,10 @@ def paper(
     _tp_tp = _re_tp.sub(r"[^a-zA-Z0-9_-]", "_", (_tm_tp.group(1)[:80] if _tm_tp else Path(experiment_file).stem))
     experiment_data = {"goal": experiment_text, "topic": _tp_tp, "file": experiment_file}
 
-    cfg = _resolve_cfg(config)
+    # A checkpoint's effective workflow owns resume/paper reconstruction when
+    # the caller did not explicitly provide another config.
+    _paper_workflow = checkpoint_dir / "workflow.yaml"
+    cfg = _resolve_cfg(config or (_paper_workflow if _paper_workflow.exists() else None))
     # See the matching note in `resume`: when the checkpoint_dir argument is
     # explicit, it owns log/checkpoint paths regardless of YAML defaults.
     cfg.logging.dir = str(checkpoint_dir)
@@ -131,6 +134,26 @@ def paper(
             error_log=nd.get("error_log"), children=nd.get("children", []),
             created_at=nd.get("created_at", ""), completed_at=nd.get("completed_at", ""),
             ancestor_ids=nd.get("ancestor_ids") or [],
+            producer_component_id=nd.get("producer_component_id", ""),
+            producer_prompt_hash=nd.get("producer_prompt_hash", ""),
+            producer_epoch_id=nd.get("producer_epoch_id", ""),
+            knowledge_skill_refs=nd.get("knowledge_skill_refs") or [],
+            knowledge_skill_use_digest=nd.get("knowledge_skill_use_digest", ""),
+            instruction_identity_digest=nd.get("instruction_identity_digest", ""),
+            capability_binding_lock_digest=nd.get("capability_binding_lock_digest", ""),
+            bound_tool_refs=nd.get("bound_tool_refs") or [],
+            assurance_status=nd.get("assurance_status", ""),
+            assurance_tier=nd.get("assurance_tier", ""),
+            baseline_harness_lock_digest=nd.get("baseline_harness_lock_digest", ""),
+            active_harness_lock_digest=nd.get("active_harness_lock_digest", ""),
+            attestation_refs=nd.get("attestation_refs") or [],
+            verified_target_digest=nd.get("verified_target_digest", ""),
+            property_verdicts=nd.get("property_verdicts") or {},
+            frontier_class=nd.get("frontier_class", ""),
+            repair_request_id=nd.get("repair_request_id", ""),
+            repair_requirement_ids=nd.get("repair_requirement_ids") or [],
+            repair_context_digest=nd.get("repair_context_digest", ""),
+            repair_allowed_changes=nd.get("repair_allowed_changes") or [],
         )
         node.status = NodeStatus(nd["status"])
         _lbl = nd.get("label", "draft")
@@ -142,14 +165,24 @@ def paper(
                 pass
         node.metrics = nd.get("metrics") or {}
         node.has_real_data = nd.get("has_real_data", False)
+        node.evaluation_cases = nd.get("evaluation_cases") or {}
         node_map[node.id] = node
 
     all_nodes = list(node_map.values())
-    _, _, mcp_paper, _, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
+    _runtime = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
+    mcp_paper = _runtime[2]
+    _bfts_paper = _runtime[3]
     console.print(Panel(
         f"[bold green]Running paper pipeline[/bold green]\nCheckpoint: {checkpoint_dir}",
         title="ARI Paper",
     ))
+    # The RQGM paper-candidate pre-flight (penalty replay → escalate-to-
+    # fixpoint → re-ideation) now lives in `run_paper_phase`, shared by all
+    # three entries — `ari paper` used to own it privately, so a one-pass
+    # `ari run` never ran the paper-candidate round at all. The runtime is
+    # present only under ari_rqgm (build_runtime attaches it to bfts); a
+    # non-RQGM paper run passes None and the pre-flight is a dead branch.
+    _rqgm_paper = getattr(_bfts_paper, "rqgm", None)
     # Prefer per-checkpoint workflow.yaml (carries launch-time rewrites) over
     # the package source.
     from pathlib import Path as _PL
@@ -162,9 +195,32 @@ def paper(
         _cfg_str = str(config)
     else:
         _cfg_str = str(_pkg_wf) if _pkg_wf.exists() else ""
+    # Paper-archive execution-mode switch (docs/guides/execution_modes.md,
+    # "The paper execution axis: `paper.mode`").
+    # `_resolve_cfg` applies NO env overrides, so the paper entry owns the
+    # override + dispatch. Guarded so the default `linear` path never imports
+    # any ari.rqgm module on the paper path (identity-default guarantee):
+    # apply_paper_env_overrides is import-free, the resume reconcile is gated
+    # on the state file's existence (absent on every linear checkpoint), and
+    # _effective_paper_mode_str mirrors resolve_paper_mode without importing
+    # ari.rqgm. PaperArchiveRuntime is imported lazily only when both flags
+    # agree (paper.mode: rqgm_archive AND rqgm.paper.enabled: true).
+    from ari.cli.paper_dispatch import run_paper_phase
     from ari.pidfile import pid_context
-    with pid_context(checkpoint_dir):
-        generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_paper, _cfg_str)
+    try:
+        with pid_context(checkpoint_dir):
+            run_paper_phase(
+                cfg, all_nodes, experiment_data, checkpoint_dir, mcp_paper, _cfg_str,
+                linear_paper_fn=generate_paper_section, paper_llm=_runtime[0],
+                rqgm=_rqgm_paper,
+            )
+    except Exception as exc:
+        console.print(f"[bold red]Paper pipeline failed:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
+    finally:
+        close_all = getattr(mcp_paper, "close_all", None)
+        if callable(close_all):
+            close_all()
     console.print("[bold green]Paper pipeline complete.[/bold green]")
 
 
@@ -358,4 +414,3 @@ def show_project(
             console.print(f"\n[bold]Artifacts[/bold] ({len(files)} files):")
             for f in sorted(files)[:10]:
                 console.print(f"  • {f.name}")
-

@@ -1,0 +1,22 @@
+{
+  "$id": "https://ari.dev/schemas/workspace-ref-v1.schema.json",
+  "additionalProperties": false,
+  "description": "One canonical writable root with no caller-controlled escape path.",
+  "properties": {
+    "root": {
+      "title": "Root",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.workspace-ref/v1",
+      "default": "ari.workspace-ref/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "root"
+  ],
+  "title": "ARI Workspace Reference v1",
+  "type": "object"
+}

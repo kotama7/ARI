@@ -13,7 +13,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
-import tarfile
 from pathlib import Path
 
 import pytest
@@ -49,7 +48,7 @@ def _build_local_bundle(tmp_path: Path) -> tuple[Path, str]:
         if str(p) not in sys.path:
             sys.path.insert(0, str(p))
     import curate  # noqa: E402
-    from ari.publish import publish as _publish  # noqa: E402
+    from ari.public.publish import publish as _publish  # noqa: E402
 
     ckpt = tmp_path / "_ckpt_for_bundle"
     ear = ckpt / "ear"
@@ -183,3 +182,57 @@ async def test_overwrite_clears_non_empty_dest(tmp_path):
     assert res_yes["populated"] is True
     assert not (dest / "stale.txt").exists()
     assert (dest / "reproduce.sh").is_file()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unsafe", ["/", str(Path.home()), str(ROOT.parent)])
+async def test_broad_overwrite_destination_is_rejected(unsafe):
+    result = await S.fetch_code_bundle(
+        ref="file:///not-read.tar.gz",
+        dest=unsafe,
+        overwrite=True,
+    )
+    assert result["populated"] is False
+    # The property is that a broad destination is REFUSED, not which guard
+    # refuses it. `Path.home()` reaches the breadth check on a plain home and
+    # the symlink check on a home mounted through one; both are correct
+    # refusals, and pinning one message made the test pass or fail on how the
+    # machine happens to mount home. Both name the destination.
+    assert "bundle destination" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_symlink_overwrite_destination_is_rejected(tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "keep.txt").write_text("keep")
+    link = tmp_path / "linked-destination"
+    link.symlink_to(real, target_is_directory=True)
+
+    result = await S.fetch_code_bundle(
+        ref="file:///not-read.tar.gz",
+        dest=str(link),
+        overwrite=True,
+    )
+
+    assert result["populated"] is False
+    assert "crosses a symlink" in result["error"]
+    assert (real / "keep.txt").read_text() == "keep"
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_itself_cannot_be_overwritten(tmp_path):
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    (checkpoint / "keep.txt").write_text("keep")
+
+    result = await S.fetch_code_bundle(
+        ref="file:///not-read.tar.gz",
+        checkpoint_dir=str(checkpoint),
+        dest=str(checkpoint),
+        overwrite=True,
+    )
+
+    assert result["populated"] is False
+    assert "refusing broad bundle destination" in result["error"]
+    assert (checkpoint / "keep.txt").read_text() == "keep"

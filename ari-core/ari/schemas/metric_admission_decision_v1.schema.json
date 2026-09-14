@@ -1,0 +1,74 @@
+{
+  "$id": "https://ari.dev/schemas/metric-admission-decision-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "admitted_contract_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Admitted Contract Digest"
+    },
+    "decision": {
+      "enum": [
+        "admitted",
+        "review-required",
+        "rejected"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "decision_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Decision Digest",
+      "type": "string"
+    },
+    "proposal_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Proposal Digest",
+      "type": "string"
+    },
+    "reasons": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Reasons",
+      "type": "array"
+    },
+    "reviewer": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reviewer"
+    },
+    "schema_version": {
+      "const": "ari.metric-admission-decision/v1",
+      "default": "ari.metric-admission-decision/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "decision_digest",
+    "proposal_digest",
+    "decision",
+    "reasons"
+  ],
+  "title": "ARI Metric Admission Decision v1",
+  "type": "object"
+}

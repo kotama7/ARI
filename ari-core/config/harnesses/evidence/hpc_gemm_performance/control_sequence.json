@@ -1,0 +1,142 @@
+{
+  "baseline_lock_digest": "sha256:cb96914666e151f390832fb2073d3fd6d04302e1fe1e889eaa027d8695a205ba",
+  "basis": {
+    "container_identity_matched_the_manifest_pin": true,
+    "declared_networks": [
+      "deny"
+    ],
+    "emitted_result_schema": "ari.native-perf-report/v1",
+    "every_run_returned_a_parsed_typed_report": true,
+    "manifest_pins_that_schema_and_its_digest": true,
+    "oracle_visibility_note": "read off the manifest's hidden_test_policy; this records what the manifest declares, not an execution that tried to reach the oracle",
+    "target_digest_unchanged_by_run": {
+      "clean-screen": true,
+      "clean-validate": true,
+      "clean-validate-repeat": true,
+      "negative-slow-screen": true,
+      "negative-wrong-screen": true
+    }
+  },
+  "clean_control_verdict": "pass",
+  "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
+  "container_reference": "singularity:orfs-26q3-openroad-7304ba78.sif",
+  "dataset_digest": "sha256:17d6b66d3387670643f197c4e403816866fcfea208e886985bbe93f5b2fd0590",
+  "dataset_revision": "native-perf-gemm-cases/v1@scored-2026q3",
+  "distinct_negative_grounds": [
+    "oracle",
+    "ratio"
+  ],
+  "driver_digest": "sha256:1f72d2fbabdb8c35bac0d126fe5d41014ab316ecfe7432ac64c526ac5f746e96",
+  "driver_revision": "ari.assurance.native-perf/v1",
+  "environment_digest": "sha256:de222ece1d6516479ec7dc498271548784559943470a4658f6dc7fa0de1b0665",
+  "harness_id": "hpc/gemm-performance",
+  "harness_version": "1.0.0",
+  "manifest_digest": "sha256:0afb6c8735567e84c6fc3560fc2ba0d8003d9d0b618799dbc6a9b1f90c7116df",
+  "negative_control_grounds": {
+    "negative-slow-screen": "ratio",
+    "negative-wrong-screen": "oracle"
+  },
+  "negative_control_verdict": "fail",
+  "network_isolation": "proved",
+  "observed_verdicts": {
+    "clean-screen": "pass",
+    "clean-validate": "pass",
+    "clean-validate-repeat": "pass",
+    "negative-slow-screen": "fail",
+    "negative-wrong-screen": "fail"
+  },
+  "oracle_visibility": "denied",
+  "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
+  "problem_revision": "gemm-dense-fp64/v1@2026q3",
+  "registered_placement": {
+    "machine": "x86_64",
+    "thread_budget": "2"
+  },
+  "result_schema_conformant": true,
+  "runs": [
+    {
+      "attempt_id": "har-cfd6161eeddccc4629a190a2f9910e4c-0",
+      "attestation_digest": "sha256:1f4728d80e7024d45e9a2fcc2babb57de007d0068cf6aa19a3a40e9031067d3b",
+      "candidate_provenance": "reference_gemm.c",
+      "label": "clean-screen",
+      "observed_ground": "ratio",
+      "observed_property_verdicts": {
+        "performance-regression": "pass"
+      },
+      "observed_verdict": "pass",
+      "required_ground": null,
+      "required_verdict": "pass",
+      "retry_index": 0,
+      "tier": "screen",
+      "why": "the frozen reference is not a regression against itself"
+    },
+    {
+      "attempt_id": "har-d9ed86f9c59b2df182c6e1f60db3881a-0",
+      "attestation_digest": "sha256:95b1aeca0f0b0d2d11db89dd5d686ac7a332f45176ce80873b9e471617aa4ee0",
+      "candidate_provenance": "reference_gemm.c",
+      "label": "clean-validate",
+      "observed_ground": "ratio",
+      "observed_property_verdicts": {
+        "performance-regression": "pass"
+      },
+      "observed_verdict": "pass",
+      "required_ground": null,
+      "required_verdict": "pass",
+      "retry_index": 0,
+      "tier": "validate",
+      "why": "and stays so at the tier a spread exists at, which is the tier this instrument's verdict rule reads"
+    },
+    {
+      "attempt_id": "har-3e76383de4fd838a829199a73b00b97a-1",
+      "attestation_digest": "sha256:765b6f54852a6861599f72d261124a68867db897457aec97c4b72bef7012b53f",
+      "candidate_provenance": "reference_gemm.c",
+      "label": "clean-validate-repeat",
+      "observed_ground": "ratio",
+      "observed_property_verdicts": {
+        "performance-regression": "pass"
+      },
+      "observed_verdict": "pass",
+      "required_ground": null,
+      "required_verdict": "pass",
+      "retry_index": 1,
+      "tier": "validate",
+      "why": "and again at a different derived seed: the verdict is stable across instances"
+    },
+    {
+      "attempt_id": "har-e46fb1f1b5cf53f7ecc4cad3b5d268a4-0",
+      "attestation_digest": "sha256:7adde9f8c7da4ca2cdc7d62c264b5b9ac5721402614055beafe74b6fe7ee033e",
+      "candidate_provenance": "slow_gemm.c",
+      "label": "negative-slow-screen",
+      "observed_ground": "ratio",
+      "observed_property_verdicts": {
+        "performance-regression": "fail"
+      },
+      "observed_verdict": "fail",
+      "required_ground": "ratio",
+      "required_verdict": "fail",
+      "retry_index": 0,
+      "tier": "screen",
+      "why": "a correct kernel that is slower than the reference must lose ON THE RATIO -- it is right about the answer, so nothing else may refuse it"
+    },
+    {
+      "attempt_id": "har-4bde4fbb6d47f75be122e9b2ee70e771-0",
+      "attestation_digest": "sha256:6ac0c81a97470109c98668f2c7e141d1179e5f12eff0094e45b9f453986e7e8b",
+      "candidate_provenance": "wrong_gemm.c",
+      "label": "negative-wrong-screen",
+      "observed_ground": "oracle",
+      "observed_property_verdicts": {
+        "performance-regression": "fail"
+      },
+      "observed_verdict": "fail",
+      "required_ground": "oracle",
+      "required_verdict": "fail",
+      "retry_index": 0,
+      "tier": "screen",
+      "why": "a fast kernel with the wrong answer must lose ON THE ORACLE: it writes every element, so it clears the NaN poison and the size check, and only the residual bound refuses it"
+    }
+  ],
+  "schema_version": "ari.harness-control-sequence/v1",
+  "target_logical_name": "candidate_gemm.c",
+  "target_write_isolation": "proved",
+  "verification_contract_digest": "sha256:b65b4166cc79a66ccd5f7a6e4ffb32b79015b8471b61eccb92af9f0df7be9240"
+}

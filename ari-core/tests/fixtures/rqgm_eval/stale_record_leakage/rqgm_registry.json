@@ -1,0 +1,38 @@
+{
+  "as_of_event_hash": "ffffffffffff",
+  "components": [],
+  "prompts": [
+    {
+      "created_at": "",
+      "epoch_id_registered": "ep_000001",
+      "prompt_hash": "aaaaaaaaaaaa",
+      "prompt_id": "reviewer_v1",
+      "prompt_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "role": "reviewer",
+      "source": {
+        "key": "rqgm/reviewer",
+        "kind": "committed_template"
+      },
+      "source_refs": [],
+      "spec_ref": null,
+      "status": "retired"
+    },
+    {
+      "created_at": "",
+      "epoch_id_registered": "ep_000002",
+      "prompt_hash": "bbbbbbbbbbbb",
+      "prompt_id": "reviewer_v2",
+      "prompt_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "role": "reviewer",
+      "source": {
+        "key": "rqgm/reviewer",
+        "kind": "committed_template"
+      },
+      "source_refs": [],
+      "spec_ref": null,
+      "status": "active"
+    }
+  ],
+  "registry_version": 3,
+  "schema_version": 1
+}

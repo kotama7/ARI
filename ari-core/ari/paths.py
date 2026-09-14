@@ -73,6 +73,35 @@ _TRACE_FILES: frozenset[str] = frozenset({
     "memory_access.jsonl",
     "memory_access.summary.json",
     "lineage_decisions.jsonl",
+    # RQGM append-only logs (docs/reference/file_formats.md,
+    # "rqgm_transitions.jsonl" / "rqgm_audit.jsonl").
+    "rqgm_transitions.jsonl",
+    "rqgm_audit.jsonl",
+    # RQGM proposal-record truth (docs/reference/file_formats.md,
+    # "proposals/ (RQGM Task 03)"; lives under {ckpt}/proposals/ in the
+    # flat layout).
+    "proposal_records.jsonl",
+    # RQGM adversarial-loop truth (docs/reference/file_formats.md,
+    # "rqgm_adversarial_cases.jsonl (RQGM Task 06)"): raw/defense/judgment/
+    # validated/utility/case records + per-node round markers.
+    "rqgm_adversarial_cases.jsonl",
+    # RQGM prompt-evolution truth (docs/reference/file_formats.md,
+    # "prompt_evolution.jsonl (RQGM Task 07)"): candidate/validation/
+    # shadow-observation records.
+    "prompt_evolution.jsonl",
+    # RQGM clean-room regeneration truth (docs/reference/file_formats.md,
+    # "rqgm_cleanroom.jsonl (RQGM Task 08)"): request/bundle/generation/
+    # screen/fallback events.
+    "rqgm_cleanroom.jsonl",
+    # RQGM meta-agent output truth (docs/reference/rqgm_schemas.md,
+    # "Meta-evolution schema (Task 11)"): MetaAgentOutputRecord lines
+    # (candidates/recommendations/summaries, shadow included).
+    "rqgm_meta_outputs.jsonl",
+    # RQGM governance result cache (docs/reference/file_formats.md,
+    # "rqgm_governance_cache.jsonl (RQGM Task 12)"): append-only
+    # cache_key -> result_ref lines; budget consumption/level lines
+    # ride rqgm_audit.jsonl above.
+    "rqgm_governance_cache.jsonl",
 })
 
 # Files that live under ``runs/<id>/reports/`` in the bucketed layout.
@@ -377,7 +406,17 @@ class PathManager:
         which preserves backward compatibility with config.yaml defaults.
     """
 
-    # Files that are ARI metadata — never copied into node work dirs.
+    # Names that are ARI metadata AT THE CHECKPOINT / RUN LEVEL — never copied
+    # into node work dirs.
+    #
+    # NB: this is a BASENAME list, so a name here is also claimed inside a node's
+    # work_dir. For most entries that is what we want (ARI writes node_report.json
+    # / full_log.json straight into the node dir). ``results.json`` is the
+    # exception: ARI writes ``{checkpoint_dir}/results.json`` (checkpoint.py), but
+    # the AGENT is told by the ``emit_results`` tool to write its own
+    # ``results.json`` deliverable inside its node work_dir — and the claim gate
+    # reads it back from there (pipeline/claim_gate/resolve.py). Same basename,
+    # two different directories, opposite meanings. See NODE_VISIBLE_NAMES.
     META_FILES: frozenset[str] = frozenset({
         "experiment.md",
         "launch_config.json",
@@ -394,6 +433,12 @@ class PathManager:
         # Additive metadata — never copied into node work dirs.
         "prompt_trace.jsonl",
         "prompt_versions.json",
+        # Run provenance: which harness (+ verified digests), which ARI commit,
+        # which measurement knobs. MUST be metadata, or the checkpoint->node copy
+        # hands every node the scoring configuration it is being judged by — the
+        # TARGET it must hit, the scale, and the harness's location. A record of
+        # how a node is scored is not an input to that node.
+        "provenance.json",
         "workflow.yaml",
         "ari.log",
         ".ari_pid",
@@ -408,10 +453,139 @@ class PathManager:
         # Per-node self-report. Each child must generate its own; never
         # inherit the parent's via the work_dir physical-copy data path.
         "node_report.json",
+        # Where a node's work actually ran: the machine, the scheduler
+        # allocation, the toolchain. Both describe ONE node's execution, so an
+        # inherited copy is not merely redundant — a child that never runs a
+        # shell tool would report its PARENT's machine and modules as its own,
+        # and neither file is in bfts_loop's output blacklist, so this entry is
+        # the only thing keeping them out of the parent->child work_dir copy.
+        "_run_env.json",
+        "_exec_env.json",
+        # Per-node full ReAct execution log, written at the node's completion
+        # (its own trace_log). Like node_report.json, each node writes its own
+        # and it is NEVER inherited into children via the work_dir copy.
+        #
+        # This entry is the ONLY thing excluding it: unlike node_report.json /
+        # results.json, full_log.json is absent from bfts_loop's
+        # _OUTPUT_BLACKLIST, so dropping it here silently reopens the code
+        # channel. That matters beyond tidiness — full_log.json IS the payload
+        # of the full_log handoff arm, so copying it into every child's
+        # work_dir hands the parent's execution log to arms that are defined by
+        # NOT receiving it (code_only), collapsing the factorial.
+        "full_log.json",
+        # RQGM mode provenance + constitution copy
+        # (docs/guides/execution_modes.md, "Turning RQGM on"): checkpoint-root
+        # metadata for the opt-in ari_rqgm mode, never copied into node work
+        # dirs. Absent on default simple_bfts runs.
+        "rqgm_state.json",
+        "constitution.yaml",
+        # RQGM epoch-governance state layer (docs/reference/file_formats.md,
+        # "RQGM epoch-governance files (opt-in ari_rqgm mode)"): event-log
+        # truth + audit log + derived snapshots. Absent on default
+        # simple_bfts runs; never copied into node work dirs.
+        "rqgm_transitions.jsonl",
+        "rqgm_audit.jsonl",
+        "epoch_state.json",
+        "rqgm_registry.json",
+        # RQGM proposal store (docs/reference/file_formats.md,
+        # "proposals/ (RQGM Task 03)"): append-only record truth + derived
+        # index under {ckpt}/proposals/. Absent on default simple_bfts runs;
+        # never copied into node work dirs.
+        "proposal_records.jsonl",
+        "proposal_index.json",
+        # RQGM adversarial loop (docs/reference/file_formats.md,
+        # "rqgm_adversarial_cases.jsonl (RQGM Task 06)" and
+        # "rqgm/adversarial_replay_pool.json (RQGM Task 06)"): append-only
+        # record truth at the checkpoint root + derived replay-pool snapshot
+        # under {ckpt}/rqgm/. Absent on default simple_bfts runs; never
+        # copied into node work dirs.
+        "rqgm_adversarial_cases.jsonl",
+        "adversarial_replay_pool.json",
+        # Paper-archive self-preference statistic
+        # (docs/reference/rqgm_schemas.md,
+        # "rqgm/paper_self_preference_stat.json — the self-preference
+        # statistic"): the per-epoch deterministic AI-vs-human margin the
+        # self-preference adversary cites as evidence, under {ckpt}/rqgm/.
+        # Absent unless PAPER_RQGM_ARCHIVE; never copied into node work dirs.
+        "paper_self_preference_stat.json",
+        # Paper-archive P1's pinned-panel report
+        # (docs/guides/rqgm_evaluation.md, "Paper metrics P1–P5"): the FIXED
+        # external rubric ensemble's post-hoc decisions on the FINAL manuscript,
+        # with the rubric ids / N / seed that ACTUALLY ran recorded as its own
+        # provenance block. Distinct from the in-loop `review_report.json` by
+        # construction — disjointness is the whole point. Absent until the
+        # Tier-3 panel runner lands, and P1 reports `applicable: false` then.
+        "panel_review_report.json",
+        # RQGM prompt evolution (docs/reference/file_formats.md,
+        # "prompt_evolution.jsonl (RQGM Task 07)" / "prompt_specs.json
+        # (RQGM Task 07)"): append-only candidate/validation/shadow record
+        # truth + derived PromptSpec rollup at the checkpoint root; evolved
+        # template bodies live under {ckpt}/rqgm_prompts/ (same doc,
+        # "rqgm_prompts/ (RQGM Task 07)"). Absent on default simple_bfts
+        # runs; never copied into node work dirs.
+        "prompt_evolution.jsonl",
+        "prompt_specs.json",
+        # RQGM clean-room regeneration (docs/reference/file_formats.md,
+        # "rqgm_cleanroom.jsonl (RQGM Task 08)"): append-only
+        # request/screen/fallback event truth at the checkpoint root. Absent
+        # on default simple_bfts runs; never copied into node work dirs.
+        "rqgm_cleanroom.jsonl",
+        # RQGM selective erasure (docs/reference/file_formats.md,
+        # "rqgm_erasure_state.json (RQGM Task 10)"): derived
+        # rewrite-snapshot of the stale/invalid sets; the erasure/rebuild
+        # events live in rqgm_audit.jsonl. Absent on default simple_bfts
+        # runs; never copied into node work dirs.
+        "rqgm_erasure_state.json",
+        # RQGM meta-agent evolution (docs/reference/rqgm_schemas.md,
+        # "Meta-evolution schema (Task 11)"): append-only
+        # MetaAgentOutputRecord truth at the checkpoint root. Absent on
+        # default simple_bfts runs; never copied into node work dirs.
+        "rqgm_meta_outputs.jsonl",
+        # RQGM governance result cache (docs/reference/file_formats.md,
+        # "rqgm_governance_cache.jsonl (RQGM Task 12)"): append-only cache
+        # records at the checkpoint root. Absent on default simple_bfts
+        # runs; never copied into node work dirs.
+        "rqgm_governance_cache.jsonl",
+        # RQGM evaluation harness (docs/reference/file_formats.md,
+        # "rqgm_eval_metrics.json / rqgm_injection_provenance.json (RQGM
+        # Task 13)"): per-run metric report + the durable
+        # synthetic-trajectory marker written for any injected run. Absent
+        # on every non-harness run; never copied into node work dirs.
+        "rqgm_eval_metrics.json",
+        "rqgm_injection_provenance.json",
+        # Paper-archive co-evolution (docs/reference/rqgm_schemas.md,
+        # "paper_archive_state.json — paper-phase mode provenance" /
+        # "paper_draft_archive.jsonl — the scored draft population"):
+        # paper-phase mode provenance + the scored draft population. Absent on
+        # default linear paper runs; never copied into node work dirs. The
+        # per-candidate .tex live under {ckpt}/archive/{node_id}/, not the
+        # checkpoint root.
+        "paper_archive_state.json",
+        "paper_draft_archive.jsonl",
+        # The read-only APReS-equivalent accept/reject anchor corpus
+        # (docs/reference/rqgm_schemas.md, "paper_anchor_corpus.jsonl — the
+        # read-only accept/reject anchor"): labelled reference manuscripts.
+        # Written once by curation/bootstrap tooling, never by a governed
+        # role; META so it is never copied into node work dirs. Absent on the
+        # on-ramp / linear.
+        "paper_anchor_corpus.jsonl",
     })
 
     # File extensions that are ARI internal — never copied into node work dirs.
     META_EXTENSIONS: frozenset[str] = frozenset({".log"})
+
+    # Names/extensions that are metadata at the checkpoint level but are a
+    # legitimate AGENT DELIVERABLE inside a node's work_dir. ``scope="node"``
+    # un-claims them.
+    #
+    # Measured on a real 40-node study: the only META-classified basenames that
+    # ever appeared inside a node work_dir were node_report.json (x40) and
+    # full_log.json (x40) — both written by ARI, both must stay hidden — plus
+    # results.json (x17), written by the AGENT via emit_results. No ARI-written
+    # ``.log`` ever landed in a node dir (0 of 40), so a ``.log`` there is the
+    # agent's (e.g. a benchmark log it redirected).
+    NODE_VISIBLE_NAMES: frozenset[str] = frozenset({"results.json"})
+    NODE_VISIBLE_EXTENSIONS: frozenset[str] = frozenset({".log"})
 
     # Filename patterns (regex, full-match) that are ARI metadata.
     # Used in addition to META_FILES for rotated/timestamped variants.
@@ -582,11 +756,35 @@ class PathManager:
     # ── classification helpers ────────────────────────────────────────
 
     @classmethod
-    def is_meta_file(cls, filename: str) -> bool:
-        """Return True if *filename* is ARI metadata (should not be copied to nodes)."""
+    def is_meta_file(cls, filename: str, *, scope: str = "checkpoint") -> bool:
+        """Return True if *filename* is ARI metadata (should not be copied to nodes).
+
+        ``scope`` says WHICH directory the name was seen in, because the check is
+        basename-only and two directories disagree about some names:
+
+        - ``"checkpoint"`` (default): the run/checkpoint dir, where ARI's own
+          ``results.json`` etc. live. Every META name is metadata here.
+        - ``"node"``: a node's work_dir. ARI still owns node_report.json /
+          full_log.json here, but ``results.json`` is the AGENT's deliverable —
+          the ``emit_results`` tool tells it to write exactly that name, and the
+          claim gate reads it back. Treating it as metadata made the agent's own
+          declared results invisible in its record (0 of the 19 nodes that wrote
+          one) AND withheld it from the child's work_dir copy (only 3 of 10
+          children inherited it). Likewise a ``.log`` in a node dir is the
+          agent's benchmark output, not ARI's.
+        """
+        _, ext = os.path.splitext(filename)
+        if scope == "node" and filename in cls.NODE_VISIBLE_NAMES:
+            return False
+        # An EXACT ARI name always wins, even in node scope: ``ari.log`` is ARI's
+        # own log wherever it appears, and node_report.json / full_log.json are
+        # written by ARI straight into the node dir. Only the extension rule is
+        # relaxed below — that is what distinguishes the agent's ``bench.log``
+        # from ARI's ``ari.log``.
         if filename in cls.META_FILES:
             return True
-        _, ext = os.path.splitext(filename)
+        if scope == "node" and ext in cls.NODE_VISIBLE_EXTENSIONS:
+            return False
         if ext in cls.META_EXTENSIONS:
             return True
         return any(p.match(filename) for p in cls._META_PATTERNS)
@@ -625,7 +823,11 @@ class PathManager:
         ARI uses an env-var hand-off when spawning MCP skills, Letta and
         delete subprocesses so they bind to the same checkpoint as the
         parent.  Going through this helper keeps every writer routed
-        through PathManager (Phase 1 receiving-criterion §10).
+        through PathManager: ``RuntimePathResolver.set_checkpoint_dir_env``
+        is the one function that assigns ``os.environ["ARI_CHECKPOINT_DIR"]``,
+        so the run pin has a single owner.  Read that as a convention, not
+        an enforced rule: docs/reference/environment_variables.md,
+        "Checkpoint + paths", records what it does and does not guarantee.
         """
         RuntimePathResolver.set_checkpoint_dir_env(checkpoint_dir)
 

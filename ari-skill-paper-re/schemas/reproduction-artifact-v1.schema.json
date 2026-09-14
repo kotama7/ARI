@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Digest",
+      "type": "string"
+    },
+    "media_type": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Media Type",
+      "type": "string"
+    },
+    "relative_path": {
+      "title": "Relative Path",
+      "type": "string"
+    },
+    "role": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Role",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.reproduction-artifact/v1",
+      "default": "ari.reproduction-artifact/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "size_bytes": {
+      "minimum": 0,
+      "title": "Size Bytes",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "relative_path",
+    "digest",
+    "size_bytes",
+    "media_type",
+    "role"
+  ],
+  "title": "ReproductionArtifactV1",
+  "type": "object"
+}

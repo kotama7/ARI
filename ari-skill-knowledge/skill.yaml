@@ -1,0 +1,33 @@
+schema_version: 1
+name: knowledge-skill
+package: ari-skill-knowledge
+version: 0.1.0
+display_name: Query Knowledge Skills
+description: Read-only query and non-authoritative request surface for content-addressed procedural knowledge.
+enabled_by_default: false
+environment_policy: complete
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_KNOWLEDGE_CATALOG, ARI_ROOT, LANG, LC_ALL, PATH]
+credential_scopes: []
+tool_defaults:
+  phases: [bfts, evaluation, reproduce]
+  side_effects: read-only
+  determinism: deterministic
+  timeout_class: default
+  permissions: [workspace-read]
+  result_schema: ari.result-envelope/v1
+tools:
+  - name: search_knowledge_skills
+    capability_ref: ari.knowledge.search/v1
+  - name: describe_knowledge_skill
+    capability_ref: ari.knowledge.describe/v1
+  - name: list_active_knowledge_skills
+    capability_ref: ari.knowledge.active-list/v1
+    context_requirement: run
+  - name: request_knowledge_skill
+    capability_ref: ari.knowledge.request/v1
+    context_requirement: node

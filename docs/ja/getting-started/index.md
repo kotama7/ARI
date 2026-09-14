@@ -6,7 +6,9 @@ sources:
     role: doc
   - path: ari-core/ari/cli
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/paths.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # ARI をはじめよう
@@ -45,9 +47,11 @@ ARI はエンドツーエンドの自律研究システムです。プレーン�
 
 - **ダッシュボードはポート `8765` で動作します。** リポジトリ直下で `./start.sh` を実行して
   すべてのサービスを起動し、<http://localhost:8765> を開いてください。停止は `./shutdown.sh` です。
-- **各実行は自己完結しています。** 1 回の実行に関するすべての状態は
-  `workspace/checkpoints/<timestamp>_<slug>/` の下に置かれます — ホームディレクトリには何も
-  書き込まれず、API キーは保存設定からではなく `.env` から取得されます。
+- **成果物は自己完結していますが、作業領域はそうではありません。** 論文、図表、ツリー、EAR、
+  各種レポートはすべて `workspace/checkpoints/<timestamp>_<slug>/` に置かれ、API キーは保存設定
+  からではなく `.env` から取得されます。ただし 2 つだけ別の場所にあります: 各ノードの作業
+  ディレクトリは `workspace/experiments/<run_id>/<node_id>/`（`checkpoints/` の兄弟ディレクトリ）
+  にあり、`./start.sh` が起動するサービスは PID とログのファイルを `~/.ari/` 配下に置きます。
 
 ---
 

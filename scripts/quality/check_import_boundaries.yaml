@@ -1,7 +1,7 @@
 # Rule config for scripts/check_import_boundaries.py
 #
-# Design: docs/refactoring/003_dependency_boundary_report.md §3/§4/§15;
-#         docs/refactoring/009_quality_scripts_plan.md §5.2.
+# Design: the subtask 003 dependency-boundary report §3/§4/§15;
+#         refactoring plan 009 (quality scripts) §5.2.
 #
 # Every key here is optional; omitted keys fall back to the script defaults.
 # The lists are config-driven precisely so that the B1 ADAPT subtask can widen

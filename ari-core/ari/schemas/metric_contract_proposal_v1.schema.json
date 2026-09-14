@@ -1,0 +1,80 @@
+{
+  "$id": "https://ari.dev/schemas/metric-contract-proposal-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Untrusted LLM suggestion; never an admitted scientific contract.",
+  "properties": {
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Digest",
+      "type": "string"
+    },
+    "model": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Model",
+      "type": "string"
+    },
+    "model_revision": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Revision"
+    },
+    "prompt_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Prompt Digest",
+      "type": "string"
+    },
+    "proposal_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Proposal Digest",
+      "type": "string"
+    },
+    "proposed_contract": {
+      "additionalProperties": true,
+      "title": "Proposed Contract",
+      "type": "object"
+    },
+    "requires_human_review": {
+      "const": true,
+      "default": true,
+      "title": "Requires Human Review",
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": "ari.metric-contract-proposal/v1",
+      "default": "ari.metric-contract-proposal/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_idea_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Idea Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "proposal_digest",
+    "source_idea_digest",
+    "evidence_digest",
+    "model",
+    "prompt_digest",
+    "proposed_contract",
+    "confidence"
+  ],
+  "title": "ARI Metric Contract Proposal v1",
+  "type": "object"
+}

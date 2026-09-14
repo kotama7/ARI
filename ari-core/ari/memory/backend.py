@@ -1,6 +1,6 @@
 """Sanctioned funnel for the core→skill memory edge.
 
-Together with the sibling ``letta_client.py`` and ``auto_migrate.py``, this
+Together with the sibling ``letta_client.py``, this
 module is the **sole** place in ``ari-core`` that reaches into the
 ``ari-skill-memory`` package.  Every other ``ari-core`` module must obtain a
 ``MemoryBackend`` (or build verified context) through ``ari.memory`` — which

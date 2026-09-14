@@ -79,7 +79,7 @@ def test_passing_gate(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE,
                         paper_claim_links=_links(150.0, 50.0),
                         policy={"mode": "strict"}, phase="final")
-    assert rep["errors"] == []
+    assert rep["blocking_findings"] == []
     assert rep["status"] in ("passed", "warn")
     assert rep["should_block"] is False
     assert rep["metrics"]["numeric_claim_reproducible_rate"] == 1.0
@@ -91,7 +91,7 @@ def test_numeric_mismatch_blocks_in_strict_final(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE,
                         paper_claim_links=_links(150.0, 99.0),  # NC2 paper says 99, recompute 50
                         policy={"mode": "strict"}, phase="final")
-    types = [e["type"] for e in rep["errors"]]
+    types = [e["type"] for e in rep["blocking_findings"]]
     assert "numeric_mismatch" in types
     assert rep["should_block"] is True
     assert rep["metrics"]["numeric_claim_mismatch_count"] == 1
@@ -102,7 +102,7 @@ def test_numeric_mismatch_warn_does_not_block(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE,
                         paper_claim_links=_links(150.0, 99.0),
                         policy={"mode": "warn"}, phase="final")
-    assert any(e["type"] == "numeric_mismatch" for e in rep["errors"])
+    assert any(e["type"] == "numeric_mismatch" for e in rep["blocking_findings"])
     assert rep["should_block"] is False  # warn mode never blocks
 
 
@@ -111,7 +111,7 @@ def test_draft_phase_never_blocks(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE,
                         paper_claim_links=_links(150.0, 99.0),
                         policy={"mode": "strict"}, phase="draft")
-    assert any(e["type"] == "numeric_mismatch" for e in rep["errors"])
+    assert any(e["type"] == "numeric_mismatch" for e in rep["blocking_findings"])
     assert rep["should_block"] is False  # draft is informational
 
 
@@ -122,7 +122,7 @@ def test_operand_unresolved(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=sd,
                         paper_claim_links=_links(150.0, 50.0),
                         policy={"mode": "strict"}, phase="final")
-    assert any(e["type"] == "operand_unresolved" for e in rep["errors"])
+    assert any(e["type"] == "operand_unresolved" for e in rep["blocking_findings"])
     assert rep["should_block"] is True
 
 
@@ -133,7 +133,7 @@ def test_missing_evidence_unknown_node(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=sd,
                         paper_claim_links=_links(150.0, 50.0),
                         policy={"mode": "strict"}, phase="final")
-    assert any(e["type"] == "missing_evidence" for e in rep["errors"])
+    assert any(e["type"] == "missing_evidence" for e in rep["blocking_findings"])
 
 
 def test_uncovered_numeric_strict_blocks_warn_warns(tmp_path):
@@ -144,12 +144,12 @@ def test_uncovered_numeric_strict_blocks_warn_warns(tmp_path):
                    "unresolved_anchors": [], "uncovered_numeric_candidates": []}
     strict = run_hard_gate(ckpt, paper_tex=tex, science_data={"claims": [], "numeric_assertions": []},
                            paper_claim_links=empty_links, policy={"mode": "strict"}, phase="final")
-    assert any(e["type"] == "uncovered_numeric" for e in strict["errors"])
+    assert any(e["type"] == "uncovered_numeric" for e in strict["blocking_findings"])
     assert strict["should_block"] is True
 
     warn = run_hard_gate(ckpt, paper_tex=tex, science_data={"claims": [], "numeric_assertions": []},
                          paper_claim_links=empty_links, policy={"mode": "warn"}, phase="final")
-    assert any(w["type"] == "uncovered_numeric" for w in warn["warnings"])
+    assert any(w["type"] == "uncovered_numeric" for w in warn["advisory_findings"])
     assert warn["should_block"] is False
 
 
@@ -168,7 +168,7 @@ def test_env_mismatch_warning(tmp_path):
         (d / "node_report.json").write_text(json.dumps({"executor": "slurm", "cpu_info": {"model": model}}))
     rep = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE, paper_claim_links=_links(150.0, 50.0),
                         policy={"mode": "warn"}, phase="final")
-    assert any(w["type"] == "environment_mismatch" for w in rep["warnings"])
+    assert any(w["type"] == "environment_mismatch" for w in rep["advisory_findings"])
 
 
 def test_env_mismatch_severity_is_intent_driven(tmp_path, monkeypatch):
@@ -185,14 +185,14 @@ def test_env_mismatch_severity_is_intent_driven(tmp_path, monkeypatch):
     strict = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE, paper_claim_links=_links(150.0, 50.0),
                            policy={"mode": "strict", "comparison_scope": "same_environment"}, phase="final")
     assert strict["comparison_scope"] == "same_environment"
-    assert any(e["type"] == "environment_mismatch" for e in strict["errors"])
+    assert any(e["type"] == "environment_mismatch" for e in strict["blocking_findings"])
     assert strict["should_block"] is True
 
     # any intent (default) => warning, never blocks on env mismatch
     anyscope = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE, paper_claim_links=_links(150.0, 50.0),
                              policy={"mode": "strict", "comparison_scope": "any"}, phase="final")
-    assert any(w["type"] == "environment_mismatch" for w in anyscope["warnings"])
-    assert not any(e["type"] == "environment_mismatch" for e in anyscope["errors"])
+    assert any(w["type"] == "environment_mismatch" for w in anyscope["advisory_findings"])
+    assert not any(e["type"] == "environment_mismatch" for e in anyscope["blocking_findings"])
     assert anyscope["should_block"] is False
 
 
@@ -233,7 +233,7 @@ def test_writer_declared_assertion_verified_forward(tmp_path):
                         policy={"mode": "strict"}, phase="final")
     assert rep["metrics"]["writer_declared_assertions"] == 1
     assert rep["metrics"]["numeric_reproducible"] == 1
-    assert not any(e["type"] == "numeric_mismatch" for e in rep["errors"])
+    assert not any(e["type"] == "numeric_mismatch" for e in rep["blocking_findings"])
 
 
 def test_writer_declared_assertion_wrong_is_mismatch(tmp_path):
@@ -242,7 +242,7 @@ def test_writer_declared_assertion_wrong_is_mismatch(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data={"claims": [], "numeric_assertions": []},
                         paper_claim_links=_links_with_writer_assertion(99.0),  # recompute=50, reported=99
                         policy={"mode": "strict"}, phase="final")
-    assert any(e["type"] == "numeric_mismatch" for e in rep["errors"])
+    assert any(e["type"] == "numeric_mismatch" for e in rep["blocking_findings"])
     assert rep["should_block"] is True
 
 
@@ -268,7 +268,7 @@ def test_coverage_by_value_restatement(tmp_path):
     }
     rep = run_hard_gate(ckpt, paper_tex="", science_data=sd, paper_claim_links=pcl,
                         policy={"mode": "strict"}, phase="final", write=False)
-    err_lines = {e.get("line") for e in rep["errors"] if e["type"] == "uncovered_numeric"}
+    err_lines = {e["details"].get("line") for e in rep["blocking_findings"] if e["type"] == "uncovered_numeric"}
     assert 1 not in err_lines   # restatement of a verified value -> covered (no laundering: exact value+unit)
     assert 2 in err_lines       # genuinely ungrounded number -> still flagged
     assert 3 in err_lines       # value matches but unit differs (% vs absolute) -> not covered
@@ -295,7 +295,7 @@ def test_coverage_credits_resolved_operand_value(tmp_path):
     }
     rep = run_hard_gate(ckpt, paper_tex="", science_data=sd, paper_claim_links=pcl,
                         policy={"mode": "strict"}, phase="final", write=False)
-    err_lines = {e.get("line") for e in rep["errors"] if e["type"] == "uncovered_numeric"}
+    err_lines = {e["details"].get("line") for e in rep["blocking_findings"] if e["type"] == "uncovered_numeric"}
     assert 6 not in err_lines   # baseline (100) = resolved operand of a verified claim -> covered
 
 
@@ -322,3 +322,194 @@ def test_latex_mentions_e_notation_and_speedup_x():
     assert any(abs(m["value"] - 1.2e-6) < 1e-12 for m in ms)
     ms2 = extract_numeric_mentions(r"a \(4.18\times\) speedup over 10 runs")
     assert sorted(m["value"] for m in ms2) == [4.18, 10.0]
+
+
+def test_latex_matrix_shape_times_is_not_a_speedup_result():
+    from ari.pipeline.claim_gate.latex import extract_numeric_mentions
+
+    mentions = extract_numeric_mentions(
+        r"\section{Introduction} We use a \(2048 \times 2048\) grid."
+    )
+    shapes = [item for item in mentions if item["value"] == 2048.0]
+    assert len(shapes) == 2
+    assert all(item["type"] != "result_claim" for item in shapes)
+    assert all(item["requires_assertion"] is False for item in shapes)
+
+
+def test_latex_mentions_bare_power_of_ten_p_value_bound():
+    """A p-value BOUND ``p<10^{-23}`` written as a bare power of ten (no
+    ×-multiplier) must parse to 1e-23, not the base 10.0. The bare-mantissa
+    misread shipped a true claim as value=10.0, which raised a phantom
+    ``numeric_mismatch reported:10.0 recomputed:0.0`` that drove paper_refine
+    to rewrite the (true) claim into the false "underflows to 0.0". This is
+    the exact input from the e2e run's abstract."""
+    from ari.pipeline.claim_gate.latex import extract_numeric_mentions
+    ms = extract_numeric_mentions(
+        r"each significant with a $p$-value $p<10^{-23}$ ($n=5$).")
+    vals = [m["value"] for m in ms]
+    assert 1e-23 in vals, vals
+    assert 10.0 not in vals, f"base 10 leaked as a bare mantissa: {vals}"
+    tenpow = [m for m in ms if m["value"] == 1e-23][0]
+    assert tenpow["type"] == "result_claim"  # scientific shape, like ×10^exp
+
+    # A bare power is base**exp, and a general base is not scientific-notation:
+    ms2 = extract_numeric_mentions(r"the state space is $2^{10}$ cells")
+    assert 1024.0 in [m["value"] for m in ms2]
+
+    # Overflow (10^{4932}) is still dropped by the non-finite guard, not shipped.
+    ms3 = extract_numeric_mentions(r"a constant near $10^{4932}$ appears")
+    assert all(m["value"] not in (float("inf"), float("-inf")) for m in ms3)
+
+
+def test_positive_bare_power_in_method_equation_is_not_a_result_claim():
+    from ari.pipeline.claim_gate.latex import extract_numeric_mentions
+
+    mentions = extract_numeric_mentions(
+        r"\section{Methodology} BW=24T(N-2)^2/(10^9t)\quad\text{GB/s}."
+    )
+    conversion = next(item for item in mentions if item["value"] == 1e9)
+    assert conversion["type"] == "ambiguous"
+    assert conversion["requires_assertion"] is False
+
+
+def test_an_unknown_formula_is_named_not_disguised_as_a_missing_operand():
+    """`numeric.required_roles` returns () for any token outside the closed
+    vocabulary, and the gate used to fold that into `operand_unresolved`,
+    printing "operand 'formula' ({}) did not resolve" — where {} is just
+    operands.get(None, {}). An operator then chased missing operands while the
+    real cause was a formula name the registry never contained. Observed live:
+    the writer emitted `percent_change` for all 7 assertions and
+    numeric_reproducible fell 9/12 -> 0/9 with no error naming why."""
+    from ari.pipeline.claim_gate import numeric
+
+    assert numeric.required_roles("percent_change") == ()
+    assert "percent_change" not in numeric.FORMULAS
+
+
+def test_unknown_formula_keeps_the_severity_of_the_error_it_replaced():
+    """Splitting a finding type must not quietly downgrade what it blocks:
+    `operand_unresolved` is in block_on, so `unknown_formula` must be too."""
+    from ari.pipeline.claim_gate import policy
+
+    block_on = (policy.DEFAULT_POLICY.get("blocking", {}) or {}).get("block_on", [])
+    assert "operand_unresolved" in block_on
+    assert "unknown_formula" in block_on
+
+
+def test_the_formula_registry_is_reachable_from_the_public_seam():
+    """The process that PRODUCES the token (ari-skill-paper) previously could
+    not see the vocabulary at all — it was hand-mirrored into five places and
+    `grep -c FORMULAS ari-skill-paper/` was 0. A producer that cannot read the
+    vocabulary cannot be held to it."""
+    from ari.public.claim_gate import FORMULAS, required_roles
+
+    assert "identity" in FORMULAS and "relative_speedup" in FORMULAS
+    assert required_roles("identity")
+
+
+def test_a_colliding_claim_id_is_not_reported_as_a_wrong_paper_number(tmp_path):
+    """The paper writer and the science_data generator mint C<N>/NC<N> ids
+    INDEPENDENTLY, so one id can name two assertions about different subjects.
+    The gate used to compare the paper's number against the OTHER subject's
+    recomputation: a correct 11.2286 (cfg1, the scalar baseline) was reported as
+    "not reproducible (recomputed 16.3441)" because science_data's NC1 was about
+    a different node. That false accusation reaches the refiner as an imperative
+    to change a correct number."""
+    from ari.pipeline.claim_gate.gate import run_hard_gate
+
+    (tmp_path / "results.json").write_text(json.dumps({
+        "nodes": {"nodeB": {"metrics": {"bw": 16.3441}}}
+    }))
+    science = {
+        "claims": [{"id": "C1", "numeric_assertions": [{
+            "id": "NC1", "claim_id": "C1", "metric": "bw", "formula": "identity",
+            "operands": {"value": {"node_id": "nodeB", "metric_path": "bw"}},
+        }]}],
+        "_config_nodes": {"cfg1": {"node_id": "nodeA"}},
+    }
+    links = {
+        "paper_claim_links": [{"claim_id": "C1", "numeric_id": "NC1",
+                               "line_range": [2, 2], "resolved": True}],
+        "numeric_mentions": [{"value": 11.2286, "line": 2, "type": "result_claim"}],
+        "writer_assertions": [],
+        # the anchor declared cfg1 -> nodeA; the pre-generated NC1 is nodeB
+        "dropped_declarations": [{
+            "claim_id": "C1", "numeric_id": "NC1",
+            "reason": "no inline formula= declaration",
+            "declared_metric": "bw",
+            "declared_config_ids": ["cfg1"], "declared_node_ids": ["nodeA"],
+        }],
+    }
+    rep = run_hard_gate(checkpoint_dir=tmp_path, science_data=science,
+                        paper_claim_links=links,
+                        paper_tex="x\nThe baseline sustains 11.2286.\n", phase="final")
+    types = [e.get("type") for e in (rep.get("blocking_findings") or [])]
+    assert "claim_id_collision" in types, rep.get("blocking_findings")
+    assert "numeric_mismatch" not in types, "a correct paper must not be accused"
+
+
+def test_an_unreadable_policy_file_is_not_silently_permissive(tmp_path, caplog):
+    """An operator who writes a policy file wants THAT policy. The loader
+    swallowed a parse error and fell back to the built-in default, whose mode is
+    "warn" (non-blocking) — so a single trailing comma in `{"mode": "strict"}`
+    left the gate running permissive while looking configured, and nothing said
+    so. The fallback is still correct behaviour; being silent about it was not."""
+    from ari.pipeline.claim_gate import policy as _policy
+
+    (tmp_path / "claim_gate_policy.json").write_text('{"mode": "strict",}')
+    with caplog.at_level("WARNING"):
+        resolved = _policy.load_policy(tmp_path)
+
+    assert _policy.mode(resolved) == "warn"          # fallback unchanged
+    assert resolved.get("_policy_load_error")        # …but now recorded
+    assert any("NOT in effect" in r.message or "unreadable" in r.message
+               for r in caplog.records), [r.message for r in caplog.records]
+
+    # A VALID policy still applies, and carries no error marker.
+    (tmp_path / "claim_gate_policy.json").write_text('{"mode": "strict"}')
+    ok = _policy.load_policy(tmp_path)
+    assert _policy.mode(ok) == "strict"
+    assert "_policy_load_error" not in ok
+
+
+def test_an_unevaluable_contract_expression_is_not_silently_a_pass():
+    """`safe_eval` returns None for a syntax error AND for an unsupported
+    construct, and every caller tested only `if r is False`, so an expression
+    the evaluator could not parse read exactly like a satisfied predicate. The
+    expressions are LLM-authored with no grammar stated in the obligation, and
+    `correctness_failed` / `invariant_violation` are in the ALWAYS-blocking
+    tier — so the gate published "0 violations" for a check that never ran."""
+    from ari.pipeline.claim_gate import contract, policy
+
+    def _sd(expr):
+        return {
+            "metric_contract": {"correctness": {"requires": ["max_abs_err"],
+                                                "expr": expr}},
+            # a measurement that genuinely FAILS the 1e-4 threshold
+            "configurations": [{"config_id": "cfg1",
+                                "metrics": {"max_abs_err": 1e-3}}],
+        }
+
+    assert [f["type"] for f in contract.check_contract(_sd("max_abs_err < 1e-4"))] \
+        == ["correctness_failed"]
+    for broken in ("max_abs_err < 10**-4",      # unsupported operator
+                   "np.max(err) < 1e-4",        # unsupported call
+                   "max_abs_err < 1e-4)"):      # syntax error
+        types = [f["type"] for f in contract.check_contract(_sd(broken))]
+        assert types == ["contract_expr_unevaluable"], (broken, types)
+
+    # It blocks in the same tier as the finding it replaces.
+    assert "contract_expr_unevaluable" in policy.always_block_on(policy.DEFAULT_POLICY)
+
+
+def test_eval_declared_separates_missing_operand_from_unevaluable():
+    """A missing operand is NOT an unevaluable expression: the first is a
+    legitimate skip, the second means the check did not run."""
+    from ari.pipeline.claim_gate import formula_eval as fe
+
+    val, why = fe.eval_declared("missing_var < 1e-4", {"max_abs_err": 1e-3})
+    assert val is None and why is None            # evaluated; operand absent
+    val, why = fe.eval_declared("max_abs_err < 10**-4", {"max_abs_err": 1e-3})
+    assert val is None and "unsupported" in why   # never evaluated
+    # safe_eval keeps its old signature for existing callers.
+    assert fe.safe_eval("max_abs_err < 1e-4", {"max_abs_err": 1e-3}) is False

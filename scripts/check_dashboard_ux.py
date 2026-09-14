@@ -45,7 +45,7 @@ gate today:
       (the ``paperbench/*`` sub-routes + the ``new``->``wizard`` alias target).
 
 It **guards**, never **redefines**, the dashboard UX / i18n contract (preserved
-per docs/refactoring/010_contract_preservation_policy.md §4/§5/§9-D). "deprecated"
+per refactoring plan 010, contract preservation, §4/§5/§9-D). "deprecated"
 is reserved for external contracts; a flagged raw dump is a "REVIEW_REQUIRED
 candidate for developer-mode gating", never "deprecated".
 
@@ -57,14 +57,14 @@ NOT wired into any workflow here (CI integration is the workflow-integration
 track's job, subtask 046); intended future job: a warning-first step in an
 additive dashboard/UX-hygiene workflow.
 
-Design: docs/refactoring/014_dashboard_ux_refactoring_plan.md §14 (the
-``check_dashboard_ux.py`` design row) + §13 (a11y/i18n acceptance);
-docs/refactoring/000_master_refactoring_plan.md §8 ST-12-6;
-docs/refactoring/009_quality_scripts_plan.md §3/§6/§8 (common CLI/allowlist/exit
-contract, warning-mode-first rollout, ``scripts/quality/`` + ``_common.py``);
-docs/refactoring/subtasks/073_add_dashboard_ux_regression_checks.md (§7 design,
-§13 acceptance); consumes the frozen settings baseline in
-docs/refactoring/reports/067_dashboard_visible_settings_inventory.md.
+Design (planning documents since retired; numbers kept as provenance):
+refactoring plan 014 (dashboard UX) §14 (the ``check_dashboard_ux.py`` design
+row) + §13 (a11y/i18n acceptance); master refactoring plan ST-12-6; refactoring
+plan 009 (quality scripts) §3/§6/§8 (common CLI/allowlist/exit contract,
+warning-mode-first rollout, ``scripts/quality/`` + ``_common.py``); subtask 073
+(add dashboard UX regression checks) §7 design, §13 acceptance; consumes the
+frozen settings baseline from the subtask 067 dashboard visible-settings
+inventory.
 
 Exit convention (matches scripts/docs/check_doc_sources.py + the scripts/quality/
 family): ``0`` = clean, default/``--warning-only`` posture, or

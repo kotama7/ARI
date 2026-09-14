@@ -11,8 +11,8 @@ the test environment may or may not provide).
 
 from __future__ import annotations
 
-import asyncio
-import importlib.util
+import os
+import signal
 import shutil
 import sys
 import tempfile
@@ -30,6 +30,7 @@ for p in (str(ROOT), str(SRC)):
 import _vendor_path  # noqa: F401, E402
 
 from _compute import LocalComputer, ApptainerComputer, make_computer  # noqa: E402
+from ari.public.execution import ExecutionPolicyError  # noqa: E402
 from nanoeval.solvers.computer_tasks.code_execution_interface import (  # noqa: E402
     ComputerInterface,
     ExecutionResult,
@@ -45,10 +46,10 @@ async def test_local_computer_implements_full_abc():
     If any were left abstract, the constructor would raise ``TypeError``.
     """
     with tempfile.TemporaryDirectory() as td:
-        c = LocalComputer(Path(td))
+        c = LocalComputer(Path(td), network_isolation_attested=True)
         assert isinstance(c, ComputerInterface)
-        # Real network is not modified, but the method must be callable.
         await c.disable_internet()
+        assert c.network_disabled is True
         assert await c.fetch_container_names() == []
         await c.stop()
 
@@ -97,8 +98,37 @@ async def test_local_computer_absolute_destination():
     with tempfile.TemporaryDirectory() as td:
         c = LocalComputer(Path(td) / "work")
         absdest = Path(td) / "outside.txt"
-        await c.upload(b"X", str(absdest))
-        assert absdest.read_bytes() == b"X"
+        with pytest.raises(ExecutionPolicyError, match="absolute"):
+            await c.upload(b"X", str(absdest))
+        assert not absdest.exists()
+
+
+async def test_local_computer_rejects_traversal_and_symlinks():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td) / "work"
+        c = LocalComputer(root)
+        with pytest.raises(ExecutionPolicyError, match="traversal"):
+            await c.upload(b"X", "../outside.txt")
+        (root / "escape").symlink_to(Path(td) / "outside.txt")
+        with pytest.raises(ExecutionPolicyError, match="regular file|symlink"):
+            await c.upload(b"X", "escape")
+
+
+async def test_local_computer_does_not_inherit_parent_secrets(monkeypatch):
+    monkeypatch.setenv("ARI_TEST_PARENT_SECRET_TOKEN", "must-not-leak")
+    with tempfile.TemporaryDirectory() as td:
+        c = LocalComputer(Path(td))
+        result = await c.send_shell_command("env")
+        assert result.exit_code == 0
+        assert b"ARI_TEST_PARENT_SECRET_TOKEN" not in result.output
+        assert b"must-not-leak" not in result.output
+
+
+async def test_local_computer_network_revocation_is_fail_closed():
+    with tempfile.TemporaryDirectory() as td:
+        c = LocalComputer(Path(td))
+        with pytest.raises(RuntimeError, match="cannot enforce"):
+            await c.disable_internet()
 
 
 async def test_local_computer_timeout():
@@ -108,6 +138,16 @@ async def test_local_computer_timeout():
         r = await c.send_shell_command("sleep 10")
         assert r.exit_code == 124
         assert b"timed out" in r.output
+
+
+async def test_local_computer_timeout_kills_descendants():
+    with tempfile.TemporaryDirectory() as td:
+        c = LocalComputer(Path(td), timeout_sec=1)
+        result = await c.send_shell_command("sleep 60 & echo $!; wait")
+        child_pid = int(result.output.splitlines()[0])
+        assert result.exit_code == 124
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, signal.SIGCONT)
 
 
 async def test_local_computer_stop_blocks_further_use():
@@ -132,6 +172,37 @@ async def test_make_computer_apptainer_requires_image():
     with tempfile.TemporaryDirectory() as td:
         with pytest.raises(ValueError):
             make_computer(Path(td), kind="apptainer", image=None)
+
+
+async def test_apptainer_rejects_mutable_remote_image(monkeypatch):
+    from _compute import computer as comp_mod
+
+    monkeypatch.setattr(comp_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
+    with tempfile.TemporaryDirectory() as td:
+        with pytest.raises(ValueError, match="must be pinned"):
+            ApptainerComputer(Path(td), image="docker://ubuntu:latest")
+
+
+async def test_apptainer_disable_internet_enables_namespace(monkeypatch):
+    from _compute import computer as comp_mod
+
+    captured: list[list[str]] = []
+
+    async def capture(*, argv, cwd, env, timeout_sec):
+        captured.append(list(argv))
+        return ExecutionResult(output=b"", exit_code=0)
+
+    monkeypatch.setattr(comp_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(comp_mod, "_run_subprocess", capture)
+    with tempfile.TemporaryDirectory() as td:
+        image = Path(td) / "immutable.sif"
+        image.write_bytes(b"SIF")
+        computer = ApptainerComputer(Path(td), image=str(image))
+        await computer.disable_internet()
+        await computer.send_shell_command("echo isolated")
+
+    assert computer.network_disabled is True
+    assert all("--net" in argv and "none" in argv for argv in captured)
 
 
 @pytest.mark.skipif(
@@ -160,13 +231,18 @@ async def test_apptainer_computer_argv_construction():
     comp_mod._run_subprocess = _capture_subprocess
     try:
         with tempfile.TemporaryDirectory() as td:
-            c = ApptainerComputer(Path(td), image="/fake/image.sif")
+            image = Path(td) / "image.sif"
+            image.write_bytes(b"SIF")
+            c = ApptainerComputer(Path(td), image=str(image))
             await c.send_shell_command("echo hi")
         argv = captured["argv"]
         assert argv[0] in ("apptainer", "singularity")
         assert argv[1] == "exec"
         assert "--bind" in argv
-        assert "/fake/image.sif" in argv
-        assert argv[-3:] == ["bash", "-lc", "echo hi"]
+        assert str(image.resolve()) in argv
+        assert "--cleanenv" in argv
+        assert "--containall" in argv
+        assert f"{Path(c.work_dir)}:/work:rw" in argv
+        assert argv[-5:] == ["bash", "--noprofile", "--norc", "-c", "echo hi"]
     finally:
         comp_mod._run_subprocess = orig

@@ -18,13 +18,9 @@ Design notes
   agent's commands automatically run on that node — that is the intended
   Slurm story. Per-command ``srun`` / ``sbatch`` is *not* used here.
 
-* :meth:`disable_internet` is a no-op. PaperBench's reference setup uses
-  Docker network namespace tricks to revoke outbound access mid-rollout;
-  ari's HPC environment is typically network-restricted by default
-  (Slurm-managed firewalls / proxy whitelists), so retroactive revocation
-  is the cluster admin's job, not ours. PaperBench's paper §2.5 in any
-  case only invokes the per-paper *blacklist* check post-hoc, not a runtime
-  cut-off. Documenting the substitution.
+* Network revocation is fail-closed. Apptainer commands switch to an isolated
+  network namespace. Local execution rejects revocation unless an operator
+  explicitly attests that the host/allocation is already network isolated.
 
 * :meth:`fetch_container_names` is ``@deprecated`` upstream (CTF-only) and
   returns ``[]``.
@@ -39,12 +35,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
+import signal
 import shlex
 import shutil
 from pathlib import Path
 from typing import Sequence
 
 import _vendor_path  # noqa: F401  (ensures vendor on sys.path)
+
+from ari.public.execution import WorkspaceRefV1
 
 from nanoeval.solvers.computer_tasks.code_execution_interface import (
     ComputerInterface,
@@ -55,21 +55,66 @@ log = logging.getLogger(__name__)
 
 
 _DEFAULT_TIMEOUT_SEC = 60 * 30  # 30 min per shell command (matches PaperBench tools)
+_MAX_TRANSFER_BYTES = 1024**3
+_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────
 
 
-def _resolve_dest(dest: str, work_dir: Path) -> Path:
-    """Resolve a tool-supplied destination path.
+def _agent_environment(work_dir: Path, explicit: dict[str, str] | None) -> dict[str, str]:
+    """Build a deterministic environment without copying parent secrets."""
 
-    Absolute paths are honoured (the agent may want to read e.g. ``/etc``).
-    Relative paths are placed inside ``work_dir``.
-    """
-    p = Path(dest)
-    if p.is_absolute():
-        return p
-    return work_dir / p
+    home = work_dir / ".ari_home"
+    home.mkdir(parents=True, exist_ok=True, mode=0o700)
+    environment = {
+        "HOME": str(home),
+        "LOGNAME": "ari-agent",
+        "USER": "ari-agent",
+        "SHELL": "/bin/bash",
+        "TERM": "dumb",
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUNBUFFERED": "1",
+    }
+    for name, value in (explicit or {}).items():
+        if (
+            not _ENV_NAME_RE.fullmatch(name)
+            or not isinstance(value, str)
+            or "\x00" in value
+        ):
+            raise ValueError(f"invalid explicit agent environment entry: {name!r}")
+        environment[name] = value
+    return environment
+
+
+def _immutable_apptainer_image(reference: str) -> str:
+    """Return a canonical immutable SIF/ref or reject a mutable image tag."""
+
+    path = Path(reference).expanduser()
+    if path.exists():
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("Apptainer image must be a regular non-symlink file")
+        return str(path.resolve(strict=True))
+    marker = "@sha256:"
+    if marker not in reference:
+        raise ValueError(
+            "remote Apptainer image must be pinned with @sha256:<digest>; "
+            "prefer a local immutable SIF"
+        )
+    digest = reference.rsplit(marker, 1)[1]
+    if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        raise ValueError("Apptainer image digest is invalid")
+    return reference
+
+
+def _workspace(work_dir: Path | str) -> tuple[Path, WorkspaceRefV1]:
+    path = Path(work_dir)
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if path.is_symlink() or not path.is_dir():
+        raise ValueError("work_dir must be a real directory")
+    resolved = path.resolve(strict=True)
+    return resolved, WorkspaceRefV1(root=str(resolved))
 
 
 # ─── LocalComputer ───────────────────────────────────────────────────────
@@ -112,11 +157,8 @@ def _install_apply_patch_command(work_dir: Path, env: dict[str, str]) -> Path | 
         alias = bindir / "applypatch"
         if alias.exists() or alias.is_symlink():
             alias.unlink()
-        try:
-            alias.symlink_to(wrapper.name)
-        except OSError:
-            alias.write_text(wrapper.read_text())
-            alias.chmod(0o755)
+        alias.write_text(wrapper.read_text())
+        alias.chmod(0o755)
     except OSError as e:  # noqa: BLE001
         log.warning("could not install apply_patch shim in %s: %s", bindir, e)
         return None
@@ -142,10 +184,10 @@ class LocalComputer(ComputerInterface):
         *,
         env: dict[str, str] | None = None,
         timeout_sec: int = _DEFAULT_TIMEOUT_SEC,
+        network_isolation_attested: bool = False,
     ) -> None:
-        self.work_dir = Path(work_dir).resolve()
-        self.work_dir.mkdir(parents=True, exist_ok=True)
-        self.env = {**os.environ, **(env or {})}
+        self.work_dir, self.workspace = _workspace(work_dir)
+        self.env = _agent_environment(self.work_dir, env)
         # Provide the vendor's apply_patch command on PATH (the Docker image
         # installs it at /bin/apply_patch; this host-side sandbox does not).
         _ap_bin = _install_apply_patch_command(self.work_dir, self.env)
@@ -153,26 +195,29 @@ class LocalComputer(ComputerInterface):
             self.env["PATH"] = f"{_ap_bin}{os.pathsep}{self.env.get('PATH', '')}"
             log.info("LocalComputer: apply_patch/applypatch on PATH via %s", _ap_bin)
         self.timeout_sec = timeout_sec
+        self.network_isolation_attested = network_isolation_attested
+        self.network_disabled = False
         self._stopped = False
 
     async def disable_internet(self) -> None:
-        # See module docstring. PaperBench's notion of mid-rollout cutoff
-        # has no portable Slurm equivalent and is not load-bearing for the
-        # methodology (paper §2.5 blacklist is post-hoc).
-        log.info("LocalComputer.disable_internet() is a no-op (HPC substrate)")
+        if not self.network_isolation_attested:
+            raise RuntimeError(
+                "LocalComputer cannot enforce network revocation; use "
+                "ApptainerComputer or an administrator-attested isolated host"
+            )
+        self.network_disabled = True
 
     async def upload(self, file: bytes, destination: str) -> None:
         if self._stopped:
             raise RuntimeError("computer stopped")
-        path = _resolve_dest(destination, self.work_dir)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(file)
+        if len(file) > _MAX_TRANSFER_BYTES:
+            raise ValueError("upload exceeds the 1 GiB transfer limit")
+        self.workspace.atomic_write_bytes(destination, file)
 
     async def download(self, file: str) -> bytes:
         if self._stopped:
             raise RuntimeError("computer stopped")
-        path = _resolve_dest(file, self.work_dir)
-        return path.read_bytes()
+        return self.workspace.read_bytes(file, max_bytes=_MAX_TRANSFER_BYTES)
 
     async def send_shell_command(
         self,
@@ -183,7 +228,7 @@ class LocalComputer(ComputerInterface):
         if self._stopped:
             raise RuntimeError("computer stopped")
         return await _run_subprocess(
-            argv=["bash", "-lc", cmd],
+            argv=["bash", "--noprofile", "--norc", "-c", cmd],
             cwd=self.work_dir,
             env=self.env,
             timeout_sec=self.timeout_sec,
@@ -229,35 +274,44 @@ class ApptainerComputer(ComputerInterface):
                 runner = alt
             else:
                 raise RuntimeError(
-                    f"neither apptainer nor singularity is on PATH; "
-                    f"install one or use LocalComputer instead"
+                    "neither apptainer nor singularity is on PATH; "
+                    "install one or use LocalComputer instead"
                 )
-        self.work_dir = Path(work_dir).resolve()
-        self.work_dir.mkdir(parents=True, exist_ok=True)
-        self.image = image
+        self.work_dir, self.workspace = _workspace(work_dir)
+        self.image = _immutable_apptainer_image(image)
         self.runner = runner
-        self.env = {**os.environ, **(env or {})}
+        agent_environment = _agent_environment(self.work_dir, env)
+        self.env = dict(agent_environment)
+        for name, value in agent_environment.items():
+            container_value = "/work/.ari_home" if name == "HOME" else value
+            self.env[f"APPTAINERENV_{name}"] = container_value
         self.extra_binds = list(extra_binds)
+        if any("\x00" in binding for binding in self.extra_binds):
+            raise ValueError("extra bind contains a NUL byte")
         self.timeout_sec = timeout_sec
+        self.network_disabled = False
         self._stopped = False
 
     async def disable_internet(self) -> None:
-        # Apptainer doesn't have a portable namespace-revoke. No-op; rely on
-        # cluster network policy (same posture as LocalComputer).
-        log.info("ApptainerComputer.disable_internet() is a no-op (HPC substrate)")
+        self.network_disabled = True
+        probe = await self.send_shell_command("true")
+        if probe.exit_code != 0:
+            self.network_disabled = False
+            raise RuntimeError(
+                "Apptainer could not establish an isolated network namespace"
+            )
 
     async def upload(self, file: bytes, destination: str) -> None:
         if self._stopped:
             raise RuntimeError("computer stopped")
-        path = _resolve_dest(destination, self.work_dir)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(file)
+        if len(file) > _MAX_TRANSFER_BYTES:
+            raise ValueError("upload exceeds the 1 GiB transfer limit")
+        self.workspace.atomic_write_bytes(destination, file)
 
     async def download(self, file: str) -> bytes:
         if self._stopped:
             raise RuntimeError("computer stopped")
-        path = _resolve_dest(file, self.work_dir)
-        return path.read_bytes()
+        return self.workspace.read_bytes(file, max_bytes=_MAX_TRANSFER_BYTES)
 
     async def send_shell_command(
         self,
@@ -267,10 +321,26 @@ class ApptainerComputer(ComputerInterface):
     ) -> ExecutionResult:
         if self._stopped:
             raise RuntimeError("computer stopped")
-        argv = [self.runner, "exec"]
-        for b in [str(self.work_dir), *self.extra_binds]:
-            argv += ["--bind", b]
-        argv += [self.image, "bash", "-lc", cmd]
+        argv = [
+            self.runner,
+            "exec",
+            "--cleanenv",
+            "--containall",
+            "--no-home",
+        ]
+        if self.network_disabled:
+            argv += ["--net", "--network", "none"]
+        argv += ["--bind", f"{self.work_dir}:/work:rw", "--pwd", "/work"]
+        for binding in self.extra_binds:
+            argv += ["--bind", binding]
+        argv += [
+            self.image,
+            "bash",
+            "--noprofile",
+            "--norc",
+            "-c",
+            cmd,
+        ]
         return await _run_subprocess(
             argv=argv,
             cwd=self.work_dir,
@@ -295,6 +365,7 @@ def make_computer(
     image: str | None = None,
     env: dict[str, str] | None = None,
     timeout_sec: int = _DEFAULT_TIMEOUT_SEC,
+    network_isolation_attested: bool = False,
 ) -> ComputerInterface:
     """Factory honouring ``ARI_PHASE1_SANDBOX`` semantics.
 
@@ -331,7 +402,12 @@ def make_computer(
                 "with container_image=<SIF or docker://… URI> instead.",
                 kind, str(work_dir), kind,
             )
-        return LocalComputer(work_dir, env=env, timeout_sec=timeout_sec)
+        return LocalComputer(
+            work_dir,
+            env=env,
+            timeout_sec=timeout_sec,
+            network_isolation_attested=network_isolation_attested,
+        )
     if kind in ("apptainer", "singularity"):
         if not image:
             raise ValueError(
@@ -367,23 +443,51 @@ async def _run_subprocess(
         env=env,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
+        start_new_session=True,
     )
+    communicate_task = asyncio.create_task(proc.communicate())
     try:
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+        stdout, _ = await asyncio.wait_for(
+            asyncio.shield(communicate_task), timeout=timeout_sec
+        )
         exit_code = int(proc.returncode or 0)
+        await _terminate_process_group(proc)
         return ExecutionResult(output=stdout or b"", exit_code=exit_code)
     except asyncio.TimeoutError:
+        await _terminate_process_group(proc)
         try:
-            proc.kill()
-        except ProcessLookupError:
-            pass
-        # Drain whatever was buffered so the agent sees partial progress.
-        try:
-            partial = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            partial = await asyncio.wait_for(
+                asyncio.shield(communicate_task), timeout=5.0
+            )
             stdout = (partial[0] or b"") + b"\n[ari] command timed out\n"
         except Exception:
             stdout = b"[ari] command timed out (no output captured)\n"
         return ExecutionResult(output=stdout, exit_code=124)
+    except asyncio.CancelledError:
+        await _terminate_process_group(proc)
+        try:
+            await asyncio.wait_for(asyncio.shield(communicate_task), timeout=5.0)
+        except Exception:
+            communicate_task.cancel()
+        raise
+
+
+async def _terminate_process_group(proc: asyncio.subprocess.Process) -> None:
+    """Terminate the complete command process group, including descendants."""
+
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=5.0)
+    except asyncio.TimeoutError:
+        pass
+    await asyncio.sleep(0)
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 
 __all__ = ["LocalComputer", "ApptainerComputer", "make_computer"]

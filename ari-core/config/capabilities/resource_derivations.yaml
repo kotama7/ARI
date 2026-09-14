@@ -1,0 +1,80 @@
+schema_version: 1
+source_revision: ari-resource-derivations/1
+# The environment prober observes substrate facts: this binary executed and
+# said what it is, this counter opened, this scheduler answered. Naming an
+# ontology resource class from those facts is a different act -- it is a review
+# decision about what a fact is sufficient evidence for -- and it belongs here,
+# with its reason, rather than inside the prober.
+#
+# Rows are applied to a fixpoint, so a row may consume a feature an earlier row
+# emitted. A row fires only when every requirement it names is already present;
+# nothing here can invent a fact the prober did not observe.
+derivations:
+  - emits: sif-container-runtime
+    kind: feature
+    requires_features: [apptainer]
+    rationale: >-
+      Apptainer executes SIF images. The capability a reviewed container profile
+      needs is "a runtime that can execute this SIF", not a particular project's
+      name, so the ontology names the neutral capability and this row supplies
+      it from the observed binary.
+  - emits: sif-container-runtime
+    kind: feature
+    requires_features: [singularity]
+    rationale: >-
+      SingularityCE and Apptainer are forks of one codebase and both execute the
+      SIF format the reviewed profiles are pinned to; which name a site installs
+      is a packaging decision. This equivalence is recorded once, here, rather
+      than aliased silently in the prober -- a run that binds through it can be
+      audited back to this row. It does not extend to OCI-only runtimes: podman
+      and docker do not execute SIF and deliberately have no row.
+  - emits: eda-cpu
+    kind: resource_type
+    requires_resource_types: [cpu]
+    requires_features: [sif-container-runtime]
+    rationale: >-
+      The reviewed EDA profile is a container-delivered toolchain pinned by OCI
+      manifest and inner-binary digest, run on CPU. A node with CPU but no SIF
+      runtime cannot supply it, and a node with a runtime but no CPU does not
+      exist; requiring both keeps the resource class from being claimed by a
+      substrate that would fail at the first invocation.
+  - emits: network-read
+    kind: feature
+    requires_features: [network-route]
+    rationale: >-
+      A default route is the kernel saying it has a path off this host. It is
+      necessary and not sufficient -- a proxy or firewall can still refuse the
+      call -- which is the same standing sinfo answering gives the scheduler:
+      it exists, the job may still fail. The alternative evidence, resolving a
+      name or opening a connection, is an outbound request to somebody else's
+      service made only to describe our own substrate. On an air-gapped node
+      there is no route and nothing here fires.
+  - emits: network
+    kind: resource_type
+    requires_resource_types: [process]
+    requires_features: [network-read]
+    rationale: >-
+      A retrieval capability runs in a local process and reaches an external
+      index. Both halves have to be observed: a node with no route cannot supply
+      it however many processes it can run.
+  - emits: gpu-slurm
+    kind: resource_type
+    requires_resource_types: [gpu, slurm]
+    rationale: >-
+      A capability that wants a GPU through the scheduler needs both halves, and
+      the prober only ever emits them separately, so this class could not be
+      claimed by any substrate. Note that gpu itself is already the conservative
+      one: a device seen on a node without GRES is recorded but not schedulable.
+  - emits: quantum-simulator
+    kind: resource_type
+    requires_resource_types: [cpu]
+    rationale: >-
+      This row was deliberately withheld while nothing supplied the capability,
+      because deriving it from `cpu` alone fires on every substrate and a row
+      that makes an unsupplied capability look resolved is worse than none. Now
+      that a promoted local-Aer profile is registerable the weakness is just
+      accurate: a seeded two-qubit statevector pass on a pinned CPU target needs
+      a CPU and nothing else -- no device, no scheduler, no network. What
+      actually bounds it is the digest-pinned Provider artifact, which the
+      catalog verifies separately and no row here can see. A substrate claim is
+      not an availability claim.

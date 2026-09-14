@@ -27,6 +27,11 @@ vi.mock('../../../services/api', () => ({
   fetchPartitions: vi.fn().mockResolvedValue([]),
   fetchCheckpoints: vi.fn().mockResolvedValue([]),
   deleteCheckpoint: vi.fn().mockResolvedValue({ ok: true }),
+  // MN-6: SettingsPage imports the challenge issuer for the delete flow.
+  requestConfirmationChallenge: vi.fn().mockResolvedValue({
+    challenge_id: 'chg-000000000000', action: 'delete-checkpoint',
+    target: '/tmp/x', expires_at: '2026-01-01T00:00:00Z', ttl_seconds: 60,
+  }),
   testSSH: vi.fn().mockResolvedValue({ ok: true }),
   generateConfig: vi.fn().mockResolvedValue({ ok: true }),
   fetchContainerInfo: vi.fn().mockResolvedValue({}),

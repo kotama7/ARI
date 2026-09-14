@@ -1,0 +1,62 @@
+{
+  "additionalProperties": false,
+  "description": "Final immutable interlock for one already-publishable exact build.",
+  "properties": {
+    "attempt_id": {
+      "title": "Attempt Id",
+      "type": "string"
+    },
+    "authoring_binding_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Authoring Binding Digest",
+      "type": "string"
+    },
+    "decision_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Decision Digest",
+      "type": "string"
+    },
+    "freshness_verified": {
+      "const": true,
+      "default": true,
+      "title": "Freshness Verified",
+      "type": "boolean"
+    },
+    "lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lock Digest",
+      "type": "string"
+    },
+    "paper_build_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Paper Build Digest",
+      "type": "string"
+    },
+    "pdf_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Pdf Digest",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-publication-lock/v1",
+      "default": "ari.manuscript-publication-lock/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "attempt_id",
+    "decision_digest",
+    "paper_build_digest",
+    "authoring_binding_digest",
+    "pdf_digest",
+    "lock_digest"
+  ],
+  "title": "PublicationLockV1",
+  "type": "object"
+}

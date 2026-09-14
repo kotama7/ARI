@@ -1,19 +1,8 @@
-# ari-skill-vlm Requirements
+# ari-skill-vlm requirements
 
-## Overview
-
-MCP Server for reviewing figures and tables using a Vision Language Model (VLM).
-Automatically evaluates figure quality in academic papers.
-
-## MCP Tools
-
-### review_figure(image_path: str, context: str = "") -> dict
-Reviews a figure using VLM. Returns quality assessment and suggestions.
-
-### review_table(table_tex: str, context: str = "") -> dict
-Reviews a LaTeX table for clarity and correctness.
-
-## Design
-
-- Uses qwen2.5vl or equivalent VLM via Ollama
-- Called in post-BFTS pipeline only
+The runtime requires native `FigureBatchV1` or a closed table-artifact request,
+an explicit visual model, immutable criterion profiles, strict JSON output,
+content-addressed raw responses, typed per-target failures, and bounded image,
+token, call, byte, and concurrency budgets. Filesystem naming heuristics,
+schema repair, inline raw/base64 results, and ad-hoc paper normalization are
+unsupported.

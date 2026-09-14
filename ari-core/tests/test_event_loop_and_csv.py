@@ -356,8 +356,28 @@ class TestCSVCommentParsing:
         if skill_path in sys.path:
             sys.path.remove(skill_path)
 
+    @staticmethod
+    def _request(csv_path, column):
+        import hashlib
+
+        digest = "sha256:" + hashlib.sha256(csv_path.read_bytes()).hexdigest()
+        return {
+            "datasets": [
+                {
+                    "metric_id": column,
+                    "unit": "1",
+                    "source": {
+                        "workspace": {"root": str(csv_path.parent)},
+                        "relative_path": csv_path.name,
+                        "value_column": column,
+                        "expected_digest": digest,
+                    },
+                }
+            ]
+        }
+
     def test_csv_with_comments_parsed(self, tmp_path):
-        """CSV with # header comments must be parsed correctly."""
+        """Digest-bound CSV with # header comments must be parsed correctly."""
         csv_path = tmp_path / "results.csv"
         csv_path.write_text(
             "# Build: Apr 3 2026\n"
@@ -368,21 +388,21 @@ class TestCSVCommentParsing:
             "4,2.0,8.0\n"
         )
 
-        from src.server import _load_data
-        df = _load_data(str(csv_path))
-        assert "k" in df.columns
-        assert "throughput" in df.columns
-        assert len(df) == 3
-        assert df["throughput"].tolist() == [0.5, 1.0, 2.0]
+        from src.server import analyze_results
+
+        summary = analyze_results(self._request(csv_path, "throughput"))["summaries"][0]
+        assert summary["count"] == 3
+        assert summary["mean"] == pytest.approx((0.5 + 1.0 + 2.0) / 3)
 
     def test_csv_without_comments_still_works(self, tmp_path):
         """Plain CSV without comments must still work."""
         csv_path = tmp_path / "results.csv"
         csv_path.write_text("a,b\n1,2\n3,4\n")
 
-        from src.server import _load_data
-        df = _load_data(str(csv_path))
-        assert len(df) == 2
+        from src.server import analyze_results
+
+        summary = analyze_results(self._request(csv_path, "a"))["summaries"][0]
+        assert summary["count"] == 2
 
     def test_analyze_results_with_comments(self, tmp_path):
         """Full analyze_results tool must handle commented CSVs."""
@@ -396,7 +416,5 @@ class TestCSVCommentParsing:
         )
 
         from src.server import analyze_results
-        result = analyze_results(str(csv_path), ["metric_a"])
-        assert "error" not in result["summary"].get("metric_a", {}), \
-            f"analyze_results failed: {result}"
-        assert result["summary"]["metric_a"]["mean"] == 20.0
+        result = analyze_results(self._request(csv_path, "metric_a"))
+        assert result["summaries"][0]["mean"] == 20.0

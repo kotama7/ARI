@@ -1,0 +1,175 @@
+{
+  "attachments": [],
+  "authoritative": false,
+  "body": "# SpMM Optimization\n\n## When to use\n\nUse this procedure when optimizing sparse-dense matrix multiplication where\nstructural validity, numerical equivalence, and reproducible measurement are\nmandatory.\n\n## Preconditions\n\nThe Research Contract identifies the sparse format, index base, data types,\nsupported hardware, baseline implementation, and admissible performance metric.\n\n## Procedure\n\nValidate the sparse structure before measuring anything. For CSR that means:\nthe row pointer is non-decreasing, starts at zero, and ends at the stated\nnonzero count; every column index is in range; and indices within a row are\nstrictly increasing if the code assumes sorted rows. This costs one pass and\nroutinely catches a generator or converter defect that would otherwise be\nreported as a speedup, because a malformed matrix makes the candidate skip work\nthe baseline performs.\n\nEstablish a reference implementation you own, in the same binary as the\ncandidate, so both see the identical matrix and identical compiler settings.\n\nThen work the transformation ladder, one hypothesis at a time:\n\n1. **Hoist and accumulate.** The straightforward form recomputes the dense-row\n   index for every (nonzero, dense-column) pair and stores to the output for\n   every element. Hoisting the nonzero value out of the dense-column loop,\n   accumulating a small register block across the dense columns, and writing\n   the output row back once removes both the repeated index arithmetic and the\n   repeated stores. This is usually the largest change and it does not alter\n   the accumulation order.\n2. **Partitioning.** Only when a measurement shows load imbalance. Row-length\n   distribution, not nonzero count, determines imbalance: a matrix with a few\n   very long rows behaves nothing like a uniform one at the same density.\n3. **Format specialization.** Last, and only with the structural evidence to\n   back its assumptions. A format that assumes sorted, duplicate-free rows\n   silently rewrites input semantics when it meets a matrix that is neither.\n\nMeasure over a family of sparsity patterns, not one matrix. Alternate baseline\nand candidate inside one process, warm both paths before timing, and take the\nminimum over several trials per replay. Report the per-replay values.\n\n## Decision points\n\nSelect an optimization only when it improves the declared workload distribution\nand preserves empty-row, duplicate, sorted/unsorted, and zero-nnz behavior.\n\nPrefer a change whose benefit holds across the row-length distributions in the\ndeclared family. A partitioning scheme tuned to a uniform matrix commonly\nreverses on a power-law one, and a result from a single matrix cannot tell the\ntwo apart.\n\n## Failure conditions\n\nStop scientific promotion on structural violation, sanitizer finding, numerical\nerror outside the dtype/accumulation-length model, nondeterministic\ndisagreement, or missing performance provenance.\n\nStop also when the timed region contains anything other than the kernel.\nMatrix construction, index conversion, allocation, and first touch inside the\ntimed call are attributed to the kernel, and for sparse work the construction\ncost can exceed the kernel cost outright.\n\n## Expected artifacts\n\nProduce source, compiler invocation, binary identity, matrix family manifest\nwith per-matrix structural summary, correctness evidence, raw timings,\nsummarized measurements, and environment identity.\n\n## Scientific cautions\n\nAn empty row is the most common silent divergence: the reference writes zeros,\na candidate that iterates nonzeros may leave the previous contents. Include\nempty rows, a duplicate column, an unsorted row, and a zero-nonzero matrix in\nthe family deliberately rather than hoping the generator produced them.\n\nNonzero count is not the workload. Two matrices with equal density and\ndifferent row-length distributions exercise different bottlenecks, so a single\naggregate ratio over a mixed family hides more than it reports.\n\nDo not relax a tolerance after observing failures, conflate structural validity\nwith numerical correctness, or treat Provider success as correctness.\n\n## Evaluation obligations\n\nRequire structural validation, numerical equivalence through differential\ntesting, memory-safety checks, performance-regression checks, and\nreproducibility across the declared matrix family and thread matrix.\n",
+  "body_sha256": "sha256:2d6a37bb790b1a7db413e5d7f34ac422c7d7a9836414cd045a135778f77e6094",
+  "decision": "candidate",
+  "manifest": {
+    "applies_to": {
+      "phases": [
+        "bfts"
+      ],
+      "roles": [
+        "generator"
+      ],
+      "task_tags": [
+        "sparse-linear-algebra",
+        "spmm"
+      ]
+    },
+    "authority_ceiling": {
+      "side_effects": [
+        "read-only",
+        "workspace-write",
+        "scheduler-submit"
+      ]
+    },
+    "composition": {
+      "exclusive": false,
+      "priority": 100,
+      "slot": "domain-method"
+    },
+    "conflicts": [],
+    "dependencies": [],
+    "description": "Correctness-preserving sparse-dense multiplication optimization procedure.",
+    "evaluation_obligations": [
+      {
+        "property_id": "structural-validity",
+        "required_methods": [
+          "csr-validation"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      },
+      {
+        "property_id": "numerical-equivalence",
+        "required_methods": [
+          "differential-testing"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      },
+      {
+        "property_id": "memory-safety",
+        "required_methods": [
+          "sanitizer"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      },
+      {
+        "property_id": "performance-regression",
+        "required_methods": [
+          "benchmark-comparison"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      },
+      {
+        "property_id": "reproducibility",
+        "required_methods": [
+          "repeated-execution"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      }
+    ],
+    "forbidden_capabilities": [
+      "ari.publish.external/v1",
+      "ari.registry.write/v1"
+    ],
+    "id": "hpc.spmm.optimization",
+    "license": {
+      "body": "MIT",
+      "references": "MIT"
+    },
+    "optional_capabilities": [
+      {
+        "explicit_provider_pin": null,
+        "ref": "ari.profiling.hardware-counters/v1",
+        "required": false,
+        "semantic_constraints": {}
+      },
+      {
+        "explicit_provider_pin": null,
+        "ref": "ari.execution.slurm-submit/v1",
+        "required": false,
+        "semantic_constraints": {}
+      }
+    ],
+    "references": [],
+    "requires": {
+      "capabilities": [
+        {
+          "explicit_provider_pin": null,
+          "ref": "ari.code.inspect/v1",
+          "required": true,
+          "semantic_constraints": {}
+        },
+        {
+          "explicit_provider_pin": null,
+          "ref": "ari.code.edit/v1",
+          "required": true,
+          "semantic_constraints": {}
+        },
+        {
+          "explicit_provider_pin": null,
+          "ref": "ari.execution.compile/v1",
+          "required": true,
+          "semantic_constraints": {}
+        },
+        {
+          "explicit_provider_pin": null,
+          "ref": "ari.execution.benchmark/v1",
+          "required": true,
+          "semantic_constraints": {}
+        }
+      ]
+    },
+    "schema_version": 1,
+    "source": {
+      "body_sha256": "sha256:2d6a37bb790b1a7db413e5d7f34ac422c7d7a9836414cd045a135778f77e6094",
+      "commit": "ec220484edcbdb72b9abad7337f65871254d0c73",
+      "manifest_sha256": "sha256:a2454a7e3b5456359894e63516885fdb82cf26131467f2e83741c2197b6aab29",
+      "path": "ari-core/config/knowledge_skills/bodies/hpc_spmm_optimization",
+      "repository": "https://github.com/kotama7/ARI.git"
+    },
+    "status": "verified",
+    "title": "SpMM Optimization",
+    "version": "1.0.0"
+  },
+  "material_digest": "sha256:ac658d0b6fa731a0a8437f7751b7ad3c8ff009a63f8b7d1314af4fec83de4440",
+  "non_authoritative_tool_hints": [
+    "Use",
+    "are"
+  ],
+  "reference_digests": {},
+  "schema_version": "ari.knowledge-import-material/v1",
+  "source_provenance": {
+    "adapter_version": "ari.knowledge.external-importer/v1",
+    "body_normalization": "strict",
+    "collection_identity_digest": null,
+    "commit": "ec220484edcbdb72b9abad7337f65871254d0c73",
+    "import_profile_digest": "sha256:8ddc2ac4cea6b04ea45ecd7177c2a07631cef9ecbfe7040c33f129b559d69016",
+    "layout": "plain",
+    "provenance_digest": "sha256:6d39ccf0ccdd00be1e29b907ef6068c10ee147a99d236057dbf030c7a3b71bb4",
+    "repository": "https://github.com/kotama7/ARI.git",
+    "schema_version": "ari.knowledge-external-source-provenance/v1",
+    "snapshot_digest": "sha256:370a2e795899627b9781aadee8e6d06131841e55c2755d704dae0aaff580da46",
+    "source_kind": "git",
+    "source_skill_md_sha256": "sha256:2d6a37bb790b1a7db413e5d7f34ac422c7d7a9836414cd045a135778f77e6094",
+    "subpath": "ari-core/config/knowledge_skills/bodies/hpc_spmm_optimization",
+    "upstream_metadata_digest": null,
+    "upstream_name": null
+  }
+}

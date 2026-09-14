@@ -1,0 +1,27 @@
+schema_version: 1
+source_revision: ari-capability-role-authority/1
+roles:
+  generator:
+    phases:
+      bfts:
+        capability_refs:
+          - ari.eda.openroad.place-route/v1
+          - ari.code.edit/v1
+          - ari.code.inspect/v1
+          - ari.data.read/v1
+          - ari.execution.benchmark/v1
+          - ari.execution.compile/v1
+          - ari.execution.run/v1
+          - ari.execution.slurm-submit/v1
+          - ari.literature.search/v1
+          - ari.profiling.hardware-counters/v1
+          - ari.quantum.sample.local-ideal/v1
+          - ari.result.emit/v1
+        credential_scope_ids:
+          - literature.semantic-scholar
+          - scheduler.ssh
+        forbidden_capability_refs: []
+        permitted_side_effects:
+          - read-only
+          - workspace-write
+          - scheduler-submit

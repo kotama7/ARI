@@ -8,7 +8,15 @@ sources:
     role: implementation
   - path: ari-core/ari/orchestrator/bfts.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # Cookbook
@@ -22,7 +30,17 @@ repeating it.
 > `ari-core/config/profiles/<name>.yaml`; run-wide settings live in
 > `workflow.yaml`. A profile is merged on top of the defaults when you pass
 > `--profile <name>` (CLI) or pick it in the wizard. You can add `evaluator:`
-> and `bfts:` blocks to either file.
+> and `bfts:` blocks to `workflow.yaml`.
+>
+> **`--profile` merges four keys, and only four.** Despite its docstring,
+> `_apply_profile` (`ari-core/ari/cli/run.py`) is not a deep merge: it reads
+> `bfts.max_total_nodes`, `bfts.max_parallel_nodes` (or its historical
+> spelling `parallel`), `hpc.enabled`, and `hpc.scheduler`. Every other key
+> in a profile YAML — `partition`, `cpus_per_task`, `memory_gb`,
+> `walltime`, `max_concurrent_jobs`, and any `evaluator:` block — is read
+> from the file and then silently dropped. Put those in `workflow.yaml`
+> (`resources:`, `evaluator:`, `bfts:`) or the environment
+> (`ARI_SLURM_PARTITION`) instead.
 
 ## Environment profiles: laptop / HPC / cloud
 
@@ -41,7 +59,10 @@ bfts:
   parallel: 2
 ```
 
-**`hpc`** — SLURM/PBS/LSF cluster with auto-detected partition:
+**`hpc`** — scheduler enabled (the keys below `scheduler:` are recorded in
+the file but not merged; the partition is resolved from
+`ARI_SLURM_PARTITION`, an experiment-file `Partition:` line, or the first
+`up` partition `sinfo` reports):
 
 ```yaml
 profile: hpc
@@ -72,21 +93,23 @@ bfts:
 
 **Recipe — make your own profile.** Drop a new file in
 `ari-core/config/profiles/`, e.g. `bigjob.yaml`, and select it with
-`--profile bigjob`:
+`--profile bigjob`. Keep it to the four merged keys — anything else you
+write here is ignored, and a profile name that does not resolve to a file
+only logs a warning and continues:
 
 ```yaml
 profile: bigjob
 hpc:
   enabled: true
   scheduler: auto
-  partition: gpu
-  cpus_per_task: 32
-  memory_gb: 128
-  walltime: "12:00:00"
 bfts:
   max_total_nodes: 40
   parallel: 8
 ```
+
+The sizing knobs belong in `workflow.yaml`'s `resources:` block, whose
+own key names are `cpus` / `memory_gb` / `gpus` / `walltime` /
+`partition` — or in the environment (`ARI_SLURM_PARTITION`).
 
 See [HPC setup](hpc_setup.md) for partition detection and SLURM specifics.
 
@@ -121,13 +144,24 @@ bfts:
   depth_penalty_lambda: 0.1
 ```
 
-**Measure a custom axis (e.g. speedup) instead of the generic five:**
+**Measure a custom axis (e.g. speedup) instead of the rubric-derived ones**
+(`axis_mode` defaults to `dynamic`, which builds the axes from the active
+rubric). `custom_axes` is a list of `{name, description, weight}` records — a
+bare list of strings is rejected at config load:
 
 ```yaml
 evaluator:
   axis_mode: custom
-  custom_axes: [correctness, speedup, reproducibility]
-  # axis_weights below set the relative weight of each named axis
+  custom_axes:
+    - name: correctness
+      description: "Does the result match the reference within tolerance?"
+      weight: 0.4
+    - name: speedup
+      description: "Wall-clock speedup vs. baseline (1.0 = no change)."
+      weight: 0.4
+    - name: reproducibility
+      description: "Can the run be repeated from the recorded artifacts?"
+      weight: 0.2
 ```
 
 **Reproduce pre-audit behaviour exactly** (pin the canonical five axes and the
@@ -171,9 +205,14 @@ be reproducible) — select an audit venue template via the rubric:
 export ARI_RUBRIC=sc                    # venue template: sc / neurips / nature
 ```
 
-Switching `ARI_RUBRIC` changes the BFTS scoring axes and the published review
-criteria together — see the [Glossary → venue](../reference/glossary.md) and
-[Architecture → Plan / Venue contract](../concepts/architecture.md#plan--venue-contract-v070).
+`ARI_RUBRIC` (default `neurips`) picks the rubric YAML under
+`ari-core/config/reviewer_rubrics/` that the BFTS scoring axes are derived
+from. The published review criteria are a **separate** knob: the `review_paper`
+stage takes its rubric as an explicit workflow input, `paper_rubric` in
+`workflow.yaml` (default `generic_conference`). Set both when you want the
+search and the review judged against the same venue — see the
+[Glossary → venue](../reference/glossary.md) and
+[Architecture → Plan / Venue contract](../concepts/architecture.md#plan-venue-contract-v0-7-0).
 
 ---
 

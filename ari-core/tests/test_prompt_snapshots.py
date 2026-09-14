@@ -89,6 +89,22 @@ FIXTURE_KWARGS: dict[str, dict[str, object] | None] = {
     },
     "evaluator/extract_metrics": {},
     "evaluator/peer_review": {"axes_block": "<axes_block>"},
+    "governance/auditor": {
+        "target_component_id": "<target_component_id>",
+        "target_role": "<target_role>",
+        "reliability_block": "<reliability_block>",
+        "evidence_block": "<evidence_block>",
+    },
+    "governance/defender": {
+        "motion_block": "<motion_block>",
+        "evidence_block": "<evidence_block>",
+        "target_outputs_block": "<target_outputs_block>",
+    },
+    "governance/governance_judge": {
+        "motion_block": "<motion_block>",
+        "defense_block": "<defense_block>",
+        "board_scores_block": "<board_scores_block>",
+    },
     "orchestrator/bfts_expand": {
         "goal_line": "<goal_line>",
         "parent_id_short": "<parent_id_short>",
@@ -118,6 +134,93 @@ FIXTURE_KWARGS: dict[str, dict[str, object] | None] = {
     "orchestrator/lineage_decision": None,
     "orchestrator/root_idea_selector": None,
     "pipeline/keyword_librarian": {},
+    "rqgm/adversary_cost_explosion": {
+        "target_block": "<target_block>",
+        "evidence_block": "<evidence_block>",
+    },
+    "rqgm/clean_room_generator": {
+        "target_role": "<target_role>",
+        "bundle_json": "<bundle_json>",
+    },
+    # plan 11 §5.2 items 3-4. Both take the whole filtered input bundle and
+    # nothing else — ``assemble_filtered_inputs`` is their entire call site.
+    "llm/mcp_name_resolution": {"rows": "<rows>"},
+    "rqgm/replay_selector": {"bundle_json": "<bundle_json>"},
+    "rqgm/failure_summary_compressor": {"bundle_json": "<bundle_json>"},
+    "rqgm/adversary_evidence_gap": {
+        "target_block": "<target_block>",
+        "evidence_block": "<evidence_block>",
+    },
+    "rqgm/adversary_metric_gaming": {
+        "target_block": "<target_block>",
+        "evidence_block": "<evidence_block>",
+    },
+    "rqgm/adversary_overclaim": {
+        "target_block": "<target_block>",
+        "evidence_block": "<evidence_block>",
+    },
+    "rqgm/adversary_paper_self_preference": {
+        "target_block": "<target_block>",
+        "evidence_block": "<evidence_block>",
+    },
+    "rqgm/adversary_prior_art": {
+        "target_block": "<target_block>",
+        "evidence_block": "<evidence_block>",
+    },
+    "rqgm/adversary_prompt_injection": {
+        "target_block": "<target_block>",
+        "evidence_block": "<evidence_block>",
+    },
+    "rqgm/adversary_reproducibility": {
+        "target_block": "<target_block>",
+        "evidence_block": "<evidence_block>",
+    },
+    "rqgm/defender": {
+        "attack_block": "<attack_block>",
+        "artifact_block": "<artifact_block>",
+    },
+    "rqgm/judge_adjudication": {
+        "attack_block": "<attack_block>",
+        "defense_block": "<defense_block>",
+        "evidence_block": "<evidence_block>",
+    },
+    # Paper-archive governed founding templates (plan ari_rqgm_paper/03 §5.5).
+    # The writer has no placeholders; the reviewer carries {venue_upper}
+    # (lifted byte-identical from academic_reviewer.md).
+    "rqgm/paper_reviewer": {"venue_upper": "<venue_upper>"},
+    "rqgm/paper_writer": {},
+    "rqgm/prompt_mutator": {
+        "role": "<role>",
+        "mutation_kind": "<mutation_kind>",
+        "incumbent_instruction": "<incumbent_instruction>",
+        "failure_summaries_block": "<failure_summaries_block>",
+        "required_constraints_block": "<required_constraints_block>",
+    },
+    "rqgm/policy_mutator": {
+        "mutation_kind": "<mutation_kind>",
+        "incumbent_policy_block": "<incumbent_policy_block>",
+        "evidence_block": "<evidence_block>",
+        "allowed_composite_block": "<allowed_composite_block>",
+        "allowed_frontier_score_block": "<allowed_frontier_score_block>",
+        "axis_weight_min": "<axis_weight_min>",
+        "axis_weight_max": "<axis_weight_max>",
+        "axis_weight_sum": "<axis_weight_sum>",
+        "depth_penalty_lambda_max": "<depth_penalty_lambda_max>",
+        "ucb_c_max": "<ucb_c_max>",
+    },
+    "rqgm/proposal_cheap": {
+        "goal": "<goal>",
+        "idea_context": "<idea_context>",
+    },
+    "rqgm/proposal_mutation": {
+        "goal": "<goal>",
+        "facet": "<facet>",
+        "parent_summary": "<parent_summary>",
+    },
+    "rqgm/proposal_prior_art": {
+        "goal": "<goal>",
+        "prior_art_block": "<prior_art_block>",
+    },
     "viz/wizard_chat_goal": {},
     "viz/wizard_generate_config": {"goal": "<goal>"},
 }
@@ -131,6 +234,18 @@ EXPECTED_FIELDS: dict[str, frozenset[str]] = {
     "agent/system": frozenset({"tool_desc", "memory_rules", "extra"}),
     "evaluator/extract_metrics": frozenset(),
     "evaluator/peer_review": frozenset({"axes_block"}),
+    # RQGM governance actors (Task 05): JSON examples use doubled braces so
+    # the templates stay .format-safe; only the real placeholders remain.
+    "governance/auditor": frozenset({
+        "target_component_id", "target_role", "reliability_block",
+        "evidence_block",
+    }),
+    "governance/defender": frozenset({
+        "motion_block", "evidence_block", "target_outputs_block",
+    }),
+    "governance/governance_judge": frozenset({
+        "motion_block", "defense_block", "board_scores_block",
+    }),
     "orchestrator/bfts_expand": frozenset({
         "goal_line", "parent_id_short", "parent_depth", "parent_status",
         "depth_note", "budget_note", "parent_metrics_json", "parent_summary",
@@ -144,6 +259,63 @@ EXPECTED_FIELDS: dict[str, frozenset[str]] = {
     "orchestrator/lineage_decision": frozenset({'"action"'}),
     "orchestrator/root_idea_selector": frozenset({'"chosen_index"'}),
     "pipeline/keyword_librarian": frozenset(),
+    # RQGM adversarial-loop actors (Task 06): JSON examples use doubled
+    # braces so the templates stay .format-safe; only the real placeholders
+    # remain.
+    "rqgm/adversary_cost_explosion": frozenset(
+        {"target_block", "evidence_block"}
+    ),
+    # RQGM CleanRoomPromptGenerator meta-prompt (Task 08): the one-shot
+    # clean-room context is the meta-prompt + the canonical bundle JSON.
+    "rqgm/clean_room_generator": frozenset({"target_role", "bundle_json"}),
+    # A literal JSON reply example written with single braces silently becomes
+    # a phantom format field; these frozensets are what catches that.
+    "llm/mcp_name_resolution": frozenset({"rows"}),
+    "rqgm/replay_selector": frozenset({"bundle_json"}),
+    "rqgm/failure_summary_compressor": frozenset({"bundle_json"}),
+    "rqgm/adversary_evidence_gap": frozenset(
+        {"target_block", "evidence_block"}
+    ),
+    "rqgm/adversary_metric_gaming": frozenset(
+        {"target_block", "evidence_block"}
+    ),
+    "rqgm/adversary_overclaim": frozenset({"target_block", "evidence_block"}),
+    "rqgm/adversary_paper_self_preference": frozenset(
+        {"target_block", "evidence_block"}
+    ),
+    "rqgm/adversary_prior_art": frozenset({"target_block", "evidence_block"}),
+    "rqgm/adversary_prompt_injection": frozenset(
+        {"target_block", "evidence_block"}
+    ),
+    "rqgm/adversary_reproducibility": frozenset(
+        {"target_block", "evidence_block"}
+    ),
+    "rqgm/defender": frozenset({"attack_block", "artifact_block"}),
+    "rqgm/judge_adjudication": frozenset(
+        {"attack_block", "defense_block", "evidence_block"}
+    ),
+    # Paper-archive governed founding templates (plan ari_rqgm_paper/03 §5.5).
+    "rqgm/paper_reviewer": frozenset({"venue_upper"}),
+    "rqgm/paper_writer": frozenset(),
+    # RQGM PromptMutator meta-prompt (Task 07).
+    "rqgm/prompt_mutator": frozenset({
+        "role", "mutation_kind", "incumbent_instruction",
+        "failure_summaries_block", "required_constraints_block",
+    }),
+    # RQGM PolicyMutator meta-prompt (Task 14). Consumed ONLY by the opt-in
+    # ``freeform_policy_proposal`` kind; the four default kinds are pure
+    # arithmetic and never render this template.
+    "rqgm/policy_mutator": frozenset({
+        "mutation_kind", "incumbent_policy_block", "evidence_block",
+        "allowed_composite_block", "allowed_frontier_score_block",
+        "axis_weight_min", "axis_weight_max", "axis_weight_sum",
+        "depth_penalty_lambda_max", "ucb_c_max",
+    }),
+    # RQGM proposal generators (Task 03): JSON examples use doubled braces so
+    # the templates stay .format-safe; only the real placeholders remain.
+    "rqgm/proposal_cheap": frozenset({"goal", "idea_context"}),
+    "rqgm/proposal_mutation": frozenset({"goal", "facet", "parent_summary"}),
+    "rqgm/proposal_prior_art": frozenset({"goal", "prior_art_block"}),
     "viz/wizard_chat_goal": frozenset(),
     "viz/wizard_generate_config": frozenset({"goal"}),
 }

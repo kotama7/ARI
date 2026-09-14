@@ -8,7 +8,13 @@ sources:
     role: implementation
   - path: ari-core/ari/viz
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+last_verified: 2026-08-16
 ---
 
 # ARI クイックスタートガイド
@@ -57,7 +63,7 @@ bash setup.sh
 
 v0.6.0 では、セットアップスクリプトが **[Letta](https://docs.letta.com)** (`ari-skill-memory` のバックエンド) も併せて立ち上げます。Docker → Singularity/Apptainer → pip の順に最適な配置を自動選択します。CI やコンテナビルド時など Letta のブートストラップをスキップしたい場合は `SKIP_LETTA_SETUP=1` を、対話プロンプトを抑制したい場合は `ARI_NONINTERACTIVE=1` を `bash setup.sh` 実行前にエクスポートしてください。
 
-セットアップが完了すると、**「Setup Complete」** と次のステップの案内が表示されます。Letta の疎通確認は後から `ari memory health` で行えます。
+セットアップが完了すると、**「All good! The ants are ready to work!」** と次のステップの案内が表示されます。Letta の疎通確認は後から `ari memory health` で行えます。
 
 ---
 
@@ -118,54 +124,79 @@ export ANTHROPIC_API_KEY=sk-ant-...  # https://console.anthropic.com/ から取�
 
 ## ステップ 3: ダッシュボードの起動
 
-リポジトリ直下の一括ランチャで、長時間稼働する 3 サービス（Letta メモリバックエンド・ari-registry・Viz GUI）をまとめて起動します：
+リポジトリ直下の一括ランチャで、長時間稼働する 4 サービス（Letta メモリバックエンド :8283・ari-registry :8290・Viz GUI :8765・CLI shim :8900）をまとめて起動します：
 
 ```bash
 ./start.sh
 ```
 
-毎回呼ぶたびに 3 つすべてが clean restart されます（PID は `~/.ari/` 配下）。便利なサブコマンド: `./start.sh gui`（GUI だけ）、`./start.sh status`（ヘルス確認）、`./start.sh stop` または `./shutdown.sh`（全停止 — `shutdown.sh` は apptainer の孤児となった postgres/redis も回収）。
+毎回呼ぶたびに 4 つすべてが clean restart されます（PID は `~/.ari/` 配下）。便利なサブコマンド: `./start.sh gui`（GUI だけ。`letta` / `registry` / `shim` も同様）、`./start.sh status`（ヘルス確認）、`./start.sh stop` または `./shutdown.sh`（全停止 — `shutdown.sh` は apptainer の孤児となった postgres/redis も回収）。
 
 ブラウザを開いて以下にアクセスしてください: **http://localhost:8765**
 
+> **なぜ `localhost` なのか？** ダッシュボードは既定でループバックのみにバインドするため、ネットワークへは何も公開されずログインも不要です; `ARI_GUI_BIND` で別の場所へバインドすると、bearer トークン認証が自動的に有効になります。
+
 ARI のホーム画面が表示されます：
 
-![ARI ホーム](../../assets/images/ja/dashboard_home.png)
+![ARI のホーム画面: Total Projects・Best Review Score・Total Nodes Explored のカウンタ、クイックアクションのカード、View Results / View Tree ボタン付きの最新実験カード](../../assets/images/ja/dashboard_home.png)
 
-左側のサイドバーからすべてのダッシュボードページにアクセスできます：
+### ランを見つける: Projects → Overview
 
-| ページ | 説明 |
-|--------|------|
-| **Home** | クイックアクションと最近の実験の概要 |
-| **Experiments** | 過去のすべての実験一覧 |
-| **Monitor** | D3 ツリー可視化によるリアルタイムのパイプライン進捗 |
-| **Tree** | BFTS 実験ツリーの全体表示 — ノードをクリックして詳細を確認 |
-| **Results** | Overleaf 風 LaTeX エディタ、論文 PDF ビューア、レビューレポート、EAR ブラウザ |
-| **New Experiment** | 新しい実験を作成・起動するウィザード |
-| **Ideas** | VirSci が生成した研究仮説 |
-| **Workflow** | BFTS 後のパイプライン用 React Flow ビジュアル DAG エディタ |
-| **Settings** | LLM、API キー、SLURM、コンテナ、VLM、検索バックエンドの設定 |
-| **Sub-Experiments** | 再帰的なサブ実験ツリー（orchestrator スキル経由） |
+「ダッシュボードが開いた」から「ランが何をしているか見える」までの最短経路は 2 ページです:
+
+1. **プロジェクト**（`#/projects` — サイドバーの **ワークスペース** グループ先頭の 📁 エントリ）は、チェックポイントルート配下で ARI が見つけたすべてのランを、status、ノード数、レビュースコア、ベストメトリクスとともに一覧します。これがランのポートフォリオであり、暗黙に選択されるものはありません。
+2. ランの行で **Overview** をクリックします。`#/overview?run=<run_id>` が開き、そのランのライフサイクル status、研究フェーズ、データの鮮度、主要カウンタ、そして Tree / Config /（ガバナンス下のランなら）Governance の各ワークスペースへのリンクが 1 ページに表示されます。
+
+![Projects ページ: ラン 1 件が 1 行のテーブル。run id、status バッジ、ノード数、レビュースコア、ベストメトリクス、最終更新時刻、行ごとの Overview / Config リンクが並ぶ](../../assets/images/ja/dashboard_projects.png)
+
+![1 ランの Run Overview ページ: ライフサイクルバッジ、研究フェーズ、最終更新時刻、Nodes Explored / Review Score / Best Metric のカウンタ、ワークスペースリンク、折りたたみ式のログパネル](../../assets/images/ja/dashboard_overview.png)
+
+run id は URL に入っているので、Overview のリンクは共有可能でリロードにも耐えます — 2 つのランを 2 つのタブで開いても互いに干渉しません。新規インストール直後は何かを起動するまで一覧は空です; 下のステップ 4 へ進んでください。
+
+ダッシュボードのページごとの完全なツアーは[ダッシュボードガイド](../guides/dashboard.md)を参照してください。
+
+左側のサイドバーは段構成です。最上部にプライマリアクションの **新規実験** があり、その下に 4 つのグループが並びます。
+
+| サイドバー項目 | グループ | 説明 |
+|--------|--------|------|
+| **新規実験** ✨ | （プライマリアクション） | 新しい実験を作成・起動するウィザード |
+| **プロジェクト** 📁 | ワークスペース | チェックポイントルート横断のランポートフォリオ — ここから始める |
+| **ダッシュボード** 🏠 | ワークスペース | クイックアクションと最近の実験の概要 |
+| **実験アーカイブ** 🗂️ | ワークスペース | 過去のすべての実験一覧 |
+| **概要** 🧭 | 現在の実験 | 1 ランの全体像: ライフサイクル、研究フェーズ、カウンタ、ワークスペースリンク |
+| **アイデア** 💡 | 現在の実験 | ランの研究目標、ギャップ分析、生成された仮説 |
+| **探索ツリー** 🌳 | 現在の実験 | BFTS 実験ツリーの全体表示 — ノードをクリックして詳細を確認 |
+| **実行モニター** 📡 | 現在の実験 | D3 ツリー可視化によるリアルタイムのパイプライン進捗 |
+| **論文・成果** 📊 | 現在の実験 | 読み取り専用のラン要約: レビュースコア、再現性チェーン、公開系譜 |
+| **ガバナンス** 🏛️ | 評価・統治 | 読み取り専用の RQGM ガバナンスとスコア系譜（ガバナンス下のランのみ） |
+| **PaperBench** 📚 | 評価・統治 | 論文を取り込み、PaperBench 再現ジョブを実行し、採点結果を読む |
+| **ワークフロー** ⚡ | システム | パイプライン用 React Flow ビジュアル DAG エディタ |
+| **実行設定** 🔧 | システム | ランの実効設定の読み取り専用ブラウザ |
+| **設定スタジオ** 🎛️ | システム | Configuration Studio: ドラフト設定を組み立ててそこから起動する |
+| **設定** ⚙️ | システム | LLM、API キー、SLURM、コンテナ、VLM、検索バックエンドの設定 |
 
 ---
 
 ## ステップ 4: 最初の実験を作成する（ウィザード）
 
-サイドバーの **「New Experiment」** をクリックしてください（またはホームページの青い **「New Experiment」** ボタン）。
+サイドバーの **「新規実験」** をクリックしてください（またはホームページの青い **「新規実験」** ボタン）。
 
-![実験ウィザード](../../assets/images/ja/dashboard_wizard.png)
+![New Experiment ウィザードのステップ 1: Goal / Scope / Resources / Launch のステッパー、Chat Mode と Write MD のタブ、何を最適化したいか尋ねるチャットの導入文、その下の Upload files パネル](../../assets/images/ja/dashboard_wizard.png)
 
-ウィザードは 4 つのステップで進みます：
+ウィザードは 4 つのステップ（**Goal**・**Scope**・**Resources**・**Launch**）で進みます。上部のステッパーが現在位置を示します。
 
-### ステップ 1/4 — モードの選択
+### ステップ 1/4 — Goal（目標）
+
+実験の記述方法を 2 つのモードタブから選びます：
 
 | モード | 用途 |
 |--------|------|
-| **Chat** | 初心者向け。自然言語でやりたいことを記述すると、AI が質問しながら適切な実験に仕上げてくれます。 |
+| **Chat Mode** | 初心者向け。自然言語でやりたいことを記述すると、AI が質問しながら適切な実験に仕上げてくれます。 |
 | **Write MD** | 実験の説明を Markdown で直接記述またはペーストします。 |
-| **Upload** | 既存の `experiment.md` ファイルをアップロードします。 |
 
-**初心者には Chat モードがおすすめです。** 最適化したい内容や調査したい内容を入力するだけです。例えば：
+どちらのタブでも、下部の **Upload files** パネルから既存の `experiment.md` と付随する実験ファイルをアップロードできます。
+
+**初心者には Chat Mode がおすすめです。** 最適化したい内容や調査したい内容を入力するだけです。例えば：
 
 > 「ノートパソコンで実験のスコアを最大化する方法を見つけたい」
 
@@ -173,14 +204,17 @@ AI が確認の質問をして、実験ファイルを自動生成します。
 
 ### ステップ 2/4 — スコープ
 
-実験の規模を設定します：
+実験の規模を設定します。このステップはプリセット駆動で、5 つのプリセット（Quick / Standard /
+Thorough / Deep / Exhaustive）があり、開いた時点では **Standard**（深さ 5、ノード 30、
+ReAct 80 ステップ、ワーカー 4、120 分）が選ばれています。いずれかの項目を編集すると手動モードに
+切り替わります。下表の初回実行値は **Quick** プリセットの値です。
 
 | 設定 | 制御対象 | 初回実行の推奨値 |
 |------|---------|-----------------|
 | **Max Depth** | 探索ツリーの深さ | 3 |
 | **Max Nodes** | 実行する実験の総数 | 5〜10 |
-| **Max ReAct Steps** | 実験ごとの推論ステップ数 | 80（デフォルト） |
-| **Timeout** | 実験ごとのタイムアウト（秒） | 7200（デフォルト） |
+| **Max ReAct Steps** | 実験ごとの推論ステップ数 | 20 |
+| **Timeout (min)** | 実験ごとのタイムアウト（分） | 30 |
 | **Parallel Workers** | 同時実行する実験数 | 2〜4 |
 
 > **ヒント:** 最初は小さく（ノード 5〜10、深さ 3）始めましょう。後からいつでも増やせます。
@@ -195,7 +229,7 @@ LLM プロバイダーとモデルを選択します：
 
 **Paper Review (v0.6.0+)** — 生成された論文の査読方法を選択します:
 
-- **Rubric** — 同梱の 16 種類から選択 (`neurips` 既定 / v2 互換、`iclr`、`icml`、`cvpr`、`acl`、`sc`、`osdi`、`usenix_security`、`stoc`、`siggraph`、`chi`、`icra`、`nature`、`journal_generic`、`workshop`、`generic_conference`)。`ari-core/config/reviewer_rubrics/` に独自 YAML を追加すれば任意の venue に対応できます。
+- **Rubric** — 同梱の 23 種類から選択 (`neurips` 既定 / v2 互換、`iclr`、`icml`、`cvpr`、`acl`、`sc`、`chi`、`usenix_security`、`osdi`、`stoc`、`icra`、`siggraph`、`nature`、`aer`、`econometrica`、`qje`、`apsr`、`ahr`、`philreview`、`pmla`、`journal_generic`、`workshop`、`generic_conference`)。`ari-core/config/reviewer_rubrics/` に独自 YAML を追加すれば任意の venue に対応できます。
 - **Few-shot mode** — `static` (同梱例使用) / `dynamic` (Phase 2 OpenReview 取得; 査読クローズドの venue では static にフォールバック)。
 - **Reviewer ensemble (N)** — 独立査読者数。N>1 の場合は Area Chair メタ査読も自動で走ります。
 - **Reflection rounds** — 査読者ごとの self-reflection 回数 (Nature Ablation 既定 5)。
@@ -216,51 +250,54 @@ LLM プロバイダーとモデルを選択します：
 
 ## ステップ 5: 実験のモニタリング
 
-実験を起動すると、**Monitor** ページにリアルタイムの進捗が表示されます：
+実験を起動すると、**実行モニター** ページにリアルタイムの進捗が表示されます：
 
-![Monitor ページ](../../assets/images/ja/dashboard_monitor.png)
+![Pipeline Monitor: Starting・Idea・BFTS・Paper・Review のステージ列（現在のステージが強調表示）、実験コントロールのボタン、実験設定カード、ノード数とベストメトリクスのカウンタ、システムリソースのパネル](../../assets/images/ja/dashboard_monitor.png)
 
-- **パイプラインステージ** が上部に表示されます（Idea → BFTS → Paper → Review）
-- **ノードツリー** で実験の進捗が色分けされたステータスで表示されます
-- **ログ** がリアルタイムでストリーミングされます
+- **パイプラインステージ** が上部に表示され（Starting → Idea → BFTS → Paper → Review）、現在のステージが強調されます
+- **Experiment control** からステージの開始・停止ができます（resume、論文生成、レビュー / 検証、GPU モニター）
+- その下に **カウンタ・システムリソース・ログ** がリアルタイムで更新されます
 
 ### 実験ツリー
 
-サイドバーの **Tree** をクリックすると、完全なインタラクティブ実験ツリーが表示されます：
+サイドバーの **探索ツリー** をクリックすると、ランを明示した実験ツリー（`#/tree2?run=<run_id>`）が開きます。左が D3 キャンバス、右がキーボード操作可能なノードテーブルです：
 
-![ツリービュー](../../assets/images/ja/dashboard_tree.png)
+![Experiment Tree ワークスペース: 左に label で色分けされたノードカードの D3 ノードグラフ、右にノード id と status を並べた展開可能なノードテーブル、さらに右にノード選択を待つインスペクタ列](../../assets/images/ja/dashboard_tree.png)
 
-- **緑** のノード = 成功
-- **赤** のノード = 失敗
-- **青** のノード = 実行中
-- **灰色** のノード = 待機中
+カードの色はステータスではなく、ノードの **label** を表します：
 
-ノードをクリックすると詳細が表示されます：
+| 色 | label |
+|----|-------|
+| **青** | `draft` — 起点となる最初の試行 |
+| **紫** | `improve` |
+| **橙** | `ablation` |
+| **赤** | `debug` |
+| **緑** | `validation` |
 
-| タブ | 表示内容 |
-|------|---------|
-| **Overview** | ステータス、メトリクス、実行時間、評価の概要 |
-| **Trace** | AI エージェントが行ったすべてのツール呼び出し（ステップごと） |
-| **Code** | この実験で生成されたソースコード |
-| **Output** | ジョブの標準出力、ベンチマーク結果 |
+ステータスはカード内の小さなバッジ（緑 `success` / 赤 `failed` / 進行中は青）と、サイドテーブル各行の文字列で示されます。
+
+ノードを選択すると（クリック、またはテーブル上で <kbd>Enter</kbd>）URL に `?node=` が書き込まれるので、アドレスバーがそのノードへの共有リンクになります。右側のインスペクタには、ノードの status / label / depth、スコア算出に使われた utility policy ハッシュ付きのメトリクス、ノードレポート（実施内容、親との差分、評価者の要約）、Config と Governance へのリンクが表示されます。
+
+エージェントのステップごとのトレース、生成されたソースコード、生のメモリ記録を見るにはレガシーのツリーページ `#/tree` を開いてください。詳細パネルに **MCP Trace**・**Code**・**Memory**・**Access**・**Report** の各タブが残っています。
 
 ---
 
 ## ステップ 6: 結果の確認
 
-実験が完了したら、**Results** ページに移動します：
+実験が完了したら、サイドバーの **論文・成果** をクリックします。このスロットは読み取り専用のラン要約（`#/results2?run=<run_id>`）を開きます：
 
-![Results ページ](../../assets/images/ja/dashboard_results.png)
+![Results ワークスペース: paper .tex / .pdf のリンク、accept 判定、rubric、評価軸ごとのレビュースコアを載せた結果サマリーカード、再現性（ORS チェーン）カード、右側の EAR 公開系譜カードとディープリンクカード](../../assets/images/ja/dashboard_results.png)
 
-ここでは以下のことができます：
+ここでは以下を確認できます：
 
-- **論文の編集** — 内蔵の Overleaf 風 LaTeX エディタで `.tex` / `.bib` を編集、コンパイル、PDF をインラインでプレビュー
-- 自動ピアレビューのスコアとフィードバックの確認
-- Experiment Artifact Repository (EAR) ブラウザ（コード、データ、再現性メタデータ）
-- 再現性検証レポートの確認
-- すべての成果物のダウンロード
+- 自動ピアレビューの結果 — 採否判定、採点に使われた rubric、評価軸ごとのスコア
+- 再現性（ORS）チェーン — 合格率、通過した leaf 数、判定に使われた judge モデル
+- EAR の公開系譜（バッジチェーン）
+- 同じランの Tree / Config ワークスペースへの直行リンク
 
-出力ファイルは `./checkpoints/<run_id>/` に保存されます：
+**論文の編集はレガシーの Results ページで行います。** *論文の表示・編集* のディープリンク（または `#/results` を直接開く）から、Overleaf 風 LaTeX エディタ（`.tex` / `.bib` の編集、コンパイル、PDF のインラインプレビュー）、Experiment Artifact Repository (EAR) の完全なブラウザ、そして EAR に対するすべての変更操作（curate・publish・promote）にアクセスできます。この分担はワークスペース上にも明記されているので、誤って編集してしまうことはありません。
+
+出力ファイルは `./workspace/checkpoints/<run_id>/` に保存されます：
 
 | ファイル | 説明 |
 |---------|------|
@@ -271,7 +308,11 @@ LLM プロバイダーとモデルを選択します：
 | `science_data.json` | クリーンなデータ（内部用語なし） |
 | `figures_manifest.json` | 生成された図表 |
 | `ear/` | Experiment Artifact Repository（コード、データ、ログ、再現性メタデータ） |
-| `experiments/` | ノードごとのソースコードと出力 |
+
+ノードごとの作業ディレクトリはチェックポイントの **中にはありません**。各ノードの作業領域、
+生成されたソース、出力は `./workspace/experiments/<run_id>/<node_id>/` — `checkpoints/` の
+兄弟ディレクトリ — に置かれるため、チェックポイントディレクトリだけをコピーすると置き去りに
+なります。
 
 ---
 
@@ -279,11 +320,13 @@ LLM プロバイダーとモデルを選択します：
 
 **Settings** ページを開いて ARI をカスタマイズします：
 
-![Settings ページ](../../assets/images/ja/dashboard_settings.png)
+![Settings ページ: ダッシュボード言語のドロップダウン、Developer Mode スイッチ、LLM バックエンドの入力欄を含む Essentials グループと、その下で論文検索と VLM 図レビューを扱う Project グループ](../../assets/images/ja/dashboard_settings.png)
+
+ページは折りたたみ可能なグループに分かれています。**Essentials** には初日から必要な設定が、**Project** 以下にはプロジェクト単位の設定が入ります。
 
 ### ダッシュボード言語
 
-上部の言語ドロップダウンからダッシュボードの言語（英語、日本語、中国語）を変更できます。
+**Essentials** 冒頭の言語ドロップダウンからダッシュボードの言語（英語、日本語、中国語）を変更できます。そのすぐ下が **Developer Mode** スイッチで、既定はオフ、オンにすると生 JSON やデバッグダンプなど開発者向けの表示が現れます。
 
 ### LLM バックエンド
 
@@ -291,8 +334,9 @@ LLM プロバイダーとモデルを選択します：
 - デフォルトのモデルとテンパレチャーの設定
 - API キーの入力（ローカルに保存、UI 上ではマスク表示）
 
-### 論文検索
+### 論文検索（Paper Retrieval）
 
+- 論文検索バックエンドを選択：Semantic Scholar（デフォルト）・arXiv・AlphaXiv のいずれか 1 つ
 - より高いレート制限のため、必要に応じて Semantic Scholar API キーを設定
 
 ### SLURM / HPC
@@ -308,41 +352,43 @@ LLM プロバイダーとモデルを選択します：
 
 ### VLM 図レビュー
 
-- 図品質レビュー用の VLM モデル（デフォルト: `openai/gpt-4o`）を設定
-- レビューしきい値と最大反復回数を設定
+- 図品質レビュー用の VLM モデル（デフォルト: `openai/gpt-4o`）を設定 — このカードにあるのは
+  モデルのドロップダウンだけです
 
-### 検索バックエンド
-
-- 論文検索バックエンドを選択：Semantic Scholar（デフォルト）、AlphaXiv、または both（並列）
+レビューしきい値と最大反復回数はこのページには **ありません**。どちらもウィザードの項目
+（ステップ 3 — Resources）です。パイプライン自身の図ループは `workflow.yaml` でしきい値 0.7、
+再生成パス最大 2 回に固定されています。
 
 ### フェーズごとのモデルオーバーライド
 
-パイプラインのフェーズごとに異なるモデルを使用できます（例: アイデア生成にはより安価なモデル、論文執筆にはより高性能なモデル）。
+パイプラインのフェーズごとに異なるモデルを使用できます（例: アイデア生成にはより安価なモデル、論文執筆にはより高性能なモデル）。これらは Settings ページではなく、**新規実験** ウィザード（ステップ 3 — Resources）にあります。
 
 ---
 
 ## その他のダッシュボードページ
 
-### Ideas ページ
+### Idea ページ
 
-![Ideas ページ](../../assets/images/ja/dashboard_ideas.png)
+![Ideas ワークスペース: 左に研究目標・ギャップ分析・主要メトリクスのカード、右に生成された各仮説（新規性・実現可能性・総合スコアと折りたたみ式の実験計画つき）](../../assets/images/ja/dashboard_ideas.png)
 
-VirSci が生成した研究仮説を、新規性と実現可能性のスコアとともに確認できます。実験設定、研究目標、BFTS ノードの評価も表示されます。
+**アイデア** スロットはランを明示したアイデアワークスペース（`#/ideas2?run=<run_id>`）を開きます。研究目標、ギャップ分析、選定理由付きの主要メトリクス、そして VirSci が生成した各仮説を新規性・実現可能性・総合スコアと折りたたみ式の実験計画とともに表示します。研究目標のパネルは *アクティブ* なチェックポイントに対してのみ配信されるため、その旨が表示されたらサイドバーでそのランをアクティブにしてください。
 
 ### Workflow エディター
 
-![Workflow ページ](../../assets/images/ja/dashboard_workflow.png)
+![Workflow エディタ: Save・Reload・Add Node・Reset to default のツールバー、編集中の workflow.yaml のパス、フェーズタグ付きステージノードの React Flow キャンバス、その下の Source / Edit ボタン付きステージ一覧](../../assets/images/ja/dashboard_workflow.png)
 
-BFTS 後のパイプライン用 React Flow ビジュアル DAG エディタ。ノードのドラッグ、エッジの描画、ステージの有効/無効化、スキル割当が可能です。スイムレーンレイアウトで BFTS と Paper のフェーズを分離。変更は `workflow.yaml` として保存されます。
+アクティブなチェックポイントのパイプラインを編集する React Flow ビジュアル DAG エディタ。ツールバー下に表示されるパスは *読み込まれた* `workflow.yaml` のものです。ノードのドラッグ、エッジの描画、ステージの有効/無効化、スキル割当が可能で、各ステージはキャンバス下に **Source** / **Edit** ボタン付きで一覧されます。ノードにはフェーズ（`bfts` / `paper`）のタグが付きます。
+
+**Save は表示されているパスには決して書き込みません。** ワークフローの書き込みは常にアクティブなチェックポイントへの copy-on-write です。`{checkpoint}/workflow.yaml` がまだ存在しなければ、同梱の `ari-core/config/workflow.yaml` がまずそこへコピーされ、編集はそのコピーに着地します。同梱ファイルが書き換えられることはなく、アクティブなチェックポイントがない場合は書き込み自体が拒否されます。
 
 ---
 
 ## ダッシュボードのアーキテクチャと API
 
-ダッシュボードは Python asyncio HTTP サーバーによって配信される React/TypeScript SPA（Vite でビルド）です。以下の 2 つのコンポーネントで構成されています：
+ダッシュボードは Python 標準ライブラリの HTTP サーバーによって配信される React/TypeScript SPA（Vite でビルド）です。以下の 2 つのコンポーネントで構成されています：
 
-- **HTTP サーバー** (`ari/viz/server.py`): REST API + SSE ログストリーミング（メインポート上）
-- **WebSocket サーバー**: リアルタイムのツリー更新（ポート+1、例: ダッシュボードが 8765 の場合は 8766）
+- **HTTP サーバー** (`ari/viz/server.py`): スレッドベースの `http.server`（`ThreadingHTTPServer`）— REST API + SSE ログストリーミング（メインポート上）。長時間維持される SSE ストリームを含め、各リクエストはその存続期間中スレッドを 1 本占有します。処理が遅いハンドラが制御を譲るためのイベントループはありません。
+- **WebSocket サーバー**: リアルタイムのツリー更新（ポート+1、例: ダッシュボードが 8765 の場合は 8766）— asyncio 上で動作する唯一のリスナーです（`websockets` パッケージ経由）。
 
 ### API エンドポイント
 
@@ -352,10 +398,10 @@ BFTS 後のパイプライン用 React Flow ビジュアル DAG エディタ。�
 
 | エンドポイント | メソッド | 説明 |
 |---------------|---------|------|
-| `/state` | GET | アプリケーションの完全な状態: 現在のフェーズ（idle/idea/bfts/paper/review）、ノード数、実験設定、コストデータ、LLM モデル情報 |
-| `/api/logs` | GET (SSE) | `ari.log` と `cost_trace.jsonl` からのリアルタイムログの Server-Sent Events ストリーム |
+| `/state` | GET | アプリケーションの完全な状態: 現在のフェーズ（`idle`/`starting`/`bfts`/`paper`/`review` — `idea` という値はありません。フェーズはマーカーファイルから導出されるため、`idea.json` が存在した時点で `bfts` と報告されます）、ノード数、実験設定、コストデータ、LLM モデル情報 |
+| `/api/logs` | GET (SSE) | 該当ランの `ari_run_*.log` と `cost_trace.jsonl` からのリアルタイムログの Server-Sent Events ストリーム。1 つのハンドラは約 10 分間 tail してストリームを終了します — クライアントは再接続します |
 | `/memory/<node_id>` | GET | ノードのメモリストアエントリ（ツール呼び出しトレース、メトリクス、親チェーン） |
-| `/codefile?path=<path>` | GET | チェックポイントディレクトリ内のファイルを読み取り（チェックポイント範囲内に制限、最大 2MB） |
+| `/codefile?path=<path>` | GET | チェックポイントディレクトリ内のファイルを読み取り（チェックポイント範囲内に制限、最大 20MB） |
 
 #### Experiment Management
 
@@ -379,12 +425,12 @@ BFTS 後のパイプライン用 React Flow ビジュアル DAG エディタ。�
 |---------------|---------|------|
 | `/api/settings` | GET | 現在の設定: LLM プロバイダー/モデル、Ollama ホスト、SLURM 設定、MCP スキル |
 | `/api/settings` | POST | 設定を `{checkpoint}/settings.json` と `.env` に保存（アクティブなプロジェクトが必要）。ボディ: `{llm_model, llm_provider, ollama_host, slurm_partition, ...}` |
-| `/api/env-keys` | GET | `.env` ファイルからのすべての API キーとソース情報 |
+| `/api/env-keys` | GET | `.env` チェーンで見つかったキー *名* と、それぞれの取得元ファイル。空でない値はすべて `***configured***` に置き換えられ、ペイロードは `redacted: true` を伴います — シークレットが HTTP 越しに配信されることはありません |
 | `/api/env-keys` | POST | 単一の API キーを保存: `{key, value}` |
 | `/api/profiles` | GET | 利用可能な環境プロファイル（laptop, hpc, cloud） |
 | `/api/models` | GET | 利用可能な LLM プロバイダーとモデル |
 | `/api/workflow` | GET | パイプラインステージとスキルメタデータを含む完全な workflow.yaml |
-| `/api/workflow` | POST | 変更された workflow.yaml を保存: `{path, pipeline}` |
+| `/api/workflow` | POST | 変更されたワークフローを保存: `{path, pipeline}`。`path` はベースとして読み込むファイルを指すだけで、書き込みは常に `{checkpoint}/workflow.yaml` に着地します。アクティブなチェックポイントがない場合は 400 で拒否されます |
 | `/api/skills` | GET | 利用可能な MCP スキルを説明付きで一覧表示 |
 | `/api/skill/<name>` | GET | スキルの詳細: README、SKILL.md、server.py ソース |
 
@@ -395,7 +441,7 @@ BFTS 後のパイプライン用 React Flow ビジュアル DAG エディタ。�
 | `/api/chat-goal` | POST | 実験目標の精緻化のためのマルチターン LLM チャット: `{messages, context_md}` |
 | `/api/config/generate` | POST | 自然言語の目標から experiment.md を生成: `{goal}` |
 | `/api/ssh/test` | POST | SSH 接続テスト: `{ssh_host, ssh_port, ssh_user, ssh_key, ssh_path}` |
-| `/api/scheduler/detect` | GET | コンピューティング環境を自動検出（SLURM, PBS, LSF, Kubernetes） |
+| `/api/scheduler/detect` | GET | コンピューティング環境を自動検出（SLURM, PBS, LSF, SGE, Kubernetes） |
 | `/api/slurm/partitions` | GET | 利用可能な SLURM パーティション |
 | `/api/ollama-resources` | GET | GPU 情報（nvidia-smi）、利用可能な Ollama モデル |
 | `/api/gpu-monitor` | GET/POST | GPU モニターデーモンの開始/停止 |
@@ -431,23 +477,25 @@ ari run experiment.md --profile hpc
 ari run experiment.md --config ari-core/config/workflow.yaml
 
 # 中断された実行を再開
-ari resume ./checkpoints/20260328_matrix_opt/
+ari resume ./workspace/checkpoints/20260328_matrix_opt/
 
 # 論文パイプラインのみ実行（実験は完了済み）
-ari paper ./checkpoints/20260328_matrix_opt/
+ari paper ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 ### モニタリングと結果
 
 ```bash
 # ノードツリーとステータスを表示
-ari status ./checkpoints/20260328_matrix_opt/
+ari status ./workspace/checkpoints/20260328_matrix_opt/
 
-# すべてのプロジェクトを一覧表示
-ari projects
+# すべてのプロジェクトを一覧表示。以下の 2 つはどちらも既定が
+# ./workspace/checkpoints ではなく ./checkpoints なので、ベースディレクトリを
+# 明示的に渡してください。
+ari projects --checkpoints ./workspace/checkpoints
 
 # 詳細な結果を表示（ツリー + レビュー）
-ari show 20260328_matrix_opt
+ari show 20260328_matrix_opt --checkpoints-dir ./workspace/checkpoints
 
 # 利用可能なツールを一覧表示
 ari skills-list
@@ -455,29 +503,32 @@ ari skills-list
 
 ### 設定
 
+`ari settings` は設定 YAML を読み書きします。対象は `--config` を渡さない限り `./config.yaml` です。
+そのファイルが存在しない場合は終了コード 1 で終了し、ファイルを新規作成することはありません。
+
 ```bash
 # 現在の設定を表示
-ari settings
+ari settings --config ./config.yaml
 
 # モデルを変更
-ari settings --model openai/gpt-4o
+ari settings --config ./config.yaml --model openai/gpt-4o
 
-# SLURM オプションを設定
-ari settings --partition gpu --cpus 64 --mem 128
+# SLURM オプションを設定（`resources:` の下に書き込まれます）
+ari settings --config ./config.yaml --partition gpu --cpus 64 --mem 128
 ```
 
 ### 環境変数
 
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
-| `ARI_BACKEND` | LLM バックエンド: `ollama` / `openai` / `anthropic` | `ollama` |
+| `ARI_BACKEND` | LLM バックエンド: `ollama` / `openai` / `anthropic`（別名 `claude`） / `claude_code` / `cli-shim` | `ollama` |
 | `ARI_MODEL` | モデル名（例: `qwen3:8b`, `openai/gpt-4o`） | `qwen3:8b` |
 | `OPENAI_API_KEY` | OpenAI API キー | -- |
 | `ANTHROPIC_API_KEY` | Anthropic API キー | -- |
 | `OLLAMA_HOST` | Ollama サーバーの URL | `http://localhost:11434` |
 | `ARI_MAX_NODES` | 実験の最大総数 | `50` |
 | `ARI_PARALLEL` | 同時実行の実験数 | `4` |
-| `ARI_MAX_REACT` | ノードごとの最大 ReAct ステップ数 | `80` |
+| `ARI_MAX_REACT` | ノードごとの最大 ReAct ステップ数 | `20` |
 | `ARI_TIMEOUT_NODE` | ノードごとのタイムアウト（秒） | `7200` |
 
 ---
@@ -504,9 +555,9 @@ ari settings --partition gpu --cpus 64 --mem 128
 
 | 問題 | 解決策 |
 |------|--------|
-| すべてのノードが失敗した | Tree ビューを開き、失敗したノードをクリックして Trace タブを確認 |
-| 結果が表示されない | Monitor ページを確認 — 実験がまだ実行中の可能性があります |
-| 実行が中断された | Experiments ページで該当の実行を見つけ、Resume をクリック |
+| すべてのノードが失敗した | 探索ツリーを開き、失敗したノードをクリックしてから `#/tree` に移動し、MCP Trace タブを確認 |
+| 結果が表示されない | 実行モニターページを確認 — 実験がまだ実行中の可能性があります |
+| 実行が中断された | サイドバーで対象のランをアクティブにし、実行モニターを開いて **Resume Experiment**（実行中でないときに表示）をクリック |
 
 ### 論文生成
 
@@ -527,7 +578,7 @@ git clone https://github.com/kotama7/ARI.git && cd ARI && bash setup.sh
 ollama pull qwen3:8b && ollama serve &
 export ARI_BACKEND=ollama ARI_MODEL=qwen3:8b
 
-# 3. すべてのサービスを起動（Letta + registry + GUI を :8765 で）
+# 3. すべてのサービスを起動（Letta + registry + CLI shim + GUI を :8765 で）
 ./start.sh
 # http://localhost:8765 を開いて、ウィザードで実験を作成しましょう！
 # 停止: ./shutdown.sh

@@ -2,8 +2,7 @@
 #
 # Scope: automated dependency-update PRs for the three real dependency
 # ecosystems in this repository (github-actions, pip, npm). Introduced by
-# refactoring subtask 052
-# (docs/refactoring/subtasks/052_add_dependabot_and_actions_policy.md). This
+# refactoring subtask 052 (add dependabot and actions policy, since retired). This
 # file is inert in a local checkout; it only drives GitHub's hosted Dependabot
 # service. The written policy (version-pinning strategy, grouping/cadence,
 # least-privilege permissions, review convention) lives in CONTRIBUTING.md
@@ -14,11 +13,8 @@
 #     (a Virtual-Scientists fork) and ari-skill-paper-re/vendor/paperbench
 #     (openai/preparedness) are pinned external forks; auto-bumping their
 #     submodule SHAs is undesirable.
-#   * pip "/ari-skill-orchestrator" is NOT listed. That one skill ships no
-#     pyproject.toml (13 of 14 skills have one); pointing Dependabot at a
-#     missing manifest would error. Only first-party directories are listed,
-#     so the vendored pyproject.toml files under the two vendor/ submodule
-#     trees above are also excluded.
+#   * Only first-party directories are listed, so vendored pyproject.toml files
+#     under the two vendor/submodule trees above are excluded.
 #   * docker ecosystem is NOT added. There are no in-tree Dockerfiles outside
 #     vendor/ (containers/ holds only a README).
 #
@@ -45,10 +41,9 @@ updates:
       - "github-actions"
 
   # --- Python (pip) ---------------------------------------------------------
-  # One block covering the 15 verified first-party manifest directories:
-  # the root requirements.txt, ari-core, and the 13 skills that ship a
-  # pyproject.toml. ari-skill-orchestrator is intentionally absent (no
-  # manifest). Minor/patch bumps are grouped per directory to cap PR volume
+  # One block covering the 17 verified first-party manifest directories:
+  # the root requirements.txt, ari-core, and all 15 skills. Minor/patch bumps
+  # are grouped per directory to cap PR volume
   # across the tree; a low open-PR limit adds a second guardrail.
   - package-ecosystem: "pip"
     directories:
@@ -60,10 +55,12 @@ updates:
       - "/ari-skill-hpc"
       - "/ari-skill-idea"
       - "/ari-skill-memory"
+      - "/ari-skill-orchestrator"
       - "/ari-skill-paper"
       - "/ari-skill-paper-re"
       - "/ari-skill-plot"
       - "/ari-skill-replicate"
+      - "/ari-skill-tool-registry"
       - "/ari-skill-transform"
       - "/ari-skill-vlm"
       - "/ari-skill-web"

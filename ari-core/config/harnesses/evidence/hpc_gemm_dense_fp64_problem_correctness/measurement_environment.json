@@ -1,0 +1,19 @@
+{
+  "environment": {
+    "note": "recorded, not restricted; a variable outside this prefix set is neither captured nor known to be harmless",
+    "sha256": "sha256:c6d3ffd5e9e652d4ddcb7dbf5ac9147c0bd3c067604fcd394c330957ea348106",
+    "variables": {
+      "ARI_LETTA_SIF": "~/ARI/scripts/letta/letta.sif",
+      "BLIS_NUM_THREADS": "1",
+      "GOTO_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    }
+  },
+  "environment_note": "variable VALUES are scrubbed of host identity here",
+  "placement": null,
+  "placement_note": "this harness pins no placement, so its evidence does not describe a machine",
+  "registration_commit": "8791cb6fa8a8f305b12e07c803a765fcc2c94c3d"
+}

@@ -1,0 +1,34 @@
+schema_version: 1
+id: intel.phoronix-test-suite
+version: 0.1.0+git.e9d0b641
+title: Intel Phoronix Test Suite Workflow
+description: Run and interpret a pre-pinned Phoronix Test Suite benchmark workflow without granting installation or network authority.
+license: {body: MIT, references: MIT}
+applies_to:
+  roles: [generator]
+  phases: [bfts]
+  task_tags: [benchmark, linux, phoronix]
+requires:
+  capabilities:
+    - {ref: ari.execution.benchmark/v1, required: true}
+optional_capabilities:
+  - {ref: ari.code.edit/v1, required: false}
+  - {ref: ari.code.inspect/v1, required: false}
+  - {ref: ari.execution.compile/v1, required: false}
+  - {ref: ari.profiling.hardware-counters/v1, required: false}
+evaluation_obligations:
+  - {property_id: performance-regression, required_methods: [benchmark-comparison]}
+  - {property_id: reproducibility, required_methods: [repeated-execution]}
+  - {property_id: source-integrity, required_methods: [digest-validation]}
+authority_ceiling:
+  side_effects: [read-only, workspace-write]
+forbidden_capabilities: [ari.publish.external/v1, ari.registry.write/v1]
+dependencies: []
+conflicts: []
+composition: {slot: execution-strategy, priority: 70, exclusive: false}
+body_normalization: ari-wrapper-v1
+curation_notes:
+  - Never refresh a mutable latest test list, download a test, or install software during a governed run.
+  - Use only a pre-pinned test profile, dataset, runner, and isolated workspace supplied by a separately admitted Capability Provider.
+  - Do not write to a user home directory or /var/lib; Provider execution must remain inside its declared workspace and cache policy.
+  - A Phoronix score is a performance measurement, not a Harness Attestation or correctness proof.

@@ -13,14 +13,6 @@
 # allowlist edit — not by deleting a route here.
 
 known:
-  # ── client-only (broken call): the one known FE->BE drift, F6a ────────────
-  # services/api.ts requestPaperbenchReport (api.ts:857-861) POSTs /report, but
-  # do_POST has no /report branch (only do_GET matches it, 020 G55). A POST falls
-  # to the do_POST else 404; pbPost does not throw. REVIEW_REQUIRED (020/060 F6a):
-  # verify the intended method before 062/063 touch it. Flagged, not fixed here.
-  - id: "POST /api/paperbench/run/{id}/report"
-    note: "020/060 F6a drift — FE POSTs /report; do_POST has no branch (do_GET G55). REVIEW_REQUIRED."
-
   # ── server-only, consumed OUTSIDE services/api.ts (not drift) ─────────────
   # Static assets / SPA page load (browser page/asset requests, not app code).
   - id: "GET /|/index.html"
@@ -62,6 +54,8 @@ known:
     note: "GET stub returning {error:'use POST'}; not called. 020 G33 (DELETE_CANDIDATE) / 060 F.2."
   - id: "POST /api/env-keys"
     note: "GET side wrapped as fetchEnvKeys; POST side not called by api.ts. 020 P12 / 060 F.2."
+  - id: "GET /api/env-keys"
+    note: "gui_refresh Wave 3a ADR-11/RR-P0-2: the plaintext env-keys read is closed — the endpoint now returns redacted markers only and the FE reads secret readiness from GET /api/v1/secrets/status instead; the legacy GET stays server-only for back-compat."
   - id: "GET /api/lineage-decisions/{id}"
     note: "no FE consumer (grep-confirmed). 020 G49 / 060 F.2."
   - id: "GET /api/paperbench/papers/{id}/license"
@@ -69,4 +63,26 @@ known:
   - id: "POST /api/paperbench/papers/{id}/metadata"
     note: "no FE consumer. 020 P26 / 060 F.2."
   - id: "GET /api/paperbench/run/{id}/report"
-    note: "GET report served; FE uses POST (the F6a drift). 020 G55 / 060 F.2."
+    note: "GET query-string variant kept for parity/direct-URL use; FE uses the POST branch (F6a resolved Wave 4a). 020 G55 / 060 F.2."
+
+  # ── server-only by design until Wave 2b: /api/v1 (gui_refresh Wave 2a) ────
+  # The single startswith('/api/v1/') delegation branch in routes.py is this
+  # checker's canonical identity for the whole versioned surface; the real
+  # dispatch is the declarative table in ari/viz/v1/router.py serving
+  # GET /api/v1/projects, /projects/{project_id}/runs, /runs/{run_id},
+  # /runs/{run_id}/summary, /runs/{run_id}/tree (ADR-02/ADR-08), plus the
+  # Wave 3a additions /secrets/status (ADR-11) and /config/schema (task 05
+  # canonical field registry). services/api.ts intentionally does not call it
+  # yet — the frontend adopts the OpenAPI-generated v1 client in gui_refresh
+  # Wave 2b (plan 04 §Compatibility and migration step 4), at which point
+  # these become matched, not drift.
+  - id: "GET /api/v1/{id}"
+    note: "gui_refresh Wave 2a /api/v1 read-only platform (ADR-02/ADR-08); server-only until the Wave 4 Studio UI adopts the generated v1 client (the typed client lives in services/api/v1.ts, which this checker's api.ts extraction does not scan — the Wave 4d Studio consumes it from there). Dispatch: ari/viz/v1/router.py (Wave 2a/3a GET resources incl. secrets/status + config/schema + runs/{run_id}/resolved-config, plus the Wave 3b config-document GETs: projects/{project_id}/config, run-templates[/{template_id}], run-drafts/{draft_id}, plus the Wave 4a/4b task-08 RQGM read block runs/{run_id}/rqgm/{capabilities,overview,registry,transitions,audit,policies,score-rewrites,nodes/{node_id}/lineage,epochs[/{epoch_id}],evolution,paper-archive} — GET-only by plan 08, server-only until the RQGM Workspace Tabs stage adopts the v1 client; plus the Wave 4c idea read model runs/{run_id}/idea — pure {ckpt}/idea.json read, absent file => present=false; plus the task 06 Wave 4d model catalog config/catalogs/models — the legacy /api/models suggestions re-served single-source with per-provider env-key names, ADR-05; plus the task 09 Wave 5b operational diagnostics /api/v1/diagnostics — bounded scalars only (MN-9, plan 09 §Operational visibility), builder ari/viz/health.py, ARI_GUI_HEALTH=0 answers the typed 404; plus the task 07 tail cursor log explorer runs/{run_id}/logs — bounded byte-offset pagination over {ckpt}/ari.log (reader ari/viz/v1/logs.py; raw-byte cursor stable under the grep filter, committed lines only, <= 1 MiB scanned per request, absent file => present=false), consumed by the Overview LogsPanel through services/api/v1.ts which this checker's api.ts extraction does not scan)."
+  - id: "POST /api/v1/{id}"
+    note: "gui_refresh Wave 3b (task 05) config CRUD mutations (ADR-12 gui_store; If-Match optimistic concurrency): POST /api/v1/run-templates (create-only, 409 already_exists) + POST /api/v1/run-drafts (server-generated draft id) + the new-run preview POSTs /api/v1/run-drafts/{draft_id}/resolve-config and /validate (resolver: ari/config/resolver.py resolve_new_run_config). PATCH/DELETE siblings ride do_PATCH/do_DELETE, and the task 06 Wave 4d ADR-05 secret assignment PUT /api/v1/secrets/{secret_id} rides do_PUT — none of which this checker extracts. Server-only until the Wave 4 Studio UI lands the generated v1 client."
+  - id: "GET /api/v1/events/stream/{id}"
+    note: "gui_refresh Wave 2b /api/v1 SSE realtime stream (ADR-03); dedicated routes.py branch before the v1 JSON delegation (bus: ari/viz/v1/events.py). Server-only until the Wave 2b realtime stage lands the EventSource client."
+
+  # ── server-only by design: operational health probes (task 09 Wave 5b) ────
+  - id: "GET /health/live|/health/ready"
+    note: "gui_refresh task 09 Wave 5b (MN-9, plan 09 §Operational visibility): liveness/readiness probes for operators/orchestrators (curl, systemd, k8s-style probes, reverse-proxy health checks) — deliberately NOT called by services/api.ts, so permanently server-only. Auth-exempt via the MN-8 /health prefix exemption; payload builders + ARI_GUI_HEALTH kill-switch register in ari/viz/health.py; behavior pinned by ari-core/tests/test_gui_health_diagnostics.py. The sibling GET /api/v1/diagnostics rides the /api/v1 delegation branch (see GET /api/v1/{id})."

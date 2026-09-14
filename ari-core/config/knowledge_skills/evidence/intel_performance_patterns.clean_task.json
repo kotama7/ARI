@@ -1,0 +1,51 @@
+{
+  "address_sanitizer": {
+    "result": "infrastructure-limit",
+    "site_hard_virtual_memory_limit_kib": 600000000,
+    "stderr_category": "shadow-address-space-reservation-denied"
+  },
+  "attachment_execution": "none",
+  "compiler": "gcc 13.3.0",
+  "correctness": "pass",
+  "first_touch_policy": "serial-before-warmup-outside-timed-region",
+  "fixture_sha256": "sha256:0e5a93a485b44160608e04bdc20408fc12eceb8ffd70f21de5f57240e744843b",
+  "memory_safety": {
+    "methods": [
+      "bounds-sanitizer",
+      "object-size-sanitizer",
+      "undefined-behavior-sanitizer"
+    ],
+    "result": "pass"
+  },
+  "node_identifier_persisted": false,
+  "performance": {
+    "affinity_policy": "first-allowed-cpu-without-persisting-cpu-id",
+    "baseline": "single-serial-accumulator",
+    "candidate": "eight-independent-accumulators",
+    "clock": "CLOCK_MONOTONIC_RAW",
+    "compiler_flags": [
+      "-O3",
+      "-fno-fast-math",
+      "-fno-tree-vectorize",
+      "-fno-unroll-loops"
+    ],
+    "count": 32768,
+    "iterations_per_trial": 1000,
+    "release_binary_sha256": "sha256:087fbd3111ea0979d27493b1598a51e97b6adc16cfac62a0ac3806b22c71d952",
+    "replay_speedups": [
+      1.476106510,
+      1.432075303,
+      1.363526575,
+      1.472895337
+    ],
+    "result": "pass",
+    "sample_order": "alternating-baseline-candidate",
+    "threshold": 1.05,
+    "timed_region": "kernel-call-only",
+    "timer_overhead_subtracted": true,
+    "trials_per_replay": 9,
+    "warmup_iterations_per_variant": 1
+  },
+  "sanitized_binary_sha256": "sha256:46a5b160a0c83ebfb1a6c03cdbb18558021750e302863d5a289e9c9ca6e2b713",
+  "schema_version": "ari.intel-performance-patterns-clean-task/v1"
+}

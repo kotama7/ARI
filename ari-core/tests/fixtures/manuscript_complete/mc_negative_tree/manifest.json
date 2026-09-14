@@ -1,0 +1,9 @@
+{
+  "schema_version": "ari.manuscript-fixture/v1",
+  "fixture_id": "mc_negative_tree",
+  "origin": "synthetic",
+  "generator_version": "manuscript-fixture-factory-v1",
+  "measurement_disclaimer": "Synthetic values are test data, never research evidence.",
+  "properties": {"node_states": ["failed", "null", "inconclusive", "abandoned"], "has_off_lineage_sibling": true},
+  "expected_labels": ["contextual-negative", "narrative-visible", "positive-claim-forbidden"]
+}

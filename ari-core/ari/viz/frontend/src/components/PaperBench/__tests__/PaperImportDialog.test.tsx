@@ -115,7 +115,7 @@ describe('PaperImportDialog (PLAN_GUI §8 acceptance: license warning)', () => {
 
     render(<PaperImportDialog />);
     // Source type defaults to 'arxiv'
-    const sourceInput = screen.getByDisplayValue('') as HTMLInputElement;
+    const sourceInput = screen.getByLabelText(/Source identifier/i) as HTMLInputElement;
     fireEvent.change(sourceInput, { target: { value: '2404.14193' } });
 
     const fetchBtn = screen.getByRole('button', { name: /Fetch metadata/i });
@@ -124,6 +124,7 @@ describe('PaperImportDialog (PLAN_GUI §8 acceptance: license warning)', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/paperbench/arxiv/2404.14193',
+        expect.objectContaining({ method: 'GET' }),
       );
     });
     // Title was populated from the response

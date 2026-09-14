@@ -12,52 +12,81 @@ from pathlib import Path
 
 import pytest
 
+from ari.public.memory import MemoryRecordV1, build_memory_record
 from ari_skill_memory.audit import audit_node_report, summarize
 from ari_skill_memory.provenance import (
     normalize_artifact_path,
     refs_from_node_report,
     sha256_of,
 )
-from ari_skill_memory.schemas import ArtifactRef, ResearchMemory
-
-
 # ── schemas ──────────────────────────────────────────────────────────────
 
-def test_research_memory_rejects_unknown_kind():
-    with pytest.raises(ValueError):
-        ResearchMemory(id="m1", checkpoint_id="c", node_id="n", kind="bogus", text="x")
+def _record(**overrides):
+    values = {
+        "kind": "experiment_result",
+        "text": "tile=32 -> 842 GB/s",
+        "source_run_id": "run-test",
+        "source_node_id": "node-test",
+        "ancestor_node_ids": [],
+        "artifact_refs": [],
+        "created_by_tool_ref": "memory-test:schema",
+    }
+    values.update(overrides)
+    return build_memory_record(**values)
 
 
-def test_research_memory_rejects_bad_repro_status():
+def test_memory_record_rejects_unknown_kind():
     with pytest.raises(ValueError):
-        ResearchMemory(
-            id="m1", checkpoint_id="c", node_id="n", kind="experiment_result",
-            text="x", repro_status="maybe",
+        _record(kind="bogus")
+
+
+def test_memory_record_rejects_bad_repro_status():
+    with pytest.raises(ValueError):
+        _record(kind="reproducibility_event", repro_status="maybe")
+
+
+def test_memory_record_binds_lineage_and_node_report_source():
+    with pytest.raises(ValueError, match="source node"):
+        _record(ancestor_node_ids=["node-test"])
+    with pytest.raises(ValueError, match="must match"):
+        _record(
+            node_report_ref={
+                "run_id": "another-run",
+                "node_id": "node-test",
+                "digest": "sha256:" + "a" * 64,
+            }
         )
 
 
 def test_reproducibility_event_requires_target():
     with pytest.raises(ValueError):
-        ResearchMemory(id="m1", checkpoint_id="c", node_id="n",
-                       kind="reproducibility_event", text="x")
+        _record(kind="reproducibility_event")
     # valid when target supplied
-    ev = ResearchMemory(id="m1", checkpoint_id="c", node_id="n",
-                        kind="reproducibility_event", text="x",
-                        repro_target_id="m0", repro_status="rerun_passed")
-    assert ev.repro_target_id == "m0"
-
-
-def test_to_metadata_promotes_mem_kind_top_level():
-    m = ResearchMemory(
-        id="m1", checkpoint_id="c", node_id="n", kind="experiment_result",
-        text="tile=32 -> 842 GB/s",
-        artifact_refs=[ArtifactRef(path="out/bench.csv", sha256="ab", role="data_output")],
-        metric_ptr={"name": "GB/s", "value": 842.1},
+    target = "sha256:" + "0" * 64
+    ev = _record(
+        kind="reproducibility_event",
+        repro_target_id=target,
+        repro_status="rerun_passed",
     )
-    md = m.to_metadata()
-    assert md["mem_kind"] == "experiment_result"            # filterable top-level facet
-    assert md["artifact_refs"][0]["path"] == "out/bench.csv"
-    assert md["metric_ptr"]["value"] == 842.1
+    assert ev.repro_target_id == target
+
+
+def test_memory_record_is_content_addressed_and_rejects_tampering():
+    record = _record(
+        artifact_refs=[{
+            "relative_path": "out/bench.csv",
+            "digest": "sha256:" + "a" * 64,
+            "size_bytes": 12,
+            "role": "data_output",
+            "integrity_status": "verified",
+        }],
+        metric_ptr={"name": "throughput", "value": 842.1, "unit": "GB/s"},
+    )
+    assert record.record_id == record.record_digest
+    raw = record.model_dump(mode="json")
+    raw["text"] = "tampered"
+    with pytest.raises(ValueError, match="digest mismatch"):
+        MemoryRecordV1.model_validate(raw)
 
 
 # ── provenance ───────────────────────────────────────────────────────────
@@ -123,6 +152,40 @@ def test_audit_unhashed_when_no_recorded_hash(tmp_path):
     report = {"node_id": "n", "files_changed": {}, "artifacts": [{"filename": "fig.png", "role": "figure"}]}
     res = audit_node_report(report, tmp_path)
     assert res[0]["status"] == "unhashed"  # exists, but nothing to compare
+
+
+def test_inline_blob_is_not_a_phantom_missing(tmp_path):
+    """agent/loop.py substitutes captured stdout for fake artifacts as an
+    inline blob; node_report's builder marks it ``inline`` with a display-only
+    ``filename`` (the type, e.g. "result"). It has no file on disk, so the
+    audit must SKIP it — otherwise every such node reports a `missing`
+    artifact for a file that was never meant to exist, training a reader to
+    ignore `missing` entirely."""
+    _write(tmp_path / "real.csv", b"data")
+    good = sha256_of(tmp_path / "real.csv")
+    report = {
+        "node_id": "n",
+        "files_changed": {"added": [{"path": "real.csv", "sha256": good}]},
+        "artifacts": [
+            {"filename": "result", "role": "unknown", "inline": True},
+        ],
+    }
+    res = audit_node_report(report, tmp_path)
+    statuses = {r["path"]: r["status"] for r in res}
+    assert statuses == {"real.csv": "verified"}, statuses
+    assert "result" not in statuses  # the inline blob produced no ref at all
+
+
+def test_a_deleted_file_is_still_missing_without_the_inline_marker(tmp_path):
+    """The inline skip must not blind the audit to genuine deletions: an
+    artifacts entry WITHOUT ``inline`` whose file is gone is still `missing`."""
+    report = {
+        "node_id": "n",
+        "files_changed": {"added": [{"path": "gone.py", "sha256": "ab" * 32}]},
+        "artifacts": [],
+    }
+    res = audit_node_report(report, tmp_path)
+    assert [r["status"] for r in res] == ["missing"]
 
 
 # ── opt-in: real checkpoint ──────────────────────────────────────────────

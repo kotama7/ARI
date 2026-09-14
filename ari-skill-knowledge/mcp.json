@@ -1,0 +1,16 @@
+{
+  "description": "Read-only query and non-authoritative request surface for content-addressed procedural knowledge.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "knowledge-skill",
+  "package": "ari-skill-knowledge",
+  "runtime": "python",
+  "schema_version": 1,
+  "tools": [
+    "search_knowledge_skills",
+    "describe_knowledge_skill",
+    "list_active_knowledge_skills",
+    "request_knowledge_skill"
+  ],
+  "version": "0.1.0"
+}

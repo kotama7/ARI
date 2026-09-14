@@ -1,0 +1,12 @@
+{
+  "nodes": [
+    {
+      "has_real_data": true,
+      "id": "n_ctl",
+      "metrics": {
+        "GFlops": 200.0
+      },
+      "status": "SUCCESS"
+    }
+  ]
+}

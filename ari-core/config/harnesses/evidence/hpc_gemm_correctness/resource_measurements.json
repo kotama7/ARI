@@ -1,0 +1,81 @@
+{
+  "executions": [
+    {
+      "attempt_id": "har-35d090ca0a849ad5a7044fae5c22a40b-0",
+      "attestation_digest": "sha256:3750b6a74fbeba658cf04a2fd4f4654d944c58faa629a253609ae24e020ee2a9",
+      "completed_at": "2026-08-23T07:27:15.262420Z",
+      "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
+      "container_identity_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
+      "cpu_core_seconds": 47.477256,
+      "execution_identity": "sha256:75dd9f75c889cfae35f23aec18f6814ece4fc60f098fbcfac04f0878970bd099",
+      "execution_result_digest": "sha256:b17a12022d4df1eae1faff37aac652326d5060c4fafd0e3c901d17ed23f51e8c",
+      "execution_status": "completed",
+      "memory_byte_seconds": 203913261823.81976,
+      "network": "deny",
+      "pricing_status": "unpriced",
+      "started_at": "2026-08-23T07:26:51.523792Z",
+      "tier": "screen",
+      "wall_seconds": 23.738628
+    },
+    {
+      "attempt_id": "har-3bff298dfd725beeaf53eb26524a133a-0",
+      "attestation_digest": "sha256:08af08213dc1c9b5a9ee02ecbb89c67cc31f62f8708c0c33ee60d17b91e02bb7",
+      "completed_at": "2026-08-23T07:25:26.701939Z",
+      "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
+      "container_identity_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
+      "cpu_core_seconds": 155.813016,
+      "execution_identity": "sha256:60eae766ecf966c79162493fb54c97b21ce3be6f19def3378d36a13f48f0eaa4",
+      "execution_result_digest": "sha256:54126d982ec321d92fc9b8bcf2f3536af4883d3de15db076bb8b9f4d8208cbc5",
+      "execution_status": "completed",
+      "memory_byte_seconds": 669211808011.1248,
+      "network": "deny",
+      "pricing_status": "unpriced",
+      "started_at": "2026-08-23T07:24:08.795431Z",
+      "tier": "certify",
+      "wall_seconds": 77.906508
+    },
+    {
+      "attempt_id": "har-4e7e260c840bfb51845420fe88e83cbe-1",
+      "attestation_digest": "sha256:2deec4f68dc1663f5ac9ef45287a8fba5859fd3575cb54d488f52f2b6887aecc",
+      "completed_at": "2026-08-23T07:26:47.387297Z",
+      "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
+      "container_identity_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
+      "cpu_core_seconds": 153.108366,
+      "execution_identity": "sha256:5a47e4d0c192c434272f11f3cf7a8ca7f00063f32eb5e5331e20e043713c12fe",
+      "execution_result_digest": "sha256:e2bfeec610f9c003910b01cb3805fb243af1c8ef8828783451daaf4d41537efb",
+      "execution_status": "completed",
+      "memory_byte_seconds": 657595424713.9983,
+      "network": "deny",
+      "pricing_status": "unpriced",
+      "started_at": "2026-08-23T07:25:30.833114Z",
+      "tier": "certify",
+      "wall_seconds": 76.554183
+    },
+    {
+      "attempt_id": "har-67b3671be35f5696b82dcb7f9303c96c-0",
+      "attestation_digest": "sha256:37d91fcb24ac81ccdf1730a40b1fb482c3007097d6fa75f77cf435924b0d6ec1",
+      "completed_at": "2026-08-23T07:24:04.616622Z",
+      "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
+      "container_identity_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
+      "cpu_core_seconds": 47.375972,
+      "execution_identity": "sha256:a665115821e8c9264f1b43cd4c2b28d57cda9933c5fa88cf9c7ba64523ed5bc3",
+      "execution_result_digest": "sha256:838ba1b56d10e7e85862315b76248ccf052c40c4f11f2d72b7aa09a2a4237862",
+      "execution_status": "completed",
+      "memory_byte_seconds": 203478250356.2117,
+      "network": "deny",
+      "pricing_status": "unpriced",
+      "started_at": "2026-08-23T07:23:40.928636Z",
+      "tier": "screen",
+      "wall_seconds": 23.687986
+    }
+  ],
+  "harness_id": "hpc/gemm-correctness",
+  "measurement_digest": "sha256:ff75f4228d25070c5314fc9d3ec00c470a874faf2f47bf00c1ceacf1b0e0df9e",
+  "measurement_semantics": {
+    "cpu_core_seconds": "declared cores multiplied by measured wall seconds",
+    "memory_byte_seconds": "declared bytes multiplied by measured wall seconds",
+    "monetary_cost": "unpriced without a locked rate card or invoice",
+    "wall_seconds": "executor timestamps"
+  },
+  "schema_version": "ari.harness-registration-resource-measurements/v1"
+}

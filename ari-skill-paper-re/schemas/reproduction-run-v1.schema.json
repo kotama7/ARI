@@ -1,0 +1,478 @@
+{
+  "$defs": {
+    "FailureEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "timeout",
+            "cancelled",
+            "oom",
+            "missing-dependency",
+            "gpu-mismatch",
+            "filesystem-policy",
+            "process-exit",
+            "sandbox-unavailable",
+            "network-policy",
+            "scheduler-failure",
+            "unknown"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "message"
+      ],
+      "title": "FailureEvidenceV1",
+      "type": "object"
+    },
+    "ReproductionArtifactV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.reproduction-artifact/v1",
+          "default": "ari.reproduction-artifact/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "relative_path",
+        "digest",
+        "size_bytes",
+        "media_type",
+        "role"
+      ],
+      "title": "ReproductionArtifactV1",
+      "type": "object"
+    },
+    "ReproductionAttemptV1": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Attempt Digest",
+          "type": "string"
+        },
+        "attempt_id": {
+          "pattern": "^[a-f0-9]{32}$",
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "completed_at": {
+          "title": "Completed At",
+          "type": "string"
+        },
+        "environment": {
+          "additionalProperties": true,
+          "title": "Environment",
+          "type": "object"
+        },
+        "execution_identity": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Identity"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "expected_missing": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Missing",
+          "type": "array"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FailureEvidenceV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "log_artifact": {
+          "$ref": "#/$defs/ReproductionArtifactV1"
+        },
+        "ordinal": {
+          "minimum": 1,
+          "title": "Ordinal",
+          "type": "integer"
+        },
+        "output_manifest": {
+          "$ref": "#/$defs/ReproductionArtifactV1"
+        },
+        "output_tree_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Output Tree Digest",
+          "type": "string"
+        },
+        "parent_attempt_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Attempt Id"
+        },
+        "plan_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Plan Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.reproduction-attempt/v1",
+          "default": "ari.reproduction-attempt/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "started_at": {
+          "title": "Started At",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "succeeded",
+            "failed",
+            "timed_out",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "substrate_request_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Substrate Request Digest"
+        }
+      },
+      "required": [
+        "attempt_id",
+        "ordinal",
+        "plan_digest",
+        "status",
+        "started_at",
+        "completed_at",
+        "environment",
+        "log_artifact",
+        "output_manifest",
+        "output_tree_digest",
+        "attempt_digest"
+      ],
+      "title": "ReproductionAttemptV1",
+      "type": "object"
+    },
+    "ReproductionPlanV1": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Argv",
+          "type": "array"
+        },
+        "expected_artifacts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Artifacts",
+          "type": "array"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SandboxImageV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "input_tree_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Input Tree Digest",
+          "type": "string"
+        },
+        "plan_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Plan Digest",
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/$defs/ReproductionPolicyV1"
+        },
+        "resources": {
+          "additionalProperties": true,
+          "title": "Resources",
+          "type": "object"
+        },
+        "rubric_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Rubric Digest",
+          "type": "string"
+        },
+        "rubric_schema_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rubric Schema Version",
+          "type": "string"
+        },
+        "sandbox": {
+          "enum": [
+            "local",
+            "docker",
+            "apptainer",
+            "singularity",
+            "slurm"
+          ],
+          "title": "Sandbox",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.reproduction-plan/v1",
+          "default": "ari.reproduction-plan/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "script_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Script Digest",
+          "type": "string"
+        },
+        "source_workspace": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Source Workspace",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "maximum": 43200,
+          "minimum": 1,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rubric_schema_version",
+        "rubric_digest",
+        "source_workspace",
+        "input_tree_digest",
+        "script_digest",
+        "argv",
+        "sandbox",
+        "timeout_seconds",
+        "policy",
+        "plan_digest"
+      ],
+      "title": "ReproductionPlanV1",
+      "type": "object"
+    },
+    "ReproductionPolicyV1": {
+      "additionalProperties": false,
+      "properties": {
+        "credential_policy": {
+          "const": "none",
+          "default": "none",
+          "title": "Credential Policy",
+          "type": "string"
+        },
+        "input_policy": {
+          "const": "content-addressed-read-only",
+          "default": "content-addressed-read-only",
+          "title": "Input Policy",
+          "type": "string"
+        },
+        "network": {
+          "default": "deny",
+          "enum": [
+            "deny",
+            "inherit"
+          ],
+          "title": "Network",
+          "type": "string"
+        },
+        "network_enforcement": {
+          "enum": [
+            "container-namespace",
+            "administrator-attested",
+            "unverified"
+          ],
+          "title": "Network Enforcement",
+          "type": "string"
+        },
+        "output_policy": {
+          "const": "private-attempt-diff",
+          "default": "private-attempt-diff",
+          "title": "Output Policy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "network_enforcement"
+      ],
+      "title": "ReproductionPolicyV1",
+      "type": "object"
+    },
+    "SandboxImageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "reference": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Reference",
+          "type": "string"
+        },
+        "runtime": {
+          "enum": [
+            "docker",
+            "apptainer",
+            "singularity"
+          ],
+          "title": "Runtime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime",
+        "reference",
+        "digest"
+      ],
+      "title": "SandboxImageV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "attempts": {
+      "items": {
+        "$ref": "#/$defs/ReproductionAttemptV1"
+      },
+      "minItems": 1,
+      "title": "Attempts",
+      "type": "array"
+    },
+    "plan": {
+      "$ref": "#/$defs/ReproductionPlanV1"
+    },
+    "run_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Run Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.reproduction-run/v1",
+      "default": "ari.reproduction-run/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "selected_attempt_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-f0-9]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Selected Attempt Id"
+    },
+    "status": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "timed_out",
+        "cancelled"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "plan",
+    "attempts",
+    "status",
+    "run_digest"
+  ],
+  "title": "ReproductionRunV1",
+  "type": "object"
+}

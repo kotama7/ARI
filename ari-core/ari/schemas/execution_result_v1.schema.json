@@ -1,0 +1,357 @@
+{
+  "$defs": {
+    "ContainerIdentityV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "reference": {
+          "title": "Reference",
+          "type": "string"
+        },
+        "resolution_status": {
+          "enum": [
+            "resolved",
+            "unresolved"
+          ],
+          "title": "Resolution Status",
+          "type": "string"
+        },
+        "runtime": {
+          "enum": [
+            "docker",
+            "singularity",
+            "apptainer",
+            "unknown"
+          ],
+          "title": "Runtime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime",
+        "reference",
+        "resolution_status"
+      ],
+      "title": "ContainerIdentityV1",
+      "type": "object"
+    },
+    "ExecutionArtifactV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "title": "Digest",
+          "type": "string"
+        },
+        "logical_role": {
+          "enum": [
+            "stdout",
+            "stderr"
+          ],
+          "title": "Logical Role",
+          "type": "string"
+        },
+        "media_type": {
+          "const": "text/plain; charset=utf-8",
+          "default": "text/plain; charset=utf-8",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "logical_role",
+        "relative_path",
+        "digest",
+        "size_bytes"
+      ],
+      "title": "ExecutionArtifactV1",
+      "type": "object"
+    },
+    "ExecutionLimitsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "cpu_seconds": {
+          "anyOf": [
+            {
+              "maximum": 86400,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpu Seconds"
+        },
+        "max_output_bytes": {
+          "default": 67108864,
+          "maximum": 1073741824,
+          "minimum": 1024,
+          "title": "Max Output Bytes",
+          "type": "integer"
+        },
+        "max_processes": {
+          "anyOf": [
+            {
+              "maximum": 65536,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Processes"
+        },
+        "memory_bytes": {
+          "anyOf": [
+            {
+              "minimum": 16777216,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Bytes"
+        }
+      },
+      "title": "ExecutionLimitsV1",
+      "type": "object"
+    },
+    "ResourceLimitReportV1": {
+      "additionalProperties": false,
+      "description": "What the launcher actually enforced, distinct from requested limits.",
+      "properties": {
+        "enforced": {
+          "items": {
+            "enum": [
+              "cpu",
+              "memory",
+              "processes",
+              "output"
+            ],
+            "type": "string"
+          },
+          "title": "Enforced",
+          "type": "array"
+        },
+        "process_group": {
+          "enum": [
+            "executor",
+            "external-unverified"
+          ],
+          "title": "Process Group",
+          "type": "string"
+        },
+        "substrate": {
+          "enum": [
+            "posix-kernel",
+            "external-unverified"
+          ],
+          "title": "Substrate",
+          "type": "string"
+        },
+        "wall_time": {
+          "enum": [
+            "executor",
+            "external-unverified"
+          ],
+          "title": "Wall Time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "substrate",
+        "wall_time",
+        "process_group"
+      ],
+      "title": "ResourceLimitReportV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/execution-result-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/ExecutionArtifactV1"
+      },
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "attempt_id": {
+      "title": "Attempt Id",
+      "type": "string"
+    },
+    "completed_at": {
+      "title": "Completed At",
+      "type": "string"
+    },
+    "container": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ContainerIdentityV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "environment_names": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Environment Names",
+      "type": "array"
+    },
+    "execution_identity": {
+      "title": "Execution Identity",
+      "type": "string"
+    },
+    "exit_code": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Exit Code"
+    },
+    "input_bindings": {
+      "additionalProperties": {
+        "enum": [
+          "immutable-snapshot",
+          "verified-at-launch",
+          "external-unverified"
+        ],
+        "type": "string"
+      },
+      "title": "Input Bindings",
+      "type": "object"
+    },
+    "input_digests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Input Digests",
+      "type": "object"
+    },
+    "limit_report": {
+      "$ref": "#/$defs/ResourceLimitReportV1"
+    },
+    "limits": {
+      "$ref": "#/$defs/ExecutionLimitsV1"
+    },
+    "network": {
+      "enum": [
+        "inherit",
+        "deny"
+      ],
+      "title": "Network",
+      "type": "string"
+    },
+    "network_report": {
+      "enum": [
+        "inherited",
+        "isolated",
+        "external-unverified"
+      ],
+      "title": "Network Report",
+      "type": "string"
+    },
+    "request_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Request Id"
+    },
+    "schema_version": {
+      "const": "ari.execution-result/v1",
+      "default": "ari.execution-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "started_at": {
+      "title": "Started At",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "failed",
+        "timed_out",
+        "cancelled"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "stderr_preview": {
+      "title": "Stderr Preview",
+      "type": "string"
+    },
+    "stderr_truncated": {
+      "title": "Stderr Truncated",
+      "type": "boolean"
+    },
+    "stdout_preview": {
+      "title": "Stdout Preview",
+      "type": "string"
+    },
+    "stdout_truncated": {
+      "title": "Stdout Truncated",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "status",
+    "execution_identity",
+    "attempt_id",
+    "exit_code",
+    "started_at",
+    "completed_at",
+    "stdout_preview",
+    "stderr_preview",
+    "stdout_truncated",
+    "stderr_truncated",
+    "artifacts",
+    "environment_names",
+    "network",
+    "network_report",
+    "limits",
+    "limit_report"
+  ],
+  "title": "ARI Execution Result v1",
+  "type": "object"
+}

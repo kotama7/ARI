@@ -4,7 +4,25 @@ sources:
     role: implementation
   - path: ari-skill-evaluator
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/agent/workflow.py
+    role: implementation
+  - path: ari-core/ari/agent/guidance.py
+    role: implementation
+  - path: ari-core/ari/orchestrator/lineage_decision.py
+    role: implementation
+  - path: ari-core/ari/lineage.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-skill-paper/src/rubric.py
+    role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+last_verified: 2026-08-16
 ---
 
 # experiment.md の書き方
@@ -27,7 +45,7 @@ Metrics: GB/s, GFlops/s
 
 これだけで十分です。**`Metrics:`** 行は ARI の決定論的ヘルパー
 `parse_metric_from_experiment_md`
-(`ari-core/ari/pipeline/experiment_md.py:31`) が解析し、
+(`ari-core/ari/pipeline/experiment_md.py:30`) が解析し、
 `evaluation_criteria.json:primary_metric` の最後の手段の値として保存
 されます。本文の文章は LLM 駆動の `generate_ideas` フローのシードと
 なり、計画の残りを埋めます。
@@ -43,7 +61,7 @@ ARI は特定のセクション構造を要求しません（ファイルは pla
 Markdown として読まれます）。ただし以下の見出しは慣習的で、一部は
 決定論的ヘルパーが解釈します:
 
-### `Metrics:` 行（必須）
+### `Metrics:` 行（任意・推奨）
 
 ```markdown
 Metrics: GB/s, GFlops/s
@@ -51,7 +69,24 @@ Metrics: GB/s, GFlops/s
 
 最初のトークン（ここでは `GB/s`）が抽出され、idea が決まっていない
 段階での `evaluation_criteria.json:primary_metric` として保存され
-ます。"metric" / "metrics" を含むプレーンな散文でも同様に動作します。
+ます。強制ではありません: この行が無ければ関数は `""` を返し、run は
+そのまま続行します。行は `Metric` または `Metrics`（大文字小文字を
+区別しない）で**始まり**、続けて `:` か `-` が必要です — 散文の途中に
+埋もれた単語はマッチしません。
+
+### `## Success Metrics` セクション（任意）
+
+```markdown
+## Success Metrics
+- gflops_per_second: sustained throughput
+- l2_hit_rate: cache behaviour
+```
+
+evaluator スキルの `_parse_success_metrics` は、インラインの
+`Metrics:` 行より**先に**このセクションを読み、`- name:` の箇条書き
+すべてを宣言済みメトリクスとして採ります。したがって
+`## Success Metrics` セクションは `Metrics:` 行に追加されるのではなく、
+それを上書きします。
 
 ### `## Research Goal`（任意・推奨）
 
@@ -65,20 +100,44 @@ Metrics: GB/s, GFlops/s
 
 ### `## Hardware Limits` / `## Rules`（任意）
 
-ハード制約を箇条書きで。エージェントはシステムコンテキストの一部と
-して読みます。
+ハード制約を箇条書きで。これらの*見出し*自体を解析するヘルパーは
+ありません — ファイルの他の部分と同じく散文として LLM に届きます。
+**決定論的に**解析されるのは、HPC が有効なときに限り、ドキュメント内の
+どこにあっても `ari/agent/workflow.py` が拾う 2 つの独立したパターン
+です:
+
+```markdown
+Partition: <partition-name>
+Max CPUs: 64
+```
+
+`Partition:` は `hints.slurm_partition` を設定します（無ければ
+`ARI_SLURM_PARTITION`、それも無ければ `sinfo` が報告する最初の `up`
+パーティション）。`Max CPUs:` は LLM に提示される CPU 上限を設定します
+（無ければ `ARI_SLURM_CPUS`）。
+
+### `## Provided Files` / `## Local Files`（任意）
+
+1 行 1 パス、または箇条書きで書いたパスが、バッチ開始時に basename で
+**すべての**ノードの work_dir へコピーされます。`## 提供ファイル`、
+`## 提供文件`、および見出しだけの `## Files` もエイリアスとして受理
+されます。行はパス区切り文字を含む場合にのみカウントされ、行末の
+`# コメント` は除去されます。黙ってスキップされるケースが 2 つあります:
+basename がチェックポイントのメタファイル（例: `results.json`）である
+ファイルはコピーされず、既に存在する宛先は上書きされません。
 
 ### `## SLURM Script Template`（任意）
 
 LLM が変更可能なベースラインスクリプト。ベンチマーク起動が特殊な
-場合のみ役立ちます。
+場合のみ役立ちます。`## Rules` と同様、これを読む決定論的ヘルパーは
+ありません — LLM 向けのコンテキストです。
 
 ### マジックコメント（ヘルパーが解析）
 
 | コメント | 用途 |
 |---------|------|
-| `<!-- min_expected_metric: N -->` | レビュアー向けのソフトな下限 |
-| `<!-- metric_keyword: NAME -->`   | メトリクス抽出器へのヒント |
+| `<!-- min_expected_metric: N -->` | レビュアー向けのヒントではなく、エージェントループ内の**ハード**な下限: 値が 2 つ以上抽出され `max(values) < N` のとき、`guidance.py` が `node.mark_failed()` を呼びます。解析に注意 — `ari/agent/workflow.py` は `([\d]+)` でマッチするため `2.5` は `2` と読まれますが、evaluator スキル自身のパーサは小数を受理します。 |
+| `<!-- metric_keyword: NAME -->`   | メトリクス抽出器へのヒント。`Metrics:` 行も `## Success Metrics` セクションも無い場合の `expected_metrics` のフォールバック元でもあります |
 
 ## v0.6 / v0.7 の追加要素
 
@@ -86,8 +145,13 @@ LLM が変更可能なベースラインスクリプト。ベンチマーク起�
 
 `experiment.md` は **plan**、**venue** は
 `ari-core/config/reviewer_rubrics/<id>.yaml` にあり、`ARI_RUBRIC`
-env var で選択します。ルブリックは BFTS 判定軸と公開レビュー基準
-の両方を提供します。詳細は
+env var（既定は `neurips`）で選択します。ルブリックが提供するのは
+BFTS ジャッジの判定軸です。**公開レビュー**は別のつまみです:
+`review_paper` は `rubric_id` を `workflow.yaml` の `paper_rubric`
+（既定は `generic_conference`）から取り、`ARI_RUBRIC` を読みません。
+つまり `ARI_RUBRIC` だけを切り替えてもレビューは generic ルブリックの
+ままです — 探索とレビューを同じ venue で判定させたい場合は両方を設定して
+ください。詳細は
 `docs/concepts/architecture.md#plan--venue-contract-v070`。
 
 ### VirSci 自動追記ブロック（v0.6）
@@ -97,17 +161,24 @@ env var で選択します。ルブリックは BFTS 判定軸と公開レビュ
 
 ```markdown
 <!-- AUTO-APPENDED BY VirSci (idea.json) — DO NOT EDIT -->
-## Selected idea
+## Selected research idea
 ...
-## Plan §-tags
+## Plan sections (full text in idea.json)
 ...
-## Alternatives considered
+## Alternatives considered (not pursued in this run)
 ...
 <!-- END AUTO-APPENDED -->
 ```
 
-ブロックは冪等（promote ごとに書き直され、重複しません）。
-マーカーの **上** の散文のみ編集してください。
+真ん中の見出しは `workflow.yaml:plan_promote` に従います（既定は上記の
+`index_only`）。`full` では §本文をインライン展開した
+`## Detailed experiment plan` が出力され、`off` では何も書かれません。
+
+ブロックが書かれるのは**一度だけ**です: `_promote_plan_to_experiment_md`
+は `AUTO-APPENDED` マーカーが既にあると即座に return するため、後続の
+promote が古いブロックを更新することはありません — 再生成したい場合は
+マーカーを削除してください。編集してよいのはマーカーの **上** の散文
+のみで、begin/end マーカーの間は自動追記ヘルパーの所有物です。
 
 ### lineage 決定の記録（v0.7）
 
@@ -148,8 +219,12 @@ CONFIRMED になると、ARI はまず **決定論的に** `idea.json` 内で
 
 ARI は次の順序で探します:
 
-1. アクティブチェックポイントのルート: `$ARI_CHECKPOINT_DIR/experiment.md`
-2. `ari run experiment.md` への引数（初回起動時にチェックポイントへコピー）
+1. アクティブチェックポイントのルート: `$ARI_CHECKPOINT_DIR/experiment.md` —
+   `tree.json` に記録されたパスは古くなっている可能性があるため、resume 時は
+   こちらが優先されます。
+2. `ari run experiment.md` への引数（初回起動時にチェックポイントへコピー）。
+   これは必須の位置引数です: パスがファイルでない場合 `ari run` は終了コード 1
+   で終了するため、新規 run が (1) にフォールバックすることはありません。
 
 グローバルなデフォルトや `$HOME/.ari/` 検索はありません — v0.5.0
 リファクタで全入力ファイルがチェックポイントスコープになりました。

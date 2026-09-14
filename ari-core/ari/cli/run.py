@@ -57,6 +57,29 @@ from ari.cli.commands import _safe_backup
 def _run_loop(*args, **kwargs):
     from ari import cli as _cli
     return _cli._run_loop(*args, **kwargs)
+
+
+def _close_idle_default_event_loop() -> None:
+    """Close a dependency-created main-thread loop at the CLI boundary.
+
+    MCP connections own and close their dedicated thread loops.  Some optional
+    synchronous clients (LiteLLM/Letta dependencies) also install an idle
+    default loop in the main thread and never close it; on an early KCA failure
+    Python then reports an ``unclosed event loop`` ResourceWarning.  The run is
+    synchronous here, so an actually running loop is never ours to close.
+    """
+
+    import asyncio
+
+    try:
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+    except RuntimeError:
+        return
+    if loop.is_running():
+        return
+    if not loop.is_closed():
+        loop.close()
+    asyncio.set_event_loop(None)
 from ari.cli.lineage import (
     _LINEAGE_LOG,
     _build_idea_ctx_for_expand,
@@ -71,6 +94,20 @@ log = logging.getLogger(__name__)
 
 
 
+def _run_integrity_concerns(checkpoint_dir: "Path") -> list:
+    """The concerns list written by the run-integrity aggregator, or [] when the
+    report is absent/unreadable. Pure (no printing / no exit) so the run
+    command's failure-signal logic is testable in isolation."""
+    import json as _json_ri
+    try:
+        ri = Path(checkpoint_dir) / "run_integrity.json"
+        if ri.is_file():
+            return (_json_ri.loads(ri.read_text()) or {}).get("concerns") or []
+    except Exception:
+        pass
+    return []
+
+
 def _resolve_cfg(config: "Path | None"):
     """Load config from --config, else fall back to the package workflow.yaml.
 
@@ -80,7 +117,7 @@ def _resolve_cfg(config: "Path | None"):
     GUI toggles in BFTS and paper phases alike.
 
     Package-yaml discovery is delegated to ``ari.config.finder`` so the
-    bundled-fallback path lives in one place (Phase 2 §6-2).  The CLI
+    bundled-fallback path has exactly one implementation.  The CLI
     only consults the package fallback (no checkpoint search) so the
     existing semantic — "explicit --config wins, then bundle, then
     auto_config()" — is preserved exactly.
@@ -92,6 +129,45 @@ def _resolve_cfg(config: "Path | None"):
     if _pkg_wf.exists():
         return load_config(str(_pkg_wf))
     return auto_config()
+
+
+def _build_manuscript_repair_executors(
+    cfg,
+    bfts,
+    agent,
+    all_nodes,
+    experiment_data,
+    checkpoint_dir,
+    run_id,
+):
+    """Construct research executors only for the opt-in automatic posture.
+
+    Keeping the condition here preserves the ``manuscript.mode=off`` import
+    boundary: ordinary runs never import ``ari.manuscript`` or its runtime
+    adapter.  ``ari paper`` intentionally does not use this helper.
+    """
+
+    from ari.config import apply_manuscript_env_overrides
+
+    apply_manuscript_env_overrides(cfg)
+    manuscript = getattr(cfg, "manuscript", None)
+    repair = getattr(manuscript, "repair", None)
+    if not (
+        getattr(manuscript, "mode", "off") == "enforce"
+        and getattr(repair, "policy", "disabled") == "auto"
+    ):
+        return None
+    from ari.cli.manuscript_repair_runtime import build_research_repair_executors
+
+    return build_research_repair_executors(
+        cfg,
+        bfts,
+        agent,
+        all_nodes,
+        experiment_data,
+        checkpoint_dir,
+        run_id,
+    )
 
 
 
@@ -164,6 +240,51 @@ def _apply_profile(cfg, profile_name: str) -> None:
         cfg.resources["scheduler"] = hpc_o["scheduler"]
 
 
+def _persist_effective_workflow(
+    source: Path,
+    destination: Path,
+    cfg,
+    *,
+    profile_name: str | None,
+    task_tags: tuple[str, ...] = (),
+) -> None:
+    """Persist the launch-effective settings used to construct the runtime.
+
+    The original implementation copied the source YAML byte-for-byte after
+    applying ``--profile`` and environment overrides only in memory.  Resume
+    and ``ari paper`` then reconstructed a different skill set (notably HPC on
+    a laptop) and rejected the checkpoint lock.  Preserve every unrelated YAML
+    section while replacing the resolved runtime sections that affect skill
+    admission and BFTS execution.
+    """
+
+    import yaml as _yaml
+
+    base = destination if destination.is_file() else source
+    raw = _yaml.safe_load(base.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"workflow top level must be an object: {base}")
+    raw["bfts"] = cfg.bfts.model_dump(mode="json")
+    raw["resources"] = dict(cfg.resources)
+    raw["ari"] = cfg.ari.model_dump(mode="json")
+    raw["rqgm"] = cfg.rqgm.model_dump(mode="json")
+    raw["knowledge"] = cfg.knowledge.model_dump(mode="json")
+    raw["capability_binding"] = cfg.capability_binding.model_dump(mode="json")
+    raw["assurance"] = cfg.assurance.model_dump(mode="json")
+    raw["skills"] = [skill.model_dump(mode="json") for skill in cfg.skills]
+    raw["resolved_launch"] = {
+        "profile": profile_name or "",
+        "effective_config": True,
+        "task_tags": list(task_tags),
+    }
+    temporary = destination.with_name(destination.name + ".tmp")
+    temporary.write_text(
+        _yaml.safe_dump(raw, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    temporary.replace(destination)
+
+
 
 @app.command()
 def run(
@@ -178,6 +299,16 @@ def run(
     virsci_team_size: int | None = typer.Option(None, "--virsci-team-size", help="VirSci-live: max team members per team (default 3)."),
     virsci_n_authors: int | None = typer.Option(None, "--virsci-n-authors", help="VirSci-live: author pool size for select_coauthors (default 16)."),
     virsci_n_papers: int | None = typer.Option(None, "--virsci-n-papers", help="VirSci-live: SPECTER2 retrieval corpus size (default 800)."),
+    kca_audit: bool = typer.Option(
+        False,
+        "--kca-audit/--no-kca-audit",
+        help="Enable Knowledge, capability-binding, and Harness audit posture and their query Skills.",
+    ),
+    task_tag: list[str] | None = typer.Option(
+        None,
+        "--task-tag",
+        help="Deterministic Knowledge/Harness task tag; repeat for multiple tags.",
+    ),
 ) -> None:
     """Run an experiment. Only the .md file is required."""
     from ari.orchestrator.node import Node
@@ -225,10 +356,55 @@ def run(
     # GUI-supplied caps (ARI_MAX_NODES etc.) must win over profile defaults.
     from ari.config import (
         apply_bfts_env_overrides, apply_evaluator_env_overrides,
+        apply_handoff_env_overrides, apply_rqgm_env_overrides,
         export_resolved_config_to_skill_env,
     )
     apply_bfts_env_overrides(cfg)
     apply_evaluator_env_overrides(cfg)
+    apply_rqgm_env_overrides(cfg)
+    _task_tags = tuple(
+        sorted(
+            {
+                str(tag).strip().lower()
+                for tag in (task_tag if isinstance(task_tag, list) else [])
+                if str(tag).strip()
+            }
+        )
+    )
+    if kca_audit is True:
+        cfg.knowledge.mode = "audit"
+        cfg.capability_binding.mode = "audit"
+        cfg.assurance.mode = "audit"
+        if not cfg.assurance.tolerance_policy:
+            cfg.assurance.tolerance_policy = "hpc-floating-point/v1"
+    _kca_active = (
+        cfg.knowledge.mode != "off"
+        or cfg.capability_binding.mode != "legacy"
+        or cfg.assurance.mode != "off"
+    )
+    if _kca_active:
+        from ari.config import enable_manifest_skills
+
+        enable_manifest_skills(
+            cfg,
+            (
+                "tool-registry-skill",
+                "knowledge-skill",
+                "harness-query-skill",
+            ),
+        )
+    # ARI_HANDOFF_* selects the arm and its per-channel ablations. Without this
+    # the switches documented on HandoffConfig (and in setup_env.sh) are read by
+    # nothing, so every arm would silently run with the YAML defaults.
+    apply_handoff_env_overrides(cfg)
+    # Mode-provenance source, captured BEFORE export_resolved_config_to_
+    # skill_env setdefaults ARI_MODE (which would make every run look
+    # env-sourced afterwards).
+    _rqgm_mode_source = (
+        "env"
+        if (os.environ.get("ARI_MODE") or os.environ.get("ARI_RQGM_ENABLED"))
+        else "config"
+    )
     # Bridge the resolved config (model / backend / base_url / partition) to the env
     # vars skill subprocesses read, so a bare CLI run configures skills like the GUI
     # does — without this the idea skill fell back to Ollama and the HPC skill to
@@ -285,6 +461,18 @@ def run(
         # Best-effort raw name for UI labels: strip the leading timestamp.
         _raw_name = _re_t2.sub(r"^\d{14}_", "", _adopted_run_id) or experiment.stem
         _slug = _raw_name
+    elif os.environ.get("ARI_HANDOFF_MODE"):
+        # Handoff study: name the run by TASK + inheritance CHANNEL (arm) + seed so
+        # the run dir says WHAT was inherited (code_only / code_plus_summary / …),
+        # not the goal slug which is identical across all four arms. This also
+        # de-collides same-second run_ids across arms/seeds (each arm/seed differs).
+        _task = os.environ.get("ARI_TASK", "task")
+        _arm = os.environ.get("ARI_HANDOFF_MODE", "arm")
+        _seed = os.environ.get("ARI_SEED", "0")
+        _slug = _re_t2.sub(r"[^A-Za-z0-9]+", "_", f"{_task}_{_arm}_seed{_seed}").strip("_")
+        _raw_name = _slug
+        _ts = _dt.now().strftime("%Y%m%d%H%M%S")
+        run_id = f"{_ts}_{_slug}"
     else:
         # Build name from first meaningful line of the experiment text.
         # No specific format required - heading, plain text, anything works.
@@ -293,13 +481,29 @@ def run(
         try:
             from ari.llm.client import LLMClient
             _title_llm = LLMClient(cfg.llm)
+            # No per-call temperature: `complete` takes it from cfg.llm, and
+            # passing it here raised TypeError on EVERY run — which the bare
+            # `except` below swallowed, so the heuristic fallback was silently
+            # the only path this code ever took. `.content` for the same
+            # reason: `complete` returns an LLMResponse, not a str.
             _title_resp = _title_llm.complete(
                 [{"role": "user", "content":
                   f"Generate a concise 3-5 word English title (snake_case, no special chars) for this research goal:\n{experiment_text[:500]}\nReply with ONLY the title."}],
-                max_tokens=20, temperature=0.3,
+                max_tokens=20,
             )
-            _raw_name = _title_resp.strip().splitlines()[0].strip()
-        except Exception:
+            _llm_title = (_title_resp.content or "").strip().splitlines()
+            _llm_title = _llm_title[0].strip() if _llm_title else ""
+            if not _llm_title:
+                raise ValueError("title model returned an empty reply")
+            _raw_name = _llm_title
+        except Exception as _title_err:
+            # Degrading here is fine; degrading SILENTLY is what hid the two
+            # bugs above, so say so.
+            logging.getLogger(__name__).warning(
+                "[cli.run] LLM run-title generation failed (%s: %s); "
+                "falling back to the first meaningful line of the experiment",
+                type(_title_err).__name__, _title_err,
+            )
             # Fallback: skip headings, use first meaningful content line
             _in_goal = False
             for _line in experiment_text.splitlines():
@@ -324,6 +528,13 @@ def run(
         run_id = f"{_ts}_{_slug}"
     _setup_logging(cfg.logging, run_id)
 
+    # Emit the run dir on stdout at START (not only in the end-of-run panel) so a
+    # crash mid-BFTS is still attributable: the sweep driver parses
+    # ``checkpoints/<run_id>`` from this process's stdout to locate the run's
+    # partial tree; without an early line, an OOM/walltime kill left run_dir=None
+    # and the scored nodes on disk were unlinkable to their (arm, seed).
+    print(f"[run-dir] checkpoints/{run_id}", flush=True)
+
     console.print(Panel(
         f"[bold green]ARI Run[/bold green]  id={run_id}\nExperiment: {experiment}" + (f"\nConfig: {config}" if config else ""),
         title="ARI",
@@ -334,6 +545,7 @@ def run(
         "goal": experiment_text,
         "topic": _tp2,
         "file": str(experiment),
+        "task_tags": list(_task_tags),
     }
     # ── Trace: log experiment_data["goal"] hash for propagation tracking ──
     logging.getLogger(__name__).info(
@@ -362,26 +574,38 @@ def run(
             "trajectory is NOT guaranteed reproducible "
             "(recorded in bfts_web_provenance.json).[/yellow]"
         )
-    # auto-migrate v0.5.x sources on first launch.
-    try:
-        from ari.memory.auto_migrate import maybe_auto_migrate
-        _am = maybe_auto_migrate(checkpoint_dir)
-        if _am.get("ran") and _am.get("imported"):
-            logging.getLogger(__name__).info(
-                "v0.5.x auto-migration: %s", _am["imported"]
-            )
-    except Exception as _amerr:
-        logging.getLogger(__name__).warning(
-            "auto-migrate skipped: %s", _amerr
+    # RQGM mode provenance (docs/guides/execution_modes.md, "Turning RQGM on"):
+    # written only when the effective mode is ari_rqgm — absence of
+    # rqgm_state.json means a pure simple_bfts run (P5 absence-is-default, like
+    # bfts_web_provenance.json).
+    # Gated on both raw flags so a default run never imports any ari.rqgm
+    # module; disagreement warnings are handled inside build_runtime.
+    if getattr(getattr(cfg, "ari", None), "mode", "simple_bfts") == "ari_rqgm" \
+            and bool(getattr(getattr(cfg, "rqgm", None), "enabled", False)):
+        from ari.rqgm.state import (
+            copy_constitution_if_missing,
+            persist_run_start,
+            record_constitution_hash,
+        )
+        persist_run_start(
+            checkpoint_dir,
+            mode="ari_rqgm",
+            rqgm_enabled=True,
+            mode_source=_rqgm_mode_source,
+        )
+        copy_constitution_if_missing(checkpoint_dir)
+        record_constitution_hash(checkpoint_dir)
+        logging.getLogger(__name__).info(
+            "[cli.run] RQGM mode active (ari_rqgm, source=%s): recorded "
+            "rqgm_state.json", _rqgm_mode_source,
         )
     # — on-exit backup.
     try:
         import atexit as _atexit_bk
-        from ari.memory_cli import _do_backup as _do_bk
         _atexit_bk.register(lambda _p=checkpoint_dir: _safe_backup(_p))
     except Exception:
         pass
-    _, _, mcp, bfts, agent, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
+    _paper_llm, _, mcp, bfts, agent, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
     root = Node(id=f"node_{run_id}_root", parent_id=None, depth=0)
     root.name = f"root: {_raw_name[:100]}"
     all_nodes = [root]
@@ -393,19 +617,27 @@ def run(
         _shutil_cp.copy2(str(experiment), checkpoint_dir / "experiment.md")
     except Exception:
         pass
-    # Copy workflow.yaml into checkpoint dir for reproducibility. Skip when
-    # the GUI launcher (api_experiment._api_launch) has already populated it,
-    # because that copy may carry per-launch rewrites (e.g. include_ear=False
-    # disabling EAR / ors_seed_sandbox stages) that an unconditional copy from
-    # source would silently undo.
+    # Persist the effective workflow for reproducibility, but only when the
+    # checkpoint has none. A launcher-written copy is authoritative: it carries
+    # rewrites this path cannot reconstruct (EAR / ors_seed_sandbox disabled for
+    # include_ear=False, say), and writing over it silently undoes them -- the
+    # incident test_cli_run_does_not_overwrite_checkpoint_workflow was written
+    # for. Recording profile/env-resolved settings into an existing launcher
+    # copy would be useful, but it is a different operation from creating one
+    # and needs that test's invariant restated rather than dropped.
     from ari.config.finder import package_config_root
     _wf_src = config if config and config.exists() else (package_config_root() / "workflow.yaml")
     _wf_dst = checkpoint_dir / "workflow.yaml"
     if _wf_src and Path(_wf_src).exists() and not _wf_dst.exists():
         try:
-            _shutil_cp.copy2(str(_wf_src), _wf_dst)
-        except Exception:
-            pass
+            _persist_effective_workflow(
+                Path(_wf_src), _wf_dst, cfg, profile_name=profile,
+                task_tags=_task_tags,
+            )
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "could not persist effective workflow: %s", exc
+            )
     # Initialize cost tracker early so BFTS phase is also tracked
     try:
         from ari import cost_tracker as _ct_run
@@ -415,8 +647,18 @@ def run(
     # Clear stale pipeline marker from previous run (for resume correctness)
     (checkpoint_dir / ".pipeline_started").unlink(missing_ok=True)
 
+    from contextlib import ExitStack
     from ari.pidfile import pid_context
-    with pid_context(checkpoint_dir):
+    with ExitStack() as _run_stack:
+        # MCP connections own dedicated asyncio loops and subprocess pipes.
+        # Closing only on the happy paper path leaked every loop when root
+        # ideation/KCA raised (and normal ``ari run`` never closed them either).
+        # Registered first so ExitStack runs it after MCP shutdown (LIFO).
+        _run_stack.callback(_close_idle_default_event_loop)
+        _close_mcp = getattr(mcp, "close_all", None)
+        if callable(_close_mcp):
+            _run_stack.callback(_close_mcp)
+        _run_stack.enter_context(pid_context(checkpoint_dir))
         total = _run_loop(cfg, bfts, agent, pending, all_nodes,
                           experiment_data, checkpoint_dir, run_id)
         console.print(Panel(
@@ -437,12 +679,50 @@ def run(
             _cfg_str = str(config)
         else:
             _cfg_str = str(_pkg_wf) if _pkg_wf.exists() else ""
+        _paper_raised = False
         try:
-            generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp, _cfg_str)
+            # The paper AXIS (paper.mode: linear | rqgm_archive) is resolved by
+            # the SAME dispatch `ari paper` uses — this one-pass entry used to
+            # call the linear pipeline unconditionally, silently dropping a
+            # configured/env-requested rqgm_archive.
+            from ari.cli.paper_dispatch import run_paper_phase
+            _repair_executors = _build_manuscript_repair_executors(
+                cfg,
+                bfts,
+                agent,
+                all_nodes,
+                experiment_data,
+                checkpoint_dir,
+                run_id,
+            )
+            run_paper_phase(
+                cfg, all_nodes, experiment_data, checkpoint_dir, mcp, _cfg_str,
+                linear_paper_fn=generate_paper_section, paper_llm=_paper_llm,
+                rqgm=getattr(bfts, "rqgm", None),
+                repair_executors=_repair_executors,
+            )
         except Exception as _paper_err:
+            _paper_raised = True
             console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")
             import traceback
             traceback.print_exc()
+
+        # Run-level failure signal. The paper pipeline can complete with FAILED
+        # stages (skipping their dependents) or raise outright, yet the process
+        # still exited 0 — a caller / CI could not tell a degraded run from a
+        # clean one. Surface run_integrity's concerns LOUDLY here, and, opt-in
+        # via ARI_RUN_STRICT_EXIT=1, propagate a non-zero exit so automation can
+        # detect it WITHOUT breaking best-effort callers (e.g. the ablation
+        # harness) that expect rc=0 for a degraded-but-usable run.
+        _concerns = _run_integrity_concerns(checkpoint_dir)
+        if _concerns:
+            console.print(f"[bold yellow]⚠ Run integrity: {len(_concerns)} concern(s)[/bold yellow]")
+            for _c in _concerns:
+                console.print(f"  - {_c}")
+        if _paper_raised:
+            console.print("[bold red]⚠ Paper phase did not complete (pipeline raised).[/bold red]")
+        if os.environ.get("ARI_RUN_STRICT_EXIT", "0") == "1" and (_paper_raised or _concerns):
+            raise typer.Exit(1)
 
 
 
@@ -473,7 +753,8 @@ def resume(
     _tp3 = _re_t3.sub(r"[^a-zA-Z0-9_-]", "_", (_tm3.group(1)[:80] if _tm3 else Path(experiment_file).stem))
     experiment_data = {"goal": experiment_text, "topic": _tp3, "file": experiment_file}
 
-    cfg = _resolve_cfg(config)
+    _resume_workflow = checkpoint_dir / "workflow.yaml"
+    cfg = _resolve_cfg(config or (_resume_workflow if _resume_workflow.exists() else None))
     # The explicit checkpoint_dir argument is the single source of truth for
     # both checkpoint files and logs; ignore stale CWD-relative defaults from
     # LoggingConfig/CheckpointConfig (which would otherwise write into
@@ -481,6 +762,19 @@ def resume(
     cfg.logging.dir = str(checkpoint_dir)
     cfg.checkpoint.dir = str(checkpoint_dir)
     _setup_logging(cfg.logging, run_id)
+
+    # RQGM resume rule (docs/guides/execution_modes.md, "Mode-switch timing
+    # policy"): the persisted mode in rqgm_state.json wins over config and env —
+    # a run's mode never flips mid-run, and a simple_bfts checkpoint (no state
+    # file) never upgrades.
+    # Gated so a default resume imports no ari.rqgm module.
+    from ari.config import apply_rqgm_env_overrides
+    apply_rqgm_env_overrides(cfg)
+    if ((checkpoint_dir / "rqgm_state.json").exists()
+            or getattr(getattr(cfg, "ari", None), "mode", "simple_bfts") == "ari_rqgm"
+            or bool(getattr(getattr(cfg, "rqgm", None), "enabled", False))):
+        from ari.rqgm.state import reconcile_resume_mode
+        reconcile_resume_mode(cfg, checkpoint_dir)
 
     node_map: dict[str, Node] = {}
     for nd in tree_data["nodes"]:
@@ -491,6 +785,26 @@ def resume(
             error_log=nd.get("error_log"), children=nd.get("children", []),
             created_at=nd.get("created_at", ""), completed_at=nd.get("completed_at", ""),
             ancestor_ids=nd.get("ancestor_ids") or [],
+            producer_component_id=nd.get("producer_component_id", ""),
+            producer_prompt_hash=nd.get("producer_prompt_hash", ""),
+            producer_epoch_id=nd.get("producer_epoch_id", ""),
+            knowledge_skill_refs=nd.get("knowledge_skill_refs") or [],
+            knowledge_skill_use_digest=nd.get("knowledge_skill_use_digest", ""),
+            instruction_identity_digest=nd.get("instruction_identity_digest", ""),
+            capability_binding_lock_digest=nd.get("capability_binding_lock_digest", ""),
+            bound_tool_refs=nd.get("bound_tool_refs") or [],
+            assurance_status=nd.get("assurance_status", ""),
+            assurance_tier=nd.get("assurance_tier", ""),
+            baseline_harness_lock_digest=nd.get("baseline_harness_lock_digest", ""),
+            active_harness_lock_digest=nd.get("active_harness_lock_digest", ""),
+            attestation_refs=nd.get("attestation_refs") or [],
+            verified_target_digest=nd.get("verified_target_digest", ""),
+            property_verdicts=nd.get("property_verdicts") or {},
+            frontier_class=nd.get("frontier_class", ""),
+            repair_request_id=nd.get("repair_request_id", ""),
+            repair_requirement_ids=nd.get("repair_requirement_ids") or [],
+            repair_context_digest=nd.get("repair_context_digest", ""),
+            repair_allowed_changes=nd.get("repair_allowed_changes") or [],
         )
         node.status = NodeStatus(nd["status"])
         # Restore label (default to DRAFT if missing from old checkpoints)
@@ -503,6 +817,7 @@ def resume(
                 pass
         node.metrics = nd.get("metrics") or {}
         node.has_real_data = nd.get("has_real_data", False)
+        node.evaluation_cases = nd.get("evaluation_cases") or {}
         node_map[node.id] = node
 
     all_nodes = list(node_map.values())
@@ -526,13 +841,7 @@ def resume(
         console.print("[yellow]No pending nodes.[/yellow]")
         raise typer.Exit(0)
 
-    #+ — auto-migrate v0.5.x sources
-    # and auto-restore from memory_backup.jsonl.gz when Letta is empty.
-    try:
-        from ari.memory.auto_migrate import maybe_auto_migrate
-        maybe_auto_migrate(checkpoint_dir)
-    except Exception as _amerr:
-        logging.getLogger(__name__).warning("auto-migrate skipped: %s", _amerr)
+    # Restore only the verified v1 portable backup when Letta is empty.
     if os.environ.get("ARI_MEMORY_AUTO_RESTORE", "true").lower() != "false":
         try:
             from ari.memory_cli import _do_restore, _backup_path
@@ -554,7 +863,7 @@ def resume(
     with pid_context(checkpoint_dir):
         total = _run_loop(cfg, bfts, agent, pending, all_nodes,
                           experiment_data, checkpoint_dir, run_id, total_processed=completed)
-        _, _, mcp_resume, _, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
+        _paper_llm_r, _, mcp_resume, _, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
         console.print(Panel(
             f"[bold green]Resume complete.[/bold green]  +{total - completed} nodes",
             title="Done",
@@ -571,9 +880,24 @@ def resume(
         else:
             _cfg_str_r = str(_pkg_wf_r) if _pkg_wf_r.exists() else ""
         try:
-            generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_resume, _cfg_str_r)
+            from ari.cli.paper_dispatch import run_paper_phase
+            _repair_executors_r = _build_manuscript_repair_executors(
+                cfg,
+                bfts,
+                agent,
+                all_nodes,
+                experiment_data,
+                checkpoint_dir,
+                run_id,
+            )
+            run_paper_phase(
+                cfg, all_nodes, experiment_data, checkpoint_dir, mcp_resume,
+                _cfg_str_r, linear_paper_fn=generate_paper_section,
+                paper_llm=_paper_llm_r,
+                rqgm=getattr(bfts, "rqgm", None),
+                repair_executors=_repair_executors_r,
+            )
         except Exception as _paper_err:
             console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")
             import traceback
             traceback.print_exc()
-

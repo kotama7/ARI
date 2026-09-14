@@ -121,6 +121,100 @@ class JsonCheckpointStore:
         """Write ``{checkpoint_dir}/prompt_versions.json`` (subtask 044)."""
         _dump(Path(checkpoint_dir) / "prompt_versions.json", versions)
 
+    def save_rqgm_state_json(self, checkpoint_dir: str | Path, state: dict) -> None:
+        """Write ``{checkpoint_dir}/rqgm_state.json`` (RQGM Task 01)."""
+        _dump(Path(checkpoint_dir) / "rqgm_state.json", state)
+
+    def save_paper_archive_state_json(
+        self, checkpoint_dir: str | Path, state: dict
+    ) -> None:
+        """Write ``{checkpoint_dir}/paper_archive_state.json`` (paper-archive
+        Task 01). Paper-phase mode provenance mirroring ``rqgm_state.json`` —
+        absence of the file means a pure ``linear`` (current-ARI) paper run."""
+        _dump(Path(checkpoint_dir) / "paper_archive_state.json", state)
+
+    def load_paper_archive_state_json(
+        self, checkpoint_dir: str | Path
+    ) -> dict | None:
+        """Read ``{checkpoint_dir}/paper_archive_state.json`` if present and
+        parses cleanly (absence = a pure linear paper run, never an error)."""
+        return _safe_read_json(
+            Path(checkpoint_dir) / "paper_archive_state.json"
+        )
+
+    def save_epoch_state_json(self, checkpoint_dir: str | Path, state: dict) -> None:
+        """Write ``{checkpoint_dir}/epoch_state.json`` (RQGM Task 02).
+
+        Derived rollup of the currently open (or last closed) EpochState;
+        ``rqgm_transitions.jsonl`` stays the source of truth.
+        """
+        _dump(Path(checkpoint_dir) / "epoch_state.json", state)
+
+    def save_adversarial_pool_json(
+        self, checkpoint_dir: str | Path, pool: dict
+    ) -> None:
+        """Write ``{checkpoint_dir}/rqgm/adversarial_replay_pool.json``
+        (RQGM Task 06).
+
+        Derived byte-fixed rollup of the AdversarialReplayPool, rewritten at
+        epoch boundaries; ``rqgm_adversarial_cases.jsonl`` stays the source
+        of truth.
+        """
+        path = Path(checkpoint_dir) / "rqgm" / "adversarial_replay_pool.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _dump(path, pool)
+
+    def load_adversarial_pool_json(
+        self, checkpoint_dir: str | Path
+    ) -> dict | None:
+        """Read ``{checkpoint_dir}/rqgm/adversarial_replay_pool.json`` if
+        present and parses cleanly."""
+        return _safe_read_json(
+            Path(checkpoint_dir) / "rqgm" / "adversarial_replay_pool.json"
+        )
+
+    def save_rqgm_registry_json(
+        self, checkpoint_dir: str | Path, registry: dict
+    ) -> None:
+        """Write ``{checkpoint_dir}/rqgm_registry.json`` (RQGM Task 02).
+
+        Derived rollup of ComponentRegistry + PromptRegistry in one file so
+        the two registries stay transactionally consistent on disk.
+        """
+        _dump(Path(checkpoint_dir) / "rqgm_registry.json", registry)
+
+    def save_erasure_state_json(
+        self, checkpoint_dir: str | Path, state: dict
+    ) -> None:
+        """Write ``{checkpoint_dir}/rqgm_erasure_state.json`` (RQGM Task 10).
+
+        Derived rollup of the selective-erasure/frontier-rebuild events;
+        the Task 02 audit JSONL stays the source of truth. Rewrite-snapshot
+        (one of the two designated non-append writers of the repair path).
+        """
+        _dump(Path(checkpoint_dir) / "rqgm_erasure_state.json", state)
+
+    def load_erasure_state_json(self, checkpoint_dir: str | Path) -> dict | None:
+        """Read ``{checkpoint_dir}/rqgm_erasure_state.json`` if present and
+        parses cleanly (absence = nothing stale, never an error)."""
+        return _safe_read_json(
+            Path(checkpoint_dir) / "rqgm_erasure_state.json"
+        )
+
+    def save_prompt_specs_json(
+        self, checkpoint_dir: str | Path, specs: dict
+    ) -> None:
+        """Write ``{checkpoint_dir}/prompt_specs.json`` (RQGM Task 07).
+
+        Derived rollup of the prompt-evolution registry view;
+        ``prompt_evolution.jsonl`` stays the source of truth.
+        """
+        _dump(Path(checkpoint_dir) / "prompt_specs.json", specs)
+
+    def load_prompt_specs_json(self, checkpoint_dir: str | Path) -> dict | None:
+        """Read ``{checkpoint_dir}/prompt_specs.json`` if present and parses cleanly."""
+        return _safe_read_json(Path(checkpoint_dir) / "prompt_specs.json")
+
     # ── read helpers ──────────────────────────────────────────────────
 
     def load_tree_json(self, checkpoint_dir: str | Path) -> dict | None:
@@ -130,6 +224,18 @@ class JsonCheckpointStore:
     def load_nodes_tree_json(self, checkpoint_dir: str | Path) -> dict | None:
         """Read ``{checkpoint_dir}/nodes_tree.json`` if present and parses cleanly."""
         return _safe_read_json(Path(checkpoint_dir) / "nodes_tree.json")
+
+    def load_rqgm_state_json(self, checkpoint_dir: str | Path) -> dict | None:
+        """Read ``{checkpoint_dir}/rqgm_state.json`` if present and parses cleanly."""
+        return _safe_read_json(Path(checkpoint_dir) / "rqgm_state.json")
+
+    def load_epoch_state_json(self, checkpoint_dir: str | Path) -> dict | None:
+        """Read ``{checkpoint_dir}/epoch_state.json`` if present and parses cleanly."""
+        return _safe_read_json(Path(checkpoint_dir) / "epoch_state.json")
+
+    def load_rqgm_registry_json(self, checkpoint_dir: str | Path) -> dict | None:
+        """Read ``{checkpoint_dir}/rqgm_registry.json`` if present and parses cleanly."""
+        return _safe_read_json(Path(checkpoint_dir) / "rqgm_registry.json")
 
     def load_nodes_tree(self, checkpoint_dir: str | Path) -> dict | None:
         """Resolve and load the active node tree for the checkpoint.
@@ -220,12 +326,25 @@ class JsonCheckpointStore:
             if not force:
                 last = _mono.get(key, 0.0)
                 if now - last < throttle_sec:
-                    return
+                    return True
             _mono[key] = now
             try:
                 writer()
+                return True
             except Exception:
-                log.debug("incremental tree save failed", exc_info=True)
+                # This writer owns tree.json / nodes_tree.json / results.json —
+                # the run's only durable record. At DEBUG it was invisible under
+                # the default INFO, so a `force=True` flush (the SIGTERM-safety
+                # path) could fail and the run would still print "Run complete".
+                # Worse, the three files are written separately: a partial
+                # failure leaves tree.json and results.json disagreeing while
+                # both stay valid JSON, so `ari resume` silently reconstructs a
+                # truncated run. Loud, and detectable by the caller when it
+                # asked for a guaranteed flush.
+                level = logging.ERROR if force else logging.WARNING
+                log.log(level, "incremental tree save failed (force=%s) for %s",
+                        force, key, exc_info=True)
+                return False
 
 
 # ──────────────────────────────────────────────
@@ -278,6 +397,93 @@ def save_prompt_versions_json(checkpoint_dir: str | Path, versions: dict) -> Non
     _DEFAULT_STORE.save_prompt_versions_json(checkpoint_dir, versions)
 
 
+def save_rqgm_state_json(checkpoint_dir: str | Path, state: dict) -> None:
+    """Write ``{checkpoint_dir}/rqgm_state.json`` (RQGM Task 01).
+
+    Mode-provenance snapshot for the opt-in ``ari_rqgm`` execution mode —
+    absence of the file means a pure ``simple_bfts`` (current-ARI) run. Same
+    byte-fixed ``json.dumps(..., indent=2, ensure_ascii=False)`` layout as the
+    other checkpoint writers so JSON formatting stays owned by this module.
+    """
+    _DEFAULT_STORE.save_rqgm_state_json(checkpoint_dir, state)
+
+
+def load_rqgm_state_json(checkpoint_dir: str | Path) -> dict | None:
+    """Read ``{checkpoint_dir}/rqgm_state.json`` (shim → the singleton store)."""
+    return _DEFAULT_STORE.load_rqgm_state_json(checkpoint_dir)
+
+
+def save_paper_archive_state_json(checkpoint_dir: str | Path, state: dict) -> None:
+    """Write ``{checkpoint_dir}/paper_archive_state.json`` (paper-archive Task
+    01 shim → the singleton store).
+
+    Paper-phase mode-provenance snapshot for the opt-in ``rqgm_archive`` paper
+    mode — absence of the file means a pure ``linear`` (current-ARI) paper run.
+    Same byte-fixed ``json.dumps(..., indent=2, ensure_ascii=False)`` layout as
+    the other checkpoint writers so JSON formatting stays owned by this module.
+    """
+    _DEFAULT_STORE.save_paper_archive_state_json(checkpoint_dir, state)
+
+
+def load_paper_archive_state_json(checkpoint_dir: str | Path) -> dict | None:
+    """Read ``{checkpoint_dir}/paper_archive_state.json`` (shim → the singleton
+    store)."""
+    return _DEFAULT_STORE.load_paper_archive_state_json(checkpoint_dir)
+
+
+def save_epoch_state_json(checkpoint_dir: str | Path, state: dict) -> None:
+    """Write ``{checkpoint_dir}/epoch_state.json`` (RQGM Task 02 shim)."""
+    _DEFAULT_STORE.save_epoch_state_json(checkpoint_dir, state)
+
+
+def load_epoch_state_json(checkpoint_dir: str | Path) -> dict | None:
+    """Read ``{checkpoint_dir}/epoch_state.json`` (shim → the singleton store)."""
+    return _DEFAULT_STORE.load_epoch_state_json(checkpoint_dir)
+
+
+def save_rqgm_registry_json(checkpoint_dir: str | Path, registry: dict) -> None:
+    """Write ``{checkpoint_dir}/rqgm_registry.json`` (RQGM Task 02 shim)."""
+    _DEFAULT_STORE.save_rqgm_registry_json(checkpoint_dir, registry)
+
+
+def load_rqgm_registry_json(checkpoint_dir: str | Path) -> dict | None:
+    """Read ``{checkpoint_dir}/rqgm_registry.json`` (shim → the singleton store)."""
+    return _DEFAULT_STORE.load_rqgm_registry_json(checkpoint_dir)
+
+
+def save_erasure_state_json(checkpoint_dir: str | Path, state: dict) -> None:
+    """Write ``{checkpoint_dir}/rqgm_erasure_state.json`` (RQGM Task 10 shim)."""
+    _DEFAULT_STORE.save_erasure_state_json(checkpoint_dir, state)
+
+
+def load_erasure_state_json(checkpoint_dir: str | Path) -> dict | None:
+    """Read ``{checkpoint_dir}/rqgm_erasure_state.json`` (shim → the
+    singleton store)."""
+    return _DEFAULT_STORE.load_erasure_state_json(checkpoint_dir)
+
+
+def save_prompt_specs_json(checkpoint_dir: str | Path, specs: dict) -> None:
+    """Write ``{checkpoint_dir}/prompt_specs.json`` (RQGM Task 07 shim)."""
+    _DEFAULT_STORE.save_prompt_specs_json(checkpoint_dir, specs)
+
+
+def load_prompt_specs_json(checkpoint_dir: str | Path) -> dict | None:
+    """Read ``{checkpoint_dir}/prompt_specs.json`` (shim → the singleton store)."""
+    return _DEFAULT_STORE.load_prompt_specs_json(checkpoint_dir)
+
+
+def save_adversarial_pool_json(checkpoint_dir: str | Path, pool: dict) -> None:
+    """Write ``{checkpoint_dir}/rqgm/adversarial_replay_pool.json``
+    (RQGM Task 06 shim)."""
+    _DEFAULT_STORE.save_adversarial_pool_json(checkpoint_dir, pool)
+
+
+def load_adversarial_pool_json(checkpoint_dir: str | Path) -> dict | None:
+    """Read ``{checkpoint_dir}/rqgm/adversarial_replay_pool.json`` (shim →
+    the singleton store)."""
+    return _DEFAULT_STORE.load_adversarial_pool_json(checkpoint_dir)
+
+
 def load_tree_json(checkpoint_dir: str | Path) -> dict | None:
     """Read ``{checkpoint_dir}/tree.json`` (shim → the singleton store)."""
     return _DEFAULT_STORE.load_tree_json(checkpoint_dir)
@@ -303,14 +509,18 @@ def save_tree_incremental(
     *,
     force: bool = False,
     throttle_sec: float = _INCR_DEFAULT_MIN_INTERVAL_S,
-) -> None:
+) -> bool:
     """Throttled, thread-safe tree writer (shim → the singleton store).
 
     Reads the module-level ``_INCR_LOCK`` / ``_INCR_LAST_SAVE_MONO`` at call
     time and hands them to the store, so tests that monkeypatch
     ``_INCR_LAST_SAVE_MONO`` still isolate the throttle bookkeeping.
+
+    Returns whether the write succeeded (or was throttled); ``False`` only when
+    the writer raised. The shim used to drop this bool, so a failed forced flush
+    of the run's only durable record was invisible to every caller.
     """
-    _DEFAULT_STORE.save_tree_incremental(
+    return _DEFAULT_STORE.save_tree_incremental(
         checkpoint_dir,
         writer,
         force=force,

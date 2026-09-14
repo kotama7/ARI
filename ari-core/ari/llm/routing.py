@@ -46,6 +46,13 @@ def resolve_litellm_model(model: str, backend: str | None = None) -> str:
     - ``anthropic`` / ``claude``  → ``anthropic/<model>``
     - ``ollama``                  → ``ollama_chat/<model>``
     - ``cli-shim`` / ``cli_shim`` → ``openai/<model>`` (litellm dials ``api_base``)
+    - ``claude_code`` / ``claude-code`` → ``anthropic/<model>``. The main
+      agent-loop path never reaches litellm on this backend (LLMClient
+      dispatches to ``ari.llm.claude_code`` first); this mapping only gives
+      DIRECT litellm callers (MCP skills resolving ``ARI_BACKEND``) a
+      deterministic route — the plain Anthropic API, which needs
+      ``ANTHROPIC_API_KEY``. Skills do NOT run through Claude Code; see
+      docs/reference/claude_code_provider.md.
     - ``openai`` (or unknown)     → returned unchanged (litellm infers
       from well-known names like ``gpt-*``)
 
@@ -59,7 +66,7 @@ def resolve_litellm_model(model: str, backend: str | None = None) -> str:
         return model
     if backend is None:
         backend = os.environ.get("ARI_BACKEND", "")
-    if backend in ("anthropic", "claude"):
+    if backend in ("anthropic", "claude", "claude_code", "claude-code"):
         return f"anthropic/{model}"
     if backend == "ollama":
         return f"ollama_chat/{model}"

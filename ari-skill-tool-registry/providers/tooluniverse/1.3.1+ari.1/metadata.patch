@@ -1,0 +1,26 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 81cc55d..fcf7b69 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,10 +1,10 @@
+ [build-system]
+-requires = ["setuptools", "wheel"]
++requires = ["setuptools==80.9.0", "wheel==0.45.1"]
+ build-backend = "setuptools.build_meta"
+ 
+ [project]
+ name = "tooluniverse"
+-version = "1.3.1"
++version = "1.3.1+ari.1"
+ description = "A comprehensive collection of scientific tools for Agentic AI, offering integration with the ToolUniverse SDK and MCP Server to support advanced scientific workflows."
+ authors = [
+     { name = "Shanghua Gao", email = "shanghuagao@gmail.com" }
+@@ -29,7 +29,7 @@ dependencies = [
+     "huggingface_hub>=0.34.0",
+     "jsonpath-ng>=1.6.0",
+     "rcsb-api>=1.4.0",
+-    "fitz>=0.0.1.dev2",
++    "PyMuPDF==1.26.4",
+     "pandas>=2.2.3",
+     "openpyxl>=3.1.0", # Read .xlsx bulk downloads (CellMarker, dataset tools)
+     "setuptools>=70.0.0", # Fix pkg_resources deprecation warnings

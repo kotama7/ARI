@@ -3,17 +3,41 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { useAppContext } from '../../context/AppContext';
+import { authHeaders } from '../../services/api/client';
 import {
   runStage as apiRunStage,
   stopExperiment,
   detectScheduler,
   fetchResourceMetrics,
+  requestConfirmationChallenge,
 } from '../../services/api';
 import type { ResourceMetrics } from '../../types';
 import PhaseStepper from './PhaseStepper';
 import GpuMonitor from './GpuMonitor';
 import { TreeVisualization } from '../Tree/TreeVisualization';
 import { computeBestMetrics, IdeaCardContent } from './monitorSections';
+
+// ── helpers ───────────────────────────────────────
+
+// RR-D-1 fix (gui_refresh Wave 4b; baseline/risk_register.md): the
+// /api/resource-metrics payload can be PARTIAL at runtime (sampler warm-up,
+// scrape error, older server), even though the ResourceMetrics type declares
+// every field. Guard every numeric field before formatting — a missing field
+// renders as a placeholder, never a TypeError (memory_rss_mb.toFixed crash).
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+/** Defensive plain-number text for tooltips/inline spans. */
+function numText(v: unknown): string {
+  return isFiniteNumber(v) ? String(v) : '—';
+}
+
+/** memory_rss_mb -> '1.5 GB' / '512 MB' / placeholder when absent. */
+function memoryText(mb: unknown): string {
+  if (!isFiniteNumber(mb)) return '—';
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(0)} MB`;
+}
 
 // ── Main MonitorPage ──────────────────────────────
 
@@ -112,9 +136,20 @@ export function MonitorPage() {
   );
 
   const handleStop = useCallback(async () => {
-    setStageStatus('Stop requested (may need manual kill on server)');
     try {
-      const data = await stopExperiment();
+      // MN-6 two-step (RR-P0-6/RR-P0-9): fetch a server-issued challenge
+      // first and surface its echo as the impact preview before stopping.
+      const ch = await requestConfirmationChallenge('stop-all', '*');
+      if (
+        !window.confirm(
+          `Stop ALL experiment processes (server target: ${ch.target})?\n` +
+            'This terminates the running experiment and the GPU monitor.',
+        )
+      ) {
+        return;
+      }
+      setStageStatus('Stop requested (may need manual kill on server)');
+      const data = await stopExperiment(ch.challenge_id);
       if (data?.report) {
         const rpt = data.report;
         const parts = [`main: ${rpt.main}`, `gpu: ${rpt.gpu_monitor}`];
@@ -160,7 +195,13 @@ export function MonitorPage() {
     try {
       // Justified direct-fetch exception (req 02): server-sent log stream read
       // via res.body.getReader(); not a JSON request, cannot use services/api.ts.
-      res = await fetch('/api/logs');
+      // MN-8 (ADR-13): attach the remote-mode bearer token when configured
+      // (authHeaders() is empty in the loopback default — request unchanged).
+      const auth = authHeaders();
+      res = await fetch(
+        '/api/logs',
+        Object.keys(auth).length > 0 ? { headers: auth } : undefined,
+      );
     } catch {
       setLogStatus('error');
       return;
@@ -408,33 +449,36 @@ export function MonitorPage() {
               <div
                 className="stat-val"
                 style={{
-                  color: resourceMetrics.process_count > 500
-                    ? '#f44'
-                    : resourceMetrics.process_count > 200
-                      ? '#fa0'
-                      : undefined,
+                  color:
+                    isFiniteNumber(resourceMetrics.process_count) &&
+                    resourceMetrics.process_count > 500
+                      ? '#f44'
+                      : isFiniteNumber(resourceMetrics.process_count) &&
+                          resourceMetrics.process_count > 200
+                        ? '#fa0'
+                        : undefined,
                 }}
               >
-                {resourceMetrics.process_count}
+                {numText(resourceMetrics.process_count)}
               </div>
               <div className="stat-label">{t('res_process_count')}</div>
             </div>
             <div className="stat-box">
               <div className="stat-val">
-                {resourceMetrics.memory_rss_mb >= 1024
-                  ? `${(resourceMetrics.memory_rss_mb / 1024).toFixed(1)} GB`
-                  : `${resourceMetrics.memory_rss_mb.toFixed(0)} MB`}
+                {memoryText(resourceMetrics.memory_rss_mb)}
               </div>
               <div className="stat-label">{t('res_memory')}</div>
             </div>
             <div className="stat-box">
               <div
                 className="stat-val"
-                title={`1m: ${resourceMetrics.cpu_load_1m} / 5m: ${resourceMetrics.cpu_load_5m} / 15m: ${resourceMetrics.cpu_load_15m} (${resourceMetrics.cpu_count} cores)`}
+                title={`1m: ${numText(resourceMetrics.cpu_load_1m)} / 5m: ${numText(resourceMetrics.cpu_load_5m)} / 15m: ${numText(resourceMetrics.cpu_load_15m)} (${numText(resourceMetrics.cpu_count)} cores)`}
               >
-                {resourceMetrics.cpu_load_1m.toFixed(1)}
+                {isFiniteNumber(resourceMetrics.cpu_load_1m)
+                  ? resourceMetrics.cpu_load_1m.toFixed(1)
+                  : '—'}
                 <span style={{ fontSize: '.65rem', color: 'var(--muted)' }}>
-                  {' '}/ {resourceMetrics.cpu_count}
+                  {' '}/ {numText(resourceMetrics.cpu_count)}
                 </span>
               </div>
               <div className="stat-label">{t('res_cpu_load')}</div>

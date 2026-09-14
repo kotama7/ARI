@@ -1,9 +1,17 @@
 [project]
 name = "ari-skill-web"
-version = "0.1.0"
-description = "Web search and page fetch MCP Server"
+version = "0.2.0"
+description = "Provenance-preserving web and literature retrieval MCP server"
 requires-python = ">=3.10"
-dependencies = ["mcp>=1.0", "duckduckgo-search>=6.0", "httpx>=0.25", "beautifulsoup4>=4.12", "arxiv>=2.0", "litellm>=1.0"]
+dependencies = [
+    "ari-core>=0.9.1",
+    "arxiv>=2.0",
+    "beautifulsoup4>=4.12",
+    "ddgs>=9.0",
+    "httpx>=0.25",
+    "litellm>=1.0",
+    "mcp>=1.0",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]

@@ -1,0 +1,639 @@
+{
+  "$defs": {
+    "FigureArtifactV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "source-data",
+            "spec",
+            "png",
+            "pdf",
+            "raw-planner-response",
+            "prompt"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.figure-artifact/v1",
+          "default": "ari.figure-artifact/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "role",
+        "relative_path",
+        "digest",
+        "media_type",
+        "size_bytes"
+      ],
+      "title": "FigureArtifactV1",
+      "type": "object"
+    },
+    "FigureAxisV1": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "scale": {
+          "default": "linear",
+          "enum": [
+            "linear",
+            "log",
+            "symlog"
+          ],
+          "title": "Scale",
+          "type": "string"
+        },
+        "unit": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "unit"
+      ],
+      "title": "FigureAxisV1",
+      "type": "object"
+    },
+    "FigureEnvironmentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "const": "agg",
+          "default": "agg",
+          "title": "Backend",
+          "type": "string"
+        },
+        "container_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Container Digest"
+        },
+        "environment_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Environment Digest",
+          "type": "string"
+        },
+        "font_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Font Digest",
+          "type": "string"
+        },
+        "font_family": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Font Family",
+          "type": "string"
+        },
+        "matplotlib_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Matplotlib Version",
+          "type": "string"
+        },
+        "platform": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Platform",
+          "type": "string"
+        },
+        "python_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Python Version",
+          "type": "string"
+        },
+        "renderer_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Renderer Version",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.figure-environment/v1",
+          "default": "ari.figure-environment/v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "renderer_version",
+        "python_version",
+        "matplotlib_version",
+        "font_family",
+        "font_digest",
+        "platform",
+        "environment_digest"
+      ],
+      "title": "FigureEnvironmentV1",
+      "type": "object"
+    },
+    "FigureFeedbackV1": {
+      "additionalProperties": false,
+      "properties": {
+        "feedback_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Feedback Digest",
+          "type": "string"
+        },
+        "figure_id": {
+          "title": "Figure Id",
+          "type": "string"
+        },
+        "issues": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Issues",
+          "type": "array"
+        },
+        "iteration": {
+          "maximum": 2,
+          "minimum": 1,
+          "title": "Iteration",
+          "type": "integer"
+        },
+        "review_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Review Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.figure-feedback/v1",
+          "default": "ari.figure-feedback/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Manifest Digest",
+          "type": "string"
+        },
+        "suggestions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Suggestions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "figure_id",
+        "source_manifest_digest",
+        "review_digest",
+        "iteration",
+        "feedback_digest"
+      ],
+      "title": "FigureFeedbackV1",
+      "type": "object"
+    },
+    "FigureManifestV1": {
+      "additionalProperties": false,
+      "description": "Reproducible identity of one rendered figure revision.",
+      "properties": {
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/FigureArtifactV1"
+          },
+          "maxItems": 16,
+          "minItems": 4,
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "environment": {
+          "$ref": "#/$defs/FigureEnvironmentV1"
+        },
+        "execution_mode": {
+          "const": "declarative-fixed-renderer",
+          "default": "declarative-fixed-renderer",
+          "title": "Execution Mode",
+          "type": "string"
+        },
+        "feedback": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FigureFeedbackV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Manifest Digest",
+          "type": "string"
+        },
+        "parent_manifest_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Manifest Digest"
+        },
+        "planner": {
+          "default": "none",
+          "enum": [
+            "none",
+            "llm-spec-only"
+          ],
+          "title": "Planner",
+          "type": "string"
+        },
+        "planner_model": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Planner Model"
+        },
+        "planner_model_revision": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Planner Model Revision"
+        },
+        "prompt_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Digest"
+        },
+        "sampling": {
+          "additionalProperties": true,
+          "maxProperties": 128,
+          "title": "Sampling",
+          "type": "object"
+        },
+        "schema_version": {
+          "const": "ari.figure-manifest/v1",
+          "default": "ari.figure-manifest/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "spec": {
+          "$ref": "#/$defs/FigureSpecV1"
+        }
+      },
+      "required": [
+        "spec",
+        "environment",
+        "artifacts",
+        "manifest_digest"
+      ],
+      "title": "FigureManifestV1",
+      "type": "object"
+    },
+    "FigureSourceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Artifact Digest",
+          "type": "string"
+        },
+        "data_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Data Digest",
+          "type": "string"
+        },
+        "node_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Node Ids",
+          "type": "array"
+        },
+        "record_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Record Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "artifact_digest",
+        "data_digest"
+      ],
+      "title": "FigureSourceV1",
+      "type": "object"
+    },
+    "FigureSpecV1": {
+      "additionalProperties": false,
+      "description": "One declarative plot over an immutable, content-addressed data slice.",
+      "properties": {
+        "aggregation": {
+          "default": "none",
+          "enum": [
+            "none",
+            "mean",
+            "median",
+            "sum"
+          ],
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "caption": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Caption",
+          "type": "string"
+        },
+        "chart_type": {
+          "enum": [
+            "bar",
+            "line",
+            "scatter",
+            "hist",
+            "errorbar",
+            "heatmap"
+          ],
+          "title": "Chart Type",
+          "type": "string"
+        },
+        "data": {
+          "additionalProperties": true,
+          "maxProperties": 10000,
+          "title": "Data",
+          "type": "object"
+        },
+        "figure_id": {
+          "title": "Figure Id",
+          "type": "string"
+        },
+        "revision": {
+          "default": 0,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "ari.figure-spec/v1",
+          "default": "ari.figure-spec/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/FigureSourceV1"
+        },
+        "spec_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Spec Digest",
+          "type": "string"
+        },
+        "style_profile": {
+          "const": "ari-publication-v1",
+          "default": "ari-publication-v1",
+          "title": "Style Profile",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "maxLength": 512,
+          "title": "Title",
+          "type": "string"
+        },
+        "uncertainty": {
+          "$ref": "#/$defs/FigureUncertaintyV1"
+        },
+        "value_unit": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Value Unit",
+          "type": "string"
+        },
+        "x_axis": {
+          "$ref": "#/$defs/FigureAxisV1"
+        },
+        "x_field": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "X Field"
+        },
+        "y_axis": {
+          "$ref": "#/$defs/FigureAxisV1"
+        },
+        "y_field": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Y Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "figure_id",
+        "chart_type",
+        "data",
+        "source",
+        "y_field",
+        "x_axis",
+        "y_axis",
+        "value_unit",
+        "spec_digest"
+      ],
+      "title": "FigureSpecV1",
+      "type": "object"
+    },
+    "FigureUncertaintyV1": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 1,
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "kind": {
+          "enum": [
+            "none",
+            "standard-deviation",
+            "standard-error",
+            "confidence-interval"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "FigureUncertaintyV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/figure-batch-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "batch_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Batch Digest",
+      "type": "string"
+    },
+    "figure_kinds": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "maxProperties": 100,
+      "minProperties": 1,
+      "title": "Figure Kinds",
+      "type": "object"
+    },
+    "figures": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "maxProperties": 100,
+      "minProperties": 1,
+      "title": "Figures",
+      "type": "object"
+    },
+    "latex_snippets": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "maxProperties": 100,
+      "minProperties": 1,
+      "title": "Latex Snippets",
+      "type": "object"
+    },
+    "manifests": {
+      "items": {
+        "$ref": "#/$defs/FigureManifestV1"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Manifests",
+      "type": "array"
+    },
+    "revision": {
+      "maximum": 2,
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "ari.figure-batch/v1",
+      "default": "ari.figure-batch/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "revision",
+    "manifests",
+    "figures",
+    "latex_snippets",
+    "figure_kinds",
+    "batch_digest"
+  ],
+  "title": "ARI Figure Batch v1",
+  "type": "object"
+}

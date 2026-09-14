@@ -62,10 +62,10 @@ def reconstruct_report_from_legacy(
         "original_direction": None,
         "files_changed": files_changed,
         "what_was_done": "",
-        "delta_vs_parent": "",
         "metrics": dict(node_dict.get("metrics") or {}),
+        "measurement_valid": bool(node_dict.get("has_real_data")),
+        "evaluation_cases": dict(node_dict.get("evaluation_cases") or {}),
         "self_assessment": {
-            "succeeded": bool(node_dict.get("has_real_data")),
             "headline": evaluator_reason,
             "concerns": [],
         },
@@ -75,5 +75,4 @@ def reconstruct_report_from_legacy(
         "artifacts": artifacts_out,
         "evaluator_reason": evaluator_reason,
         "trace_log_summary": "",
-        "migration_source": "auto",
     }

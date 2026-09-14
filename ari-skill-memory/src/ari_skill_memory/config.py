@@ -84,6 +84,13 @@ def load_config(checkpoint_dir: "str | Path | None" = None) -> MemoryConfig:
             f"ARI_MEMORY_BACKEND={backend_name!r} is not supported — "
             "only 'letta' (production) and 'in_memory' (tests) are accepted."
         )
+    if backend_name == "in_memory" and not (
+        ckpt_path / ".ari-test-memory-backend"
+    ).is_file():
+        raise RuntimeError(
+            "ARI_MEMORY_BACKEND=in_memory is test-only and cannot be selected "
+            "by a production checkpoint"
+        )
 
     return MemoryConfig(
         checkpoint_dir=ckpt_path,

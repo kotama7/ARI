@@ -37,6 +37,7 @@ duckduckgo-search>=8.1.1
 httpx>=0.25
 beautifulsoup4>=4.12
 arxiv>=2.0
+tenacity  # retry lib used by litellm + semanticscholar (was missing on aarch64)
 nest-asyncio
 
 # --- v0.7.0: ari-registry server (optional; only needed if you run

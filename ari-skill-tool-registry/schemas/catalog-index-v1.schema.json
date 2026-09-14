@@ -1,0 +1,89 @@
+{
+  "$defs": {
+    "CatalogIndexEntryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "admission_level": {
+          "enum": [
+            "discovered",
+            "callable",
+            "reproducible",
+            "scientifically_admitted"
+          ],
+          "title": "Admission Level",
+          "type": "string"
+        },
+        "capability_ref": {
+          "title": "Capability Ref",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "terms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Terms",
+          "type": "array"
+        },
+        "tool_ref": {
+          "title": "Tool Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_ref",
+        "name",
+        "capability_ref",
+        "admission_level",
+        "source_ids",
+        "terms",
+        "description"
+      ],
+      "title": "CatalogIndexEntryV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/tool-registry/catalog-index-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "catalog_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Catalog Digest",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/CatalogIndexEntryV1"
+      },
+      "title": "Entries",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "ari.catalog-index/v1",
+      "default": "ari.catalog-index/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "catalog_digest",
+    "entries"
+  ],
+  "title": "ARI Catalog Index v1",
+  "type": "object"
+}

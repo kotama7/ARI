@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "MemoryRetrievalProvenanceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Backend",
+          "type": "string"
+        },
+        "backend_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Backend Version",
+          "type": "string"
+        },
+        "candidate_count": {
+          "minimum": 0,
+          "title": "Candidate Count",
+          "type": "integer"
+        },
+        "deterministic": {
+          "title": "Deterministic",
+          "type": "boolean"
+        },
+        "filter_evidence": {
+          "additionalProperties": true,
+          "title": "Filter Evidence",
+          "type": "object"
+        },
+        "limit": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "model": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "model_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Model Version",
+          "type": "string"
+        },
+        "query_digest": {
+          "title": "Query Digest",
+          "type": "string"
+        },
+        "ranking": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Ranking",
+          "type": "string"
+        },
+        "returned_count": {
+          "minimum": 0,
+          "title": "Returned Count",
+          "type": "integer"
+        },
+        "server_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Server Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "backend",
+        "backend_version",
+        "server_version",
+        "model",
+        "model_version",
+        "ranking",
+        "deterministic",
+        "query_digest",
+        "candidate_count",
+        "returned_count",
+        "limit",
+        "filter_evidence"
+      ],
+      "title": "MemoryRetrievalProvenanceV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/memory-retrieval-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "provenance": {
+      "$ref": "#/$defs/MemoryRetrievalProvenanceV1"
+    },
+    "results": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 1000,
+      "title": "Results",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "ari.memory-retrieval/v1",
+      "default": "ari.memory-retrieval/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "results",
+    "provenance"
+  ],
+  "title": "ARI Memory Retrieval v1",
+  "type": "object"
+}

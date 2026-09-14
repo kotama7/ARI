@@ -72,7 +72,6 @@ def live_backend(tmp_path, monkeypatch):
     ckpt.mkdir()
     monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(ckpt))
     monkeypatch.setenv("ARI_MEMORY_BACKEND", "letta")
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "live-root")
     monkeypatch.setenv("LETTA_BASE_URL", base_url)
     if api_key:
         monkeypatch.setenv("LETTA_API_KEY", api_key)

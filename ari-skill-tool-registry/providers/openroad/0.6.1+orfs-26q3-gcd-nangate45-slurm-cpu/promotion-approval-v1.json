@@ -1,0 +1,16 @@
+{
+  "actor_id": "kotama",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:db6d0a28bd16493bc9f8a2e59f39858186382e3a2a3e5405171304e1a49624f7",
+  "approved_date": "2026-08-09",
+  "authorization_basis": "explicit-maintainer-approval",
+  "capability_scope_digest": "sha256:21d4d7e047610903b7bce4008096d7ae757ed544f424826a5a264e9c9105bfe0",
+  "evidence_bundle_digest": "sha256:ec576caa764237e4923892cf1b3f46a497241aad23758a8743023e0b55d67be9",
+  "from_status": "candidate",
+  "provider_id": "openroad-mcp",
+  "provider_manifest_digest": "sha256:bb681f157b6f07d17c66786a14de2f061fb723504612068a714101a85cd71008",
+  "provider_version": "0.6.1",
+  "registration_report_digest": "sha256:4c958a5c55d5b3dd1dd65b29f5b2be3597d6604347de2601638e48672e4f9614",
+  "schema_version": "ari.capability-provider-promotion-approval/v1",
+  "to_status": "verified"
+}

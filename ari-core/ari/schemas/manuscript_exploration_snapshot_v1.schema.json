@@ -1,0 +1,403 @@
+{
+  "$defs": {
+    "ManuscriptArtifactRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "item_id": {
+          "title": "Item Id",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "maxProperties": 128,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "relative_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Path"
+        },
+        "schema_version": {
+          "const": "ari.manuscript-artifact-ref/v1",
+          "default": "ari.manuscript-artifact-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size Bytes"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "status": {
+          "default": "present",
+          "enum": [
+            "present",
+            "missing",
+            "mismatch",
+            "unhashed",
+            "stale",
+            "invalid"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "kind"
+      ],
+      "title": "ManuscriptArtifactRefV1",
+      "type": "object"
+    },
+    "ManuscriptNodeSnapshotV1": {
+      "additionalProperties": false,
+      "properties": {
+        "ancestor_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Ancestor Ids",
+          "type": "array"
+        },
+        "artifact_item_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Artifact Item Ids",
+          "type": "array"
+        },
+        "assurance_status": {
+          "default": "",
+          "title": "Assurance Status",
+          "type": "string"
+        },
+        "assurance_tier": {
+          "default": "",
+          "title": "Assurance Tier",
+          "type": "string"
+        },
+        "attestation_refs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Attestation Refs",
+          "type": "array"
+        },
+        "certify_attestation_item_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Certify Attestation Item Ids",
+          "type": "array"
+        },
+        "depth": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Depth",
+          "type": "integer"
+        },
+        "error_summary": {
+          "default": "",
+          "title": "Error Summary",
+          "type": "string"
+        },
+        "frontier_class": {
+          "default": "",
+          "title": "Frontier Class",
+          "type": "string"
+        },
+        "has_real_data": {
+          "default": false,
+          "title": "Has Real Data",
+          "type": "boolean"
+        },
+        "label": {
+          "default": "",
+          "title": "Label",
+          "type": "string"
+        },
+        "metrics": {
+          "additionalProperties": true,
+          "maxProperties": 100000,
+          "title": "Metrics",
+          "type": "object"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "original_direction": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Original Direction"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Id"
+        },
+        "property_verdicts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 10000,
+          "title": "Property Verdicts",
+          "type": "object"
+        },
+        "repair_allowed_changes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Repair Allowed Changes",
+          "type": "array"
+        },
+        "repair_context_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repair Context Digest"
+        },
+        "repair_request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repair Request Id"
+        },
+        "repair_requirement_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Repair Requirement Ids",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "ari.manuscript-node-snapshot/v1",
+          "default": "ari.manuscript-node-snapshot/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scientific_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scientific Score"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "valid_for_frontier": {
+          "default": true,
+          "title": "Valid For Frontier",
+          "type": "boolean"
+        },
+        "verified_target_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified Target Digest"
+        }
+      },
+      "required": [
+        "node_id",
+        "status"
+      ],
+      "title": "ManuscriptNodeSnapshotV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/ManuscriptArtifactRefV1"
+      },
+      "maxItems": 200000,
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "checkpoint_id": {
+      "title": "Checkpoint Id",
+      "type": "string"
+    },
+    "exploration_mode": {
+      "default": "simple_bfts",
+      "enum": [
+        "simple_bfts",
+        "ari_rqgm"
+      ],
+      "title": "Exploration Mode",
+      "type": "string"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/ManuscriptNodeSnapshotV1"
+      },
+      "maxItems": 100000,
+      "title": "Nodes",
+      "type": "array"
+    },
+    "research_contract_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Research Contract Digest"
+    },
+    "research_question": {
+      "default": "",
+      "title": "Research Question",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-exploration-snapshot/v1",
+      "default": "ari.manuscript-exploration-snapshot/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scientific_winner_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scientific Winner Id"
+    },
+    "selection_policy_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Selection Policy Digest",
+      "type": "string"
+    },
+    "snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Snapshot Digest",
+      "type": "string"
+    },
+    "source_digests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "maxProperties": 200000,
+      "title": "Source Digests",
+      "type": "object"
+    }
+  },
+  "required": [
+    "run_id",
+    "checkpoint_id",
+    "selection_policy_digest",
+    "snapshot_digest"
+  ],
+  "title": "ExplorationSnapshotV1",
+  "type": "object"
+}

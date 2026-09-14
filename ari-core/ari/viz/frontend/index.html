@@ -4,7 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ARI Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <!-- d3 is bundled from the npm package (see package.json); no CDN
+         scripts — the GUI must be fully self-contained so the CSP
+         script-src 'self' policy holds (RR-P0-10 / MN-7). -->
   </head>
   <body>
     <div id="root"><p style="color:#888;padding:40px">Loading ARI Dashboard...</p></div>

@@ -20,14 +20,24 @@ LANGS = ("en", "ja", "zh")
 
 H_TAG = re.compile(r"<h([1-6])([^>]*)>(.*?)</h\1>", re.IGNORECASE | re.DOTALL)
 SEC_RE = re.compile(r"\\(chapter|section|subsection)\*?\s*\{([^}]*)\}")
+INPUT_RE = re.compile(r"\\input\s*\{chapters/([^}]+\.tex)\}")
 
 
 def _tex_headings(lang: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
+    main_path = REPORT_ROOT / lang / "main.tex"
     chapters_dir = REPORT_ROOT / lang / "chapters"
-    if not chapters_dir.exists():
+    if not main_path.exists() or not chapters_dir.exists():
         return out
-    for f in sorted(chapters_dir.glob("*.tex")):
+    # Only compare chapters assembled by main.tex.  Historical or optional
+    # chapter sources may remain in the tree without appearing in a release.
+    chapter_files = [
+        chapters_dir / m.group(1)
+        for m in INPUT_RE.finditer(main_path.read_text(encoding="utf-8"))
+    ]
+    for f in chapter_files:
+        if not f.exists():
+            continue
         for m in SEC_RE.finditer(f.read_text(encoding="utf-8")):
             out.append((m.group(1), re.sub(r"\\.+?\{[^}]*\}", "", m.group(2)).strip()))
     return out

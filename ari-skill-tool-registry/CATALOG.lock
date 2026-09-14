@@ -1,0 +1,10 @@
+{
+  "admissions": [],
+  "catalog_digest": "sha256:844d650b973e1d050237fdb3a57587c3fcf8e423281b2965823f5229ba3676eb",
+  "overlaps": [],
+  "policy_digest": "sha256:90ca06066cd96524b9a165af9791eaaedd0e307fd77977dbd84c02452591b11b",
+  "quarantined": [],
+  "schema_version": "ari.catalog-lock/v1",
+  "sources": [],
+  "tools": []
+}

@@ -1,33 +1,47 @@
-\section{Runtime LLM Prompts}\label{sec:prompts}
+\section{Constitutional RQGM Prompt Seeds}\label{sec:prompts}
 
-This appendix lists the LLM prompts that ARI uses at runtime, reproduced
-verbatim from \texttt{ari-core/ari/prompts/} at v0.9.0. Each listing is
-byte-for-byte identical to the source on disk. Because the exact bytes are
-what reach the model, the prompts are reproduced as-is in every language
-version of this report and are not translated.
+This appendix reproduces the model-facing prompt seeds specific to
+Constitutional ARI-RQGM. The exact bytes are part of the reproducibility
+surface: a governed checkpoint registers their hashes, stamps rendered
+uses with the serving version, and stores evolved variants inside the
+checkpoint. The listings are therefore identical in all language editions
+and are not translated. General execution prompts outside the
+constitutional method are outside the scope of this report.
 
-\subsection*{Orchestrator}
+\subsection*{Proposal generators}
 
-\PromptListing{orchestrator/bfts_expand.md}{BFTS expansion}{prompt:bfts_expand}
-\PromptListing{orchestrator/bfts_expand_select.md}{BFTS expansion-time selection}{prompt:bfts_expand_select}
-\PromptListing{orchestrator/bfts_select.md}{BFTS selection}{prompt:bfts_select}
-\PromptListing{orchestrator/lineage_decision.md}{Lineage continuation decision}{prompt:lineage_decision}
-\PromptListing{orchestrator/root_idea_selector.md}{Root idea selector}{prompt:root_idea_selector}
+\PromptListing{rqgm/proposal_cheap.md}{Cheap proposal generator}{prompt:proposal_cheap}
+\PromptListing{rqgm/proposal_mutation.md}{Proposal mutation generator}{prompt:proposal_mutation}
+\PromptListing{rqgm/proposal_prior_art.md}{Prior-art differentiation generator}{prompt:proposal_prior_art}
 
-\subsection*{Agent loop}
+\subsection*{Adversarial review}
 
-\PromptListing{agent/system.md}{ReAct agent system prompt}{prompt:agent_system}
+\PromptListing{rqgm/adversary_overclaim.md}{Overclaim adversary}{prompt:adversary_overclaim}
+\PromptListing{rqgm/adversary_metric_gaming.md}{Metric-gaming adversary}{prompt:adversary_metric_gaming}
+\PromptListing{rqgm/adversary_prior_art.md}{Prior-art adversary}{prompt:adversary_prior_art}
+\PromptListing{rqgm/adversary_reproducibility.md}{Reproducibility adversary}{prompt:adversary_reproducibility}
+\PromptListing{rqgm/adversary_evidence_gap.md}{Evidence-gap adversary}{prompt:adversary_evidence_gap}
+\PromptListing{rqgm/adversary_cost_explosion.md}{Cost-explosion adversary}{prompt:adversary_cost_explosion}
+\PromptListing{rqgm/adversary_prompt_injection.md}{Prompt-injection adversary}{prompt:adversary_prompt_injection}
+\PromptListing{rqgm/adversary_paper_self_preference.md}{Paper self-preference adversary}{prompt:adversary_paper_self_preference}
+\PromptListing{rqgm/defender.md}{Adversarial-loop defender}{prompt:rqgm_defender}
+\PromptListing{rqgm/judge_adjudication.md}{Artifact-judge adjudication}{prompt:judge_adjudication}
 
-\subsection*{Evaluator}
+\subsection*{Governance}
 
-\PromptListing{evaluator/peer_review.md}{Peer-review evaluator}{prompt:peer_review}
-\PromptListing{evaluator/extract_metrics.md}{Metric extraction}{prompt:extract_metrics}
+\PromptListing{governance/auditor.md}{Governance auditor}{prompt:governance_auditor}
+\PromptListing{governance/defender.md}{Governance defender}{prompt:governance_defender}
+\PromptListing{governance/governance_judge.md}{Governance judge}{prompt:governance_judge}
 
-\subsection*{Pipeline}
+\subsection*{Prompt and policy evolution}
 
-\PromptListing{pipeline/keyword_librarian.md}{Keyword librarian}{prompt:keyword_librarian}
+\PromptListing{rqgm/prompt_mutator.md}{Prompt-mutation meta-prompt}{prompt:prompt_mutator}
+\PromptListing{rqgm/clean_room_generator.md}{Clean-room regeneration meta-prompt}{prompt:clean_room_generator}
+\PromptListing{rqgm/policy_mutator.md}{Utility-policy mutation meta-prompt}{prompt:policy_mutator}
+\PromptListing{rqgm/replay_selector.md}{Replay-selection meta-prompt}{prompt:replay_selector}
+\PromptListing{rqgm/failure_summary_compressor.md}{Failure-summary compression meta-prompt}{prompt:failure_summary_compressor}
 
-\subsection*{Wizard (Viz)}
+\subsection*{Paper archive}
 
-\PromptListing{viz/wizard_chat_goal.md}{Wizard goal chat}{prompt:wizard_chat_goal}
-\PromptListing{viz/wizard_generate_config.md}{Wizard config generator}{prompt:wizard_generate_config}
+\PromptListing{rqgm/paper_writer.md}{Governed paper writer}{prompt:paper_writer}
+\PromptListing{rqgm/paper_reviewer.md}{Governed paper reviewer}{prompt:paper_reviewer}

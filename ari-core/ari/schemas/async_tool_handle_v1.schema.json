@@ -1,0 +1,151 @@
+{
+  "$defs": {
+    "AsyncStateMapV1": {
+      "additionalProperties": false,
+      "description": "Case-insensitive provider state mapping used while polling a handle.",
+      "properties": {
+        "cancelled_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cancelled States",
+          "type": "array"
+        },
+        "failed_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Failed States",
+          "type": "array"
+        },
+        "running_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Running States",
+          "type": "array"
+        },
+        "submitted_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Submitted States",
+          "type": "array"
+        },
+        "succeeded_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Succeeded States",
+          "type": "array"
+        }
+      },
+      "title": "AsyncStateMapV1",
+      "type": "object"
+    },
+    "AsyncToolEndpointV1": {
+      "additionalProperties": false,
+      "description": "One immutable endpoint embedded in a runtime async handle.",
+      "properties": {
+        "handle_argument": {
+          "title": "Handle Argument",
+          "type": "string"
+        },
+        "tool_ref": {
+          "minLength": 1,
+          "title": "Tool Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_ref",
+        "handle_argument"
+      ],
+      "title": "AsyncToolEndpointV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/async-tool-handle-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Portable handle bound to immutable lifecycle tool references.",
+  "properties": {
+    "cancel": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AsyncToolEndpointV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "handle_id": {
+      "maxLength": 1024,
+      "minLength": 1,
+      "title": "Handle Id",
+      "type": "string"
+    },
+    "max_wait_seconds": {
+      "maximum": 2678400,
+      "minimum": 1,
+      "title": "Max Wait Seconds",
+      "type": "integer"
+    },
+    "poll_interval_seconds": {
+      "maximum": 3600,
+      "minimum": 0.01,
+      "title": "Poll Interval Seconds",
+      "type": "number"
+    },
+    "result": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AsyncToolEndpointV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema_version": {
+      "const": "ari.async-tool-handle/v1",
+      "default": "ari.async-tool-handle/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "state_field": {
+      "title": "State Field",
+      "type": "string"
+    },
+    "states": {
+      "$ref": "#/$defs/AsyncStateMapV1"
+    },
+    "status": {
+      "$ref": "#/$defs/AsyncToolEndpointV1"
+    },
+    "submission_tool_ref": {
+      "minLength": 1,
+      "title": "Submission Tool Ref",
+      "type": "string"
+    },
+    "submitted_at": {
+      "minLength": 1,
+      "title": "Submitted At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "handle_id",
+    "submission_tool_ref",
+    "status",
+    "state_field",
+    "states",
+    "poll_interval_seconds",
+    "max_wait_seconds",
+    "submitted_at"
+  ],
+  "title": "ARI Async Tool Handle v1",
+  "type": "object"
+}

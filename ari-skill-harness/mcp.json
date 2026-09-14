@@ -1,0 +1,17 @@
+{
+  "description": "Read-only Harness catalog, requirement, and Attestation queries plus non-authoritative auxiliary requests.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "harness-query-skill",
+  "package": "ari-skill-harness",
+  "runtime": "python",
+  "schema_version": 1,
+  "tools": [
+    "search_harnesses",
+    "describe_harness",
+    "request_auxiliary_verification",
+    "read_attestation",
+    "list_verification_requirements"
+  ],
+  "version": "0.1.0"
+}

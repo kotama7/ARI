@@ -1,0 +1,50 @@
+schema_version: 1
+legacy_aliases:
+  - declared_ref: ari.eda.openroad.place-route
+    canonical_ref: ari.eda.openroad.place-route/v1
+    rationale: Exact versioning alias for the existing OpenROAD immutable profile operation.
+  - declared_ref: ari.execution.code
+    canonical_ref: ari.execution.run/v1
+    rationale: The coding Provider executes bounded source snippets.
+  - declared_ref: ari.execution.results.emit
+    canonical_ref: ari.result.emit/v1
+    rationale: The legacy operation emits a typed result into the run workspace.
+  - declared_ref: ari.execution.shell
+    canonical_ref: ari.execution.run/v1
+    rationale: The legacy shell operation is the reviewed bounded-process capability.
+  - declared_ref: ari.hpc.container.submit
+    canonical_ref: ari.execution.slurm-submit/v1
+    rationale: Container jobs are submitted through the admitted scheduler adapter.
+  - declared_ref: ari.hpc.job.submit
+    canonical_ref: ari.execution.slurm-submit/v1
+    rationale: The operation submits a new SLURM job.
+  - declared_ref: ari.hpc.legacy.slurm-submit
+    canonical_ref: ari.execution.slurm-submit/v1
+    rationale: Exact compatibility alias for the legacy SLURM submission operation.
+  - declared_ref: ari.literature.citations.walk
+    canonical_ref: ari.literature.search/v1
+    rationale: Citation traversal is a literature-index retrieval method.
+  - declared_ref: ari.literature.rerank
+    canonical_ref: ari.literature.search/v1
+    rationale: Reranking is part of the admitted literature retrieval surface.
+  - declared_ref: ari.literature.search
+    canonical_ref: ari.literature.search/v1
+    rationale: Exact versioning alias for the existing search operation.
+  - declared_ref: ari.literature.survey
+    canonical_ref: ari.literature.search/v1
+    rationale: Survey retrieval uses the same source-provenanced semantic contract.
+  - declared_ref: ari.quantum.sample.local-ideal
+    canonical_ref: ari.quantum.sample.local-ideal/v1
+    rationale: Exact versioning alias for the existing seeded local Aer operation.
+  - declared_ref: ari.workspace.code.write
+    canonical_ref: ari.code.edit/v1
+    rationale: The operation writes source within the admitted workspace.
+  - declared_ref: ari.workspace.file.read
+    canonical_ref: ari.data.read/v1
+    rationale: The operation reads a workspace artifact without mutation.
+  - declared_ref: ari.workspace.uploads.list
+    canonical_ref: ari.data.read/v1
+    rationale: Listing content-addressed uploads is a read-only data operation.
+  - declared_ref: ari.workspace.uploads.read
+    canonical_ref: ari.data.read/v1
+    rationale: Reading an upload is a read-only data operation.

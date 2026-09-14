@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/orchestrator/lineage_decision.md@33986674d50606428fc0e8f7c177894a21794d42b28acdfafc297819f9a9a6fd @ commit e780fa5626fc
+% snapshot-from: ari-core/ari/prompts/orchestrator/lineage_decision.md@33986674d50606428fc0e8f7c177894a21794d42b28acdfafc297819f9a9a6fd @ commit 758cce4e2666
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are a research orchestrator. Given the current state of an exploratory research run, decide the next lineage-level action. Possible actions:

@@ -23,8 +23,8 @@ export function PaperRetrievalSection({
       <div style={{ display: 'flex', gap: '16px', marginBottom: '12px' }}>
         {([
           ['semantic_scholar', 'Semantic Scholar'],
+          ['arxiv', 'arXiv'],
           ['alphaxiv', 'AlphaXiv'],
-          ['both', 'Both (parallel)'],
         ] as const).map(([val, label]) => (
           <label
             key={val}

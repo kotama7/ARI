@@ -27,6 +27,7 @@ files/objects ``LivePlatform`` (see ``virsci_runtime.py``) loads.
 from __future__ import annotations
 
 import hashlib
+import ast
 import json
 import logging
 import os
@@ -135,13 +136,31 @@ class Snapshot:
 
     def build_faiss_index(self):
         """Build the in-memory faiss IndexFlatIP (cosine via normalised IP)."""
-        import faiss
-
         if self.embeddings is None or len(self.embeddings) == 0:
             return None
-        index = faiss.IndexFlatIP(self.specter2_dim)
-        index.add(self.embeddings.astype("float32"))
-        return index
+        vectors = self.embeddings.astype("float32")
+        try:
+            import faiss
+
+            index = faiss.IndexFlatIP(self.specter2_dim)
+            index.add(vectors)
+            return index
+        except ImportError:
+            # Exact NumPy fallback keeps clean/core installs scientifically
+            # equivalent. faiss-cpu remains an acceleration extra, not a hidden
+            # correctness dependency of the frozen snapshot.
+            class _NumpyFlatIP:
+                def __init__(self, matrix: np.ndarray) -> None:
+                    self.matrix = matrix
+                    self.ntotal = len(matrix)
+
+                def search(self, queries: np.ndarray, k: int):
+                    scores = queries.astype("float32") @ self.matrix.T
+                    order = np.argsort(-scores, axis=1)[:, :k]
+                    ranked = np.take_along_axis(scores, order, axis=1)
+                    return ranked, order
+
+            return _NumpyFlatIP(vectors)
 
 
 def _norm_rows(mat: np.ndarray) -> np.ndarray:
@@ -375,9 +394,93 @@ def _author_profile_text(author: dict) -> str:
     return "\n".join(lines)
 
 
-def _manifest_signature(topic: str, n_authors: int, n_papers: int) -> str:
-    raw = f"{topic}|{n_authors}|{n_papers}".encode()
-    return hashlib.sha256(raw).hexdigest()[:16]
+def _canonical_digest(value: Any) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _manifest_signature(
+    topic: str,
+    n_authors: int,
+    n_papers: int,
+    seed_papers: list[dict] | None = None,
+) -> str:
+    return _canonical_digest(
+        {
+            "topic": topic,
+            "n_authors": n_authors,
+            "n_papers": n_papers,
+            "seed_papers_digest": _canonical_digest(seed_papers or []),
+            "provider": "semantic-scholar:graph-v1",
+            "embedding_field": "embedding.specter_v2",
+        }
+    )
+
+
+def _file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return "sha256:" + digest.hexdigest()
+
+
+def _artifact_inventory(base: Path) -> dict[str, str]:
+    artifacts: dict[str, str] = {}
+    for path in sorted(item for item in base.rglob("*") if item.is_file()):
+        relative = path.relative_to(base).as_posix()
+        if relative == "snapshot_manifest.json":
+            continue
+        artifacts[relative] = _file_digest(path)
+    return artifacts
+
+
+def _manifest_valid(base: Path, manifest: dict, signature: str) -> bool:
+    if manifest.get("schema_version") != "ari.virsci-snapshot/v1":
+        return False
+    if manifest.get("input_signature") != signature:
+        return False
+    if int(manifest.get("n_papers", 0) or 0) <= 0:
+        return False
+    expected_digest = _canonical_digest(
+        {key: value for key, value in manifest.items() if key != "snapshot_digest"}
+    )
+    if manifest.get("snapshot_digest") != expected_digest:
+        return False
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, dict) or not artifacts:
+        return False
+    for relative, expected in artifacts.items():
+        path = base / relative
+        try:
+            path.resolve(strict=True).relative_to(base.resolve(strict=True))
+        except (OSError, ValueError):
+            return False
+        if not path.is_file() or _file_digest(path) != expected:
+            return False
+    return True
+
+
+def _clear_snapshot_outputs(base: Path) -> None:
+    """Remove only files owned by this builder before a verified rebuild."""
+
+    for directory in (base / "books", base / "papers"):
+        if directory.is_dir():
+            for path in directory.glob("*.txt"):
+                path.unlink(missing_ok=True)
+    for name in (
+        "adjacency.txt",
+        "corpus_indexed.json",
+        "specter2_index.npy",
+        "snapshot_manifest.json",
+    ):
+        (base / name).unlink(missing_ok=True)
 
 
 def build_snapshot(
@@ -396,15 +499,12 @@ def build_snapshot(
     """
     base = Path(out_dir) / "virsci_snapshot"
     manifest_path = base / "snapshot_manifest.json"
-    sig = _manifest_signature(topic, n_authors, n_papers)
+    sig = _manifest_signature(topic, n_authors, n_papers, seed_papers)
 
     if manifest_path.exists() and not force:
         try:
             man = json.loads(manifest_path.read_text())
-            # Only reuse a NON-EMPTY frozen snapshot. A cached manifest with
-            # n_papers==0 is a poisoned cache from a throttled/failed build —
-            # reusing it would silently serve an ungrounded snapshot forever.
-            if man.get("sha") == sig and int(man.get("n_papers", 0) or 0) > 0:
+            if _manifest_valid(base, man, sig):
                 return _load_snapshot(base, man)
         except Exception:
             pass  # corrupt cache → rebuild
@@ -412,6 +512,7 @@ def build_snapshot(
     base.mkdir(parents=True, exist_ok=True)
     (base / "books").mkdir(exist_ok=True)
     (base / "papers").mkdir(exist_ok=True)
+    _clear_snapshot_outputs(base)
 
     corpus_raw = _fetch_corpus(topic, n_papers)
     used_seed = False
@@ -490,8 +591,9 @@ def build_snapshot(
     np.savetxt(base / "adjacency.txt", adjacency, fmt="%d")
 
     manifest = {
+        "schema_version": "ari.virsci-snapshot/v1",
         "topic": topic,
-        "sha": sig,
+        "input_signature": sig,
         "n_authors": len(authors),
         "n_papers": len(paper_dicts),
         "s2_query": topic,
@@ -499,8 +601,17 @@ def build_snapshot(
         "indexed_papers": len(indexed_corpus),
         "has_api_key": bool(_s2_api_key()),
         "seed_fallback": used_seed,
+        "source_live_byte_reproducible": False,
+        "provider": "semantic-scholar",
+        "provider_version": "graph-v1",
+        "embedding_field": "embedding.specter_v2",
+        "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "artifacts": _artifact_inventory(base),
     }
-    manifest_path.write_text(json.dumps(manifest, indent=2))
+    manifest["snapshot_digest"] = _canonical_digest(manifest)
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    )
 
     return Snapshot(
         dir=base,
@@ -522,7 +633,7 @@ def _load_snapshot(base: Path, man: dict) -> Snapshot:
         files = sorted(papers_dir.glob("*.txt"), key=lambda p: int(p.stem) if p.stem.isdigit() else 0)
         for f in files:
             try:
-                paper_dicts.append(eval(f.read_text()))  # noqa: S307 — our own repr()
+                paper_dicts.append(ast.literal_eval(f.read_text()))
             except Exception:
                 continue
     emb_arr = None

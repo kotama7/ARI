@@ -1,0 +1,24 @@
+/* Motion preferences — gui_refresh task 02, Wave 1 (additive).
+ *
+ * Honors `prefers-reduced-motion: reduce`: the --t-* motion tokens
+ * from tokens.css collapse to zero duration, and a global override
+ * (standard reduced-motion pattern) disables animations/transitions
+ * even where components hardcode durations. Imported after
+ * tokens.css from dashboard.css so the :root override wins.
+ */
+
+@media (prefers-reduced-motion: reduce){
+  :root{
+    --t-fast:0s;
+    --t-med:0s;
+    --t-slow:0s;
+  }
+
+  *,*::before,*::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+    transition-delay:0s !important;
+    scroll-behavior:auto !important;
+  }
+}

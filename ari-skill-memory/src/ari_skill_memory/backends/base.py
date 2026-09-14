@@ -2,15 +2,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
 
 
 class MemoryBackend(ABC):
     """Abstract backend for node-scope + react-trace memory.
 
-    Public MCP tool surface (–,):
-        add_memory, search_memory, get_node_memory, clear_node_memory,
-        get_experiment_context
+    Public MCP tool surface:
+        add_memory, search_memory, get_node_memory, get_experiment_context
 
     Library-only helpers:
         list_all_nodes, bulk_get_node_memory, purge_checkpoint,
@@ -21,19 +19,26 @@ class MemoryBackend(ABC):
     # ─ MCP tool surface ────────────────────────────────────────────────
     @abstractmethod
     def add_memory(
-        self, node_id: str, text: str, metadata: dict | None = None
+        self,
+        node_id: str,
+        text: str,
+        metadata: dict | None = None,
+        *,
+        idempotency_key: str | None = None,
     ) -> dict: ...
 
     @abstractmethod
     def search_memory(
-        self, query: str, ancestor_ids: list[str], limit: int = 5
+        self,
+        query: str,
+        ancestor_ids: list[str],
+        limit: int = 5,
+        *,
+        reader_node_id: str = "",
     ) -> dict: ...
 
     @abstractmethod
-    def get_node_memory(self, node_id: str) -> dict: ...
-
-    @abstractmethod
-    def clear_node_memory(self, node_id: str) -> dict: ...
+    def get_node_memory(self, node_id: str, *, reader_node_id: str = "") -> dict: ...
 
     @abstractmethod
     def get_experiment_context(self) -> dict: ...
@@ -43,7 +48,9 @@ class MemoryBackend(ABC):
     def list_all_nodes(self) -> dict: ...
 
     @abstractmethod
-    def bulk_get_node_memory(self, node_ids: list[str]) -> dict: ...
+    def bulk_get_node_memory(
+        self, node_ids: list[str], *, reader_node_id: str = ""
+    ) -> dict: ...
 
     @abstractmethod
     def purge_checkpoint(self) -> dict: ...

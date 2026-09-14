@@ -26,6 +26,15 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _legacy_direct_calls(monkeypatch):
+    """MN-6: these regressions pin the POST-challenge legacy delete behavior,
+    so the confirmation-challenge gate is disabled via its documented
+    kill-switch. The gate itself is covered by
+    tests/test_gui_confirmation_challenges.py."""
+    monkeypatch.setenv("ARI_GUI_CHALLENGES", "0")
+
+
 @pytest.fixture
 def workspace(tmp_path, monkeypatch):
     """Build a fake workspace with checkpoints/ and experiments/ siblings."""

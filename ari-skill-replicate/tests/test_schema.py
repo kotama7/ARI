@@ -10,7 +10,9 @@ import jsonschema
 import pytest
 from jsonschema import Draft202012Validator
 
-SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "replication_rubric.schema.json"
+SCHEMA_PATH = (
+    Path(__file__).resolve().parents[1] / "schemas" / "replication_rubric.schema.json"
+)
 
 
 @pytest.fixture(scope="module")
@@ -25,12 +27,18 @@ def validator(schema) -> Draft202012Validator:
 
 
 def _hex64(seed: int = 0) -> str:
-    return ("a" * 64) if seed == 0 else format((seed * 0x1234567890abcdef) & ((1 << 256) - 1), "064x")
+    return (
+        ("a" * 64)
+        if seed == 0
+        else format((seed * 0x1234567890ABCDEF) & ((1 << 256) - 1), "064x")
+    )
 
 
-def _leaf(category: str = "Code Development",
-          requirements: str = "The MaskNetwork class outputs 0 for critical states.",
-          quote: str = "the mask network outputs 0 for critical steps and 1 otherwise") -> dict:
+def _leaf(
+    category: str = "Code Development",
+    requirements: str = "The MaskNetwork class outputs 0 for critical states.",
+    quote: str = "the mask network outputs 0 for critical steps and 1 otherwise",
+) -> dict:
     return {
         "id": str(uuid.uuid4()),
         "requirements": requirements,
@@ -39,6 +47,15 @@ def _leaf(category: str = "Code Development",
         "task_category": category,
         "finegrained_task_category": "Method Implementation",
         "rationale_from_paper": {"section": "§3.1", "quote": quote},
+        "evidence_span": {
+            "kind": "paper-span",
+            "section": "§3.1",
+            "quote": quote,
+            "start_char": 0,
+            "end_char": len(quote),
+            "paper_sha256": _hex64(1),
+        },
+        "verification": {"kind": "artifact", "relative_path": "reproduce.sh"},
     }
 
 
@@ -53,14 +70,25 @@ def _root(children: list[dict]) -> dict:
 
 def _envelope(rubric: dict) -> dict:
     return {
+        "schema_version": "ari.replication-rubric/v2",
         "version": "3",
         "paper_sha256": _hex64(1),
+        "rubric_sha256": _hex64(3),
         "generator": {
             "model": "gemini/gemini-2.5-pro",
+            "model_revision": "fixture-r1",
+            "provider": "fixture",
             "prompt_sha256": _hex64(2),
             "generated_at": "2026-04-30T12:00:00Z",
             "temperature": 0.0,
+            "strategy": "hierarchical-v2",
+            "quality_profile": "calibrated",
+            "max_model_calls": 64,
+            "subtree_concurrency": 4,
+            "calls": [],
+            "partial_failures": [],
         },
+        "repair_ledger": {"actions": [], "dropped_artifacts": []},
         "reproduce_contract": {
             "script_path": "reproduce.sh",
             "max_runtime_sec": 21600,
@@ -70,6 +98,7 @@ def _envelope(rubric: dict) -> dict:
 
 
 # ── valid ──
+
 
 def test_schema_is_draft202012_valid(schema):
     Draft202012Validator.check_schema(schema)
@@ -82,12 +111,18 @@ def test_minimal_valid_envelope(validator):
 
 def test_paperbench_style_three_categories(validator):
     children = [
-        _leaf(category="Code Development",
-              requirements="The MaskNetwork outputs 0 for critical inputs."),
-        _leaf(category="Code Execution",
-              requirements="The reproduce.sh runs Experiment II for the selfish mining environment."),
-        _leaf(category="Result Analysis",
-              requirements="In reproduce.log, 'Ours' achieves strictly higher cumulative reward than JSRL."),
+        _leaf(
+            category="Code Development",
+            requirements="The MaskNetwork outputs 0 for critical inputs.",
+        ),
+        _leaf(
+            category="Code Execution",
+            requirements="The reproduce.sh runs Experiment II for the selfish mining environment.",
+        ),
+        _leaf(
+            category="Result Analysis",
+            requirements="In reproduce.log, 'Ours' achieves strictly higher cumulative reward than JSRL.",
+        ),
     ]
     env = _envelope(_root(children))
     validator.validate(env)
@@ -106,6 +141,7 @@ def test_nested_subtasks(validator):
 
 
 # ── reject ──
+
 
 def test_missing_required_envelope_field(validator):
     env = _envelope(_root([_leaf()]))
@@ -199,16 +235,16 @@ def test_execution_profile_full(validator):
         "exclude_nodes": "badnode01",
         "exclusive": True,
         "requested_gpus_per_task": 1,
-        "requested_gpus_per_node": 4,
         "gpu_type": "v100",
         "memory_gb_per_node": 256,
-        "memory_gb_per_cpu": 8,
         "constraint": "skylake",
         "cpu_bind": "cores",
         "mem_bind": "local",
         "hint": "nomultithread",
+        "account": "projX",
+        "qos": "normal",
+        "reservation": "paperbench",
         "module_loads": ["cuda/12.4", "openmpi/4.1"],
-        "extra_sbatch_args": ["--account=projX"],
     }
     validator.validate(env)
 
@@ -222,7 +258,10 @@ def test_execution_profile_bad_kind_rejected(validator):
 
 def test_execution_profile_negative_ranks_rejected(validator):
     env = _envelope(_root([_leaf()]))
-    env["reproduce_contract"]["execution_profile"] = {"kind": "mpi", "paper_max_ranks": 0}
+    env["reproduce_contract"]["execution_profile"] = {
+        "kind": "mpi",
+        "paper_max_ranks": 0,
+    }
     with pytest.raises(jsonschema.ValidationError):
         validator.validate(env)
 
@@ -247,9 +286,38 @@ def test_execution_profile_module_loads_array_of_strings(validator):
         validator.validate(env)
 
 
+def test_execution_profile_rejects_arbitrary_scheduler_escape(validator):
+    env = _envelope(_root([_leaf()]))
+    env["reproduce_contract"]["execution_profile"] = {
+        "kind": "mpi",
+        "extra_sbatch_args": ["--dependency=afterok:123"],
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(env)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"memory_gb_per_node": 8, "memory_gb_per_cpu": 2},
+        {"requested_gpus_per_node": 1, "requested_gpus_per_task": 1},
+    ],
+)
+def test_execution_profile_rejects_contradictory_resources(validator, fields):
+    env = _envelope(_root([_leaf()]))
+    env["reproduce_contract"]["execution_profile"] = {
+        "kind": "mpi_gpu",
+        **fields,
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(env)
+
+
 # ── PaperBench rice/rubric.json fixture round-trip ──
 
-PB_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "paperbench_rubric_sample.json"
+PB_FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "paperbench_rubric_sample.json"
+)
 
 
 def _coerce_pb_node_to_schema(node: dict) -> dict:
@@ -275,7 +343,29 @@ def _coerce_pb_node_to_schema(node: dict) -> dict:
     except (ValueError, AttributeError):
         out["id"] = str(uuid.uuid4())
     out["weight"] = int(out.get("weight", 1))
-    out["sub_tasks"] = [_coerce_pb_node_to_schema(c) for c in (out.get("sub_tasks") or [])]
+    out["sub_tasks"] = [
+        _coerce_pb_node_to_schema(c) for c in (out.get("sub_tasks") or [])
+    ]
+    if not out["sub_tasks"]:
+        out["task_category"] = out.get("task_category") or "Code Development"
+        out["finegrained_task_category"] = (
+            out.get("finegrained_task_category") or "Method Implementation"
+        )
+        out["rationale_from_paper"] = {
+            "external_prerequisite": {
+                "description": "Migrated PaperBench fixture without embedded paper evidence.",
+                "source": "paperbench-rice-fixture",
+            }
+        }
+        out["evidence_span"] = {
+            "kind": "external-prerequisite",
+            "description": "Migrated PaperBench fixture without embedded paper evidence.",
+            "source": "paperbench-rice-fixture",
+        }
+        out["verification"] = {
+            "kind": "artifact",
+            "relative_path": "reproduce.sh",
+        }
     return out
 
 

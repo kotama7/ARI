@@ -1,210 +1,94 @@
-\section{系统概览}\label{sec:overview}
+\section{系统与威胁模型}\label{sec:overview}
 
-\subsection{完整堆栈}\label{sec:overview:layout}
+\subsection{系统边界与参与者}\label{sec:overview:layout}
 
-\begin{figure*}[t]
-  \centering
-  \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F10_full_stack.tex}}
-  \caption{v0.9.0 时 ARI 的完整堆栈,分为五层:入口;
-           \texttt{ari-core} 编排器(徽标~1);引擎层 ——
-           BFTS 引擎与 ReAct \texttt{AgentLoop} 在此构成迭代
-           循环(徽标~2),谱系遍历器位于其旁;MCP 分派枢纽
-           (徽标~3),向技能注册表的四个生命周期列扇出;以及
-           检查点持久化。实线为控制,虚线为次级流(谱系查询、
-           持久化)。}
-  \label{fig:fullstack}
-\end{figure*}
+Constitutional ARI-RQGM 治理围绕自主研究 executor 的制度。executor 在
+checkpoint 中产生类型化研究产物、测量、review record 与 manuscript
+candidate。治理系统观察这些记录,并控制哪些 prompt、component 与
+utility-policy version 可以服务。host OS、model weight 以及能够修改程序的
+人类不在控制范围内。
 
-\Cref{fig:fullstack} 将 v0.9.0 的 ARI 完整堆栈画为五层;本节自
-顶向底逐层讲解。系统分为一个驱动器与多个工具提供方:驱动器
-(\texttt{ari-core})拥有编排器、搜索与智能体引擎、谱系遍历器、
-检查点序列化器、成本追踪器与配置加载器,而每一项领域能力 ——
-编写代码、运行基准、评审草稿 —— 都驻留在一个技能之中。
+参与者分为四类。\emph{research actor} 负责提议、评估、辩护与写作;
+\emph{judiciary actor} 收集证据、起诉、为 governance motion 辩护并裁决;
+\emph{meta actor} 生成 candidate prompt 和 policy,或选择 replay case;
+\emph{fixed actor} 验证宪制规则、应用 registry 转换、修复受影响记录并
+核验最终主张。参与者只能在声明的角色内生成带 hash 的记录。当前成果物
+没有实现数字签名或角色密钥管理。产生建议的权限并不意味着执行建议的
+权限。
 
-\paragraph{入口。}
-一次运行从命令行界面(CLI)、公共 Python 界面(软件开发工具包,
-SDK)或可视化服务器启动 —— 后者是一个 HTTP 仪表盘,向浏览器
-暴露实时搜索状态、按检查点的文件以及启动控制。所有路径都汇聚到
-同一个编排器入口(徽标~1);交互式使用并不会走第二条代码路径。
+\subsection{威胁模型}\label{sec:overview:pipeline}
 
-\paragraph{引擎层。}
-\term{最佳优先树搜索}(best-first tree search, BFTS)引擎维护
-由研究步骤节点构成的树,并决定下一步运行哪个节点以及如何扩展它
-(\cref{sec:exploration}) —— 这是一种「在候选方案上搜索」的框架,
-ARI 与 AIDE 共享此构想 \cite{jiang2025aide}。每次扩展都把一个节点
-交给 \texttt{AgentLoop} —— 一个 Reason-and-Act(ReAct)智能体
-\cite{yao2023react},它将自由文本推理与工具调用交织进行,直到该
-节点的工作完成:引擎提供方向,智能体提供执行 —— 即一条迭代循环
-(徽标~2)。位于循环旁的谱系遍历器是被咨询而非被驱动的:它跨检查点
-攀爬父指针,使派生运行得以继承其祖先的想法池与上下文
-(\cref{sec:exploration:lineage})。
+首要威胁是递归制度优化:可演化角色可能寻求让自身输出看起来更好的改变,
+而非提高研究可靠性。具体威胁包括 score inflation、metric gaming、
+evidence omission、prompt injection、proposer 与 evaluator 共谋、meta agent
+请求比 incumbent 更宽的工具权限、judge 裁决针对自己的起诉,以及退役
+prompt 通过派生 score 继续施加影响。
 
-\paragraph{MCP 分派。}
-每次工具调用都要穿过分派层(徽标~3)。\term{模型上下文协议}
-(Model Context Protocol, MCP)是 Anthropic 标准化的
-JSON-RPC-over-stdio 接口,用于将工具式能力暴露给语言模型智能体
-循环;ARI 以此作为 \texttt{ari-core} 与每个技能之间的统一接缝。
-每个技能都是一个独立的 Python 包,其服务器以池化子进程运行,且
-当技能自带解释器时便在其自身解释器下运行。技能通过一条配置项接入,
-该项指明其包路径以及其工具被暴露的流水线阶段;工具管理器按当前
-活动阶段过滤工具,因此探索节点无法调用论文撰写工具
-(\cref{sec:exploration:react})。
+模型也覆盖意外故障。进程可能在 registry event 之间停止,model 可能输出
+错误格式,anchor corpus 可能缺失,prompt candidate 可能违反 output schema,
+保存的证据也可能缺少重新评分所需的 raw axis。这些故障均不得形成只应用
+一半的制度。
 
-当前在树的十四个技能包为:\texttt{benchmark}、\texttt{coding}、
-\texttt{evaluator}、\texttt{hpc}、\texttt{idea}、\texttt{memory}、
-\texttt{orchestrator}、\texttt{paper}、\texttt{paper-re}、
-\texttt{plot}、\texttt{replicate}、\texttt{transform}、
-\texttt{vlm} 与 \texttt{web}。\cref{fig:fullstack} 中的注册表按
-生命周期阶段将其工具面分组:生成(idea、coding)、评估(evaluator、
-review)、撰写与复现(paper、replicate、paper-re),以及基础设施
-与输入输出 —— 其中 \texttt{hpc} 技能是通往集群批处理调度器的接缝,
-使实验可作为派发作业运行。有两个方框值得一提:\emph{review} 命名的
-是一个工具面而非一个包(草稿评审工具由 evaluator 与 paper 技能
-托管;\cref{sec:paper:loop}),而 \texttt{orchestrator} 技能经
-MCP 暴露运行管理,使 ARI 自身可作为工具被外部智能体驱动。
+恶意 host administrator、对固定程序的任意修改、底层 hash function 被
+攻破、保存点与本地固定值一起回退到相同旧前缀、provider 秘密修改 model
+weight,以及不可逆的外部 API、设备或生产数据操作不在威胁模型内。改变
+宪制程序被视为人类修正,而不是运行中系统能够阻止的攻击。
 
-编排器分派调用,但自身不执行任何领域工作。这种分离至关重要,因为
-技能可被增删或替换而不必触动搜索算法:BFTS 引擎并不知道哪些技能
-参与运行。
+\subsection{权限与验证边界}\label{sec:overview:verification}
 
-\begin{figure}[t]
-  \centering
-  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F01_architecture.tex}}
-  \caption{运营视图。编排器经两条分派总线向三个生命周期列
-           (填充编码阶段)以及无阶段的支撑技能扇出。虚线为状态:
-           每个生产组持久化至底行的检查点产物。}
-  \label{fig:architecture}
-\end{figure}
+权限单向流动。带模型的角色可以创建 proposal、attack、defense、judgment
+与 candidate,但确定性内核不会把它们直接变成 registry state。内核检查
+record、acting role、请求 edge、epoch timing、capability subset、
+provenance 与 audit continuity。transition engine 是唯一 registry writer,
+其输出在 commit 前还会再次接受检查。
 
-最底层是持久化:一次运行产生的每一个字节都落入单一检查点目录,
-与序列化的树及成本账本并列(\cref{sec:overview:principles})。
-\cref{fig:architecture} 中较小的图是本报告其余部分使用的「运营」
-视图(仅控制总线与状态边);\cref{fig:fullstack} 则是「分层」
-视图(驱动器 $\to$ 引擎 $\to$ MCP $\to$ 技能 $\to$ 持久化)。
+两条不对称故障规则在保留有用研究的同时阻止不确定制度变更。研究路径上的
+governance hook 为 \emph{fail-open}:故障被记录,只有无外部副作用沙箱内的
+候选生成和本地计算可以继续。改变状态的 governance operation 为
+\emph{fail-closed}:无法证明证据或合法性时,incumbent 制度继续服务。
+不可逆外部操作需要另一个故障时关闭的固定闸门;当前内核不强制该环境条件。
 
-\subsection{流水线 DAG}\label{sec:overview:pipeline}
+最终 manuscript verifier 属于固定边界。稿件前向声明数值主张标识、公式、
+操作数位置、单位和容差;验证器依据执行证据重算这个封闭公式集合。它不从
+自然语言推断任意主张,也不证明非数值主张或执行记录本身的真实性。writer
+与 reviewer 不能改变 verifier、输入或 verdict。
 
-\begin{figure}[t]
-  \centering
-  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F05_pipeline_dag.tex}}
-  \caption{流水线 DAG:两个带标题 \emph{search} 与 \emph{write
-           \& review} 之下的四个工位(徽标 1--4)。每个工位将其
-           产物持久化至检查点(虚线)。唯一着重标示的边是
-           \term{改稿},即重写草稿并重跑评审的反向边。}
-  \label{fig:pipeline}
-\end{figure}
+\subsection{状态、来源与重放}\label{sec:overview:checkpoint}
 
-一次运行可归约为一条四工位的流水线(\cref{fig:pipeline})。idea
-工位选取或生成研究问题;exploration 工位在 BFTS 下扩展节点;
-paper 工位将最佳谱系汇编为草稿;review 工位以评分细则评估草稿。
-该图是一个 DAG 加上一条由 review 回到 paper 的反向边:仅此边可能
-引入非单调性(改稿可能恶化某一轴),而\term{收敛标准}
-(\cref{sec:paper:loop})则限定反向边的数量。流水线由编排器中的
-单一运行器驱动;一个科学数据组装器汇集撰写器所需的按节点产物
-(\cref{sec:paper:evidence})。
+checkpoint 是制度 identity 的单位。append-only event 是权威记录;registry、
+epoch 与 erasure snapshot 是可以通过 replay 重建的派生 view。每条 governed
+record 带有 epoch、serving component、prompt hash 与相关 policy hash。
+audit event 构成 predecessor-linked hash chain。因此读者能够区分发生了
+什么、由哪个制度产生,以及后续转换如何改变其 eligibility。本地链能检测
+中间删除或修改;若本地边界固定值仍存在,也能检测更短日志。但日志和固定
+值一起回退到相同旧的合法前缀时无法检测。当前没有外部签名日志头、见证者
+保存点或单调计数器,哈希也不是作者签名。
 
-撰写与评审带隐藏着一条固定的\emph{门链},草稿在定稿前必须通过它。
-撰写之后,草稿的论断经稳定标识符与已记录的证据相链接;一个确定性的
-论断—证据门(无语言模型)在容差范围内由已记录的结果重新推导出每一个
-所报告的数字;一个互补的语义评审标记过度声称并喂入改稿循环;改稿之后,
-链接、评审与门会再运行一次,作为最终核查 —— 在严格策略下,只要存在
-任何客观不符,该核查便阻断定稿(\cref{sec:paper:contract})。阻断门
-是经一层薄技能包装器抵达的 core 侧代码,因此替换某个技能并不能削弱它;
-阻断仅保留给客观谬误,而主观评审结论引导改稿器,却绝不对发布设门。
-该门链将 Story2Proposal 的契约穿线式生成以执行落地的形式实现
-\cite{qian2026story2proposal}。
+epoch transaction 使用 prepare、close、open 与 commit event。replay 忽略
+不完整后缀并确定性重做边界。founding registration 同样 write-once:
+已 commit 的 transaction 只被重放,不会重复执行。logical erasure 不删除
+字节,而是增加 staleness 与 eligibility 字段,从而保留审计退役本身所需的
+证据。
 
-\subsection{BFTS 控制流}\label{sec:overview:bfts-flow}
+纪元身份先拆分再合成。政策指纹绑定服务制度以及包含阈值与预算在内的全部
+已解析治理设置；执行指纹绑定声明的模型、解码、工具、环境与数据快照。
+缺少提供者或环境修订时会显式标为未解析。前者支持制度比较，后者暴露同一
+政策是否运行在不同的声明执行基底上；二者都不能把不透明模型服务变成可
+复现二进制。
 
-\begin{figure*}[t]
-  \centering
-  \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F11_bfts_control.tex}}
-  \caption{BFTS 控制流:一步被画为由五个编号工位组成的脊柱。两个
-           LLM 主导的工位各自查询其专属的提示文件(虚线,上方);
-           当解析门拒绝返回的索引时,选择回退到确定性的
-           \texttt{\_fallback\_score}(科学分数加
-           \texttt{diversity\_bonus})。脊柱下方:v0.9.0 的谱系
-           链接提示注入扩展,停滞检测器注入剪枝门。着重标示的边将
-           子节点追加到前沿;点线边缘路径延续至下一次迭代。}
-  \label{fig:bftsflow}
-\end{figure*}
+\subsection{设计原则}\label{sec:overview:principles}
 
-\Cref{fig:bftsflow} 端到端追踪单次 BFTS 步骤。其实现在
-\cref{sec:exploration} 中铺陈;该图固定本报告其余部分使用的词汇
-(前沿、选择、回退、expand、prune、停滞),并展示两个 LLM 主导
-工位背后的提示文件(\texttt{bfts\_select.md}、
-\texttt{bfts\_expand.md});第三个提示
-\texttt{bfts\_expand\_select.md} 在完整循环中驱动「该扩展\emph{哪个}
-已完成节点」的抉择(\cref{sec:exploration:node-selection})。脊柱下方
-的两个提示框在 v0.9.0 中为新增,实现了对计算证据的谱系链接:覆盖度
-提示将扩展目标导向已持有所需测量值的节点,而谱系提示告知新子节点它
-持有哪些继承而来的测量文件。这些提示仅携带名称,绝不携带数值,因此
-分支隔离得以保持(\cref{sec:exploration:lineage-chaining})。
+架构遵循五项原则。
 
-\subsection{paper-re 组件视图}\label{sec:overview:paperre-component}
-
-\begin{figure*}[t]
-  \centering
-  \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F12_paperre_components.tex}}
-  \caption{\texttt{paper-re} 技能的组件,分三层。顶行为 ARI 的
-           适配层(复现驱动器、求解器适配器、输出限界、路径适配器);
-           中行为 vendor 化的 PaperBench 包(智能体求解器、评分细则
-           叶、判官);底行为 bridge,它驱动三个协议阶段,并把按
-           submission 的已评分树 —— 对重复运行取平均 —— 折叠成单一
-           \texttt{rubric.json} 得分,加上 ARI 侧的
-           \texttt{reproduce.sh}。详见 \cref{sec:paper:paperbench}。}
-  \label{fig:paperre}
-\end{figure*}
-
-\Cref{fig:paperre} 是 \texttt{paper-re} 的第二级视图,该技能承载
-PaperBench 协议的复现路径 \cite{starace2025paperbench}。在此层
-ARI 的贡献小而具体:一层薄适配器包裹每个智能体工具以限定其输出大小,
-并将 vendor 化求解器的硬编码路径重定向到 ARI 的按节点工作空间;其余
-一切皆从 PaperBench 上游逐字流过,这使 ARI 与上游的复现任务框架及
-评分语义保持一致。\Cref{sec:paper:paperbench} 详述 bridge 所驱动的
-三阶段 rollout--reproduce--grade 契约。
-
-\subsection{检查点作用域与设计原则}\label{sec:overview:principles}
-
-ARI 围绕五条\term{设计原则}(P1--P5)构建。最具约束力者为
-\textbf{P2:确定性}。每一步随机化均记录其种子;每次 LLM 调用均记录
-其模型身份、提示与输出;每次工具调用都以其节点身份标记(一道写时复制
-护栏),以确保其写入落在所属节点的工作树之内。重跑一个检查点必须
-逐字节再现相同的产物,除非字段被显式标记为时钟相关或模型端非确定。
-
-其余原则简述如下:
-
-\begin{itemize}
-  \item \textbf{P1 单一产物树}:一次运行的每一个输出都位于
-        \texttt{\$ARI\_CHECKPOINT\_DIR} 之下。不外溢至
-        \texttt{\$HOME} 或 \texttt{/tmp}。
-  \item \textbf{P3 小组件}:每个技能都是独立的包;替换某个技能
-        不需重建 \texttt{ari-core}。
-  \item \textbf{P4 显式谱系}:每个节点与每个检查点都记录其父级,
-        因此派生实验只须重算其差量。
-  \item \textbf{P5 成本透明}:成本追踪器为每次模型调用附加美元
-        成本,使用户得以为一次运行设界;技能子进程追加到同一条
-        运行级账本。
-\end{itemize}
-
-检查点序列化器写出三个顶层文件:完整搜索树写入 \texttt{tree.json},
-供论文流水线消费的轻量按节点导出写入 \texttt{nodes\_tree.json},
-运行末聚合写入 \texttt{results.json}。跨检查点的谱系遍历经由每个
-检查点记录在其运行元数据中的父指针,自子节点向祖先攀爬。
-
-\begin{figure}[t]
-  \centering
-  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F13_checkpoint_layout.tex}}
-  \caption{检查点目录布局。运行级文件(左带)由编排器写入;按节点
-           工作树(右带)保存一次 BFTS 扩展内产生的产物,包括每个
-           节点留下的结构化自报告。复现一次运行恰好就是「针对此目录
-           重跑」,而该布局保证不需要任何其他状态。}
-  \label{fig:checkpoint}
-\end{figure}
-
-\Cref{fig:checkpoint} 描绘检查点的磁盘形状:左侧为共享运行级文件,
-右侧为按节点工作树。一个节点的工作树起初是其父级工作树的副本,因此
-每棵树都是该步骤上实验的自包含快照,而为证据组装奠基的自报告
-(\cref{sec:paper:evidence})就紧挨着它所描述的产物。该形状即契约:
-任何把 ARI 输出当作输入的工具 —— 后续运行、回归检查、论文草稿 ——
-都指向单一这样的目录。
+\begin{enumerate}
+  \item \textbf{固定法律,演化制度。}宪制、转换 topology 与最终
+        verification path 位于 runtime-mutable artifact 集合之外。
+  \item \textbf{冻结的服务纪元。}serving version 只在边界改变。T16
+        紧急隔离会立即形成边界并开启新纪元指纹，前后节点具有不同制度标识。
+  \item \textbf{建议与权限分离。}proposer、judge 与 meta agent 输出记录;
+        只有经内核验证的 transition engine 可以写 registry。
+  \item \textbf{保留历史但不继承影响。}退役不删除证据,但受影响 descendant
+        必须在影响 future selection 前变为 stale 或被重新评分。
+  \item \textbf{主张与证据成比例。}结构保证按保证陈述;机制演示不被包装为
+        研究质量提升的证据。
+\end{enumerate}

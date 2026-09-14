@@ -1,0 +1,33 @@
+{
+  "claims": [
+    {
+      "id": "C_OVER",
+      "numeric_assertions": [],
+      "section": "results",
+      "status": "supported",
+      "supported_by": {
+        "artifacts": [],
+        "figures": [],
+        "nodes": [],
+        "results": []
+      },
+      "text": "3.7x end-to-end speedup"
+    },
+    {
+      "id": "C_GHOST",
+      "numeric_assertions": [],
+      "section": "results",
+      "status": "supported",
+      "supported_by": {
+        "artifacts": [],
+        "figures": [],
+        "nodes": [
+          "n_ghost"
+        ],
+        "results": []
+      },
+      "text": "validated on 4 architectures"
+    }
+  ],
+  "numeric_assertions": []
+}

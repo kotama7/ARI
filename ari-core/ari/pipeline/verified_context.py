@@ -33,13 +33,31 @@ def _scientific_score(node: Any) -> float:
     return -1.0
 
 
+def _valid_for_selection(node: Any) -> bool:
+    m = getattr(node, "metrics", None)
+    if not isinstance(m, dict):
+        return True
+    return m.get("_valid_for_frontier", True) is not False
+
+
 def select_best_node(all_nodes: list[Any]) -> Any | None:
     """Pick the winning node whose lineage the paper is about.
 
-    Prefers nodes with real experimental data, ranked by scientific score.
-    Falls back to any node if none carry real data.
+    Nodes erased by RQGM selective erasure
+    (``metrics['_valid_for_frontier'] is False``) are excluded outright —
+    their scores were produced under a retired policy/prompt and must not
+    ground the paper, its candidate escalation, or the archive seed. The key
+    is only ever written by RQGM machinery (the FrontierRepairEngine on the
+    exploration tree; the paper-archive runtime on draft nodes), so this
+    clause is inert on the default paths (the ``_sterile`` pattern in
+    ``BFTS.should_prune``). All nodes erased ⇒ ``None`` — contaminated
+    evidence does not become clean by being the only evidence left.
+
+    Among the remaining nodes, prefers ones with real experimental data,
+    ranked by scientific score; falls back to any valid node if none carry
+    real data.
     """
-    nodes = list(all_nodes or [])
+    nodes = [n for n in (all_nodes or []) if _valid_for_selection(n)]
     if not nodes:
         return None
     cand = [n for n in nodes if getattr(n, "has_real_data", False)]
@@ -68,7 +86,16 @@ def build_verified_context(
     if best is None:
         return empty
     lineage = list(getattr(best, "ancestor_ids", []) or []) + [getattr(best, "id", "")]
-    lineage = [n for n in lineage if n]
+    # Erasure never propagates to descendants automatically, so a VALID
+    # winner can carry an ERASED ancestor. Its memory entries must not
+    # ground the paper's claims — drop known-erased ids from the lineage
+    # (unknown ids are kept: absence of the node is not evidence of
+    # contamination).
+    by_id = {str(getattr(n, "id", "") or ""): n for n in (all_nodes or [])}
+    lineage = [
+        nid for nid in lineage
+        if nid and (nid not in by_id or _valid_for_selection(by_id[nid]))
+    ]
     try:
         if backend is None:
             from ari.memory import get_backend
@@ -94,12 +121,25 @@ def write_verified_context(
     no input and behaves exactly as before (no flow change).
     """
     data = build_verified_context(checkpoint_dir, all_nodes, backend=backend)
+    path = Path(checkpoint_dir) / "verified_context.json"
     if not (data.get("usable_for_claims") or data.get("claims")):
+        # A prior invocation's artifact may name a best node — or a lineage
+        # member — that has since been erased (selective erasure); left in
+        # place it would keep grounding the paper on contaminated claims.
+        # Remove it when the winner OR the (erasure-filtered) lineage
+        # changed; keep it when both are unchanged (a transient backend
+        # failure must not discard a still-valid artifact).
+        try:
+            if path.exists():
+                stale = json.loads(path.read_text())
+                if (stale.get("best_node_id") != data.get("best_node_id")
+                        or stale.get("lineage") != data.get("lineage")):
+                    path.unlink()
+        except Exception:
+            pass
         return data
     try:
-        (Path(checkpoint_dir) / "verified_context.json").write_text(
-            json.dumps(data, ensure_ascii=False, indent=2)
-        )
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
     except Exception:
         pass
     return data

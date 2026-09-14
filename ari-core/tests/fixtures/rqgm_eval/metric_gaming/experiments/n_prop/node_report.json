@@ -1,0 +1,16 @@
+{
+  "cpu_info": {
+    "arch": "x86_64",
+    "model": "EPYC-9654"
+  },
+  "executor": "local",
+  "files_changed": {
+    "added": [
+      "bench.c"
+    ],
+    "deleted": [],
+    "modified": []
+  },
+  "node_id": "n_prop",
+  "schema_version": 1
+}

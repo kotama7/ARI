@@ -3,7 +3,7 @@
 
 This is the first artifact of refactoring subtask 025 and the common substrate
 the sibling quality checkers (026-031 and the aggregator 058) reuse, per
-``docs/refactoring/009_quality_scripts_plan.md`` §8. Keeping the JSON schema,
+refactoring plan 009 (quality scripts) §8. Keeping the JSON schema,
 allowlist loader, Markdown writer, and ``--base-ref`` diff resolver in one place
 is the single up-front de-duplication the plan calls for.
 

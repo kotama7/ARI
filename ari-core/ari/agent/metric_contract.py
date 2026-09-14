@@ -19,6 +19,22 @@ the harness states the obligation generally, the agent satisfies it specifically
 from __future__ import annotations
 
 
+def contract_frozen() -> bool:
+    """True when ``ARI_FREEZE_CONTRACT`` disables the LLM-self-determined metric
+    contract (handoff study B3).
+
+    With the contract frozen the run uses a fixed / exogenous evaluator and the
+    agent must NOT self-determine metrics: ``make_metric_spec`` self-determination,
+    the per-node contract-obligation injection (Tier-1c), and the expansion
+    coverage-hint are all skipped. See ari-core/ari/agent/Plan.md and
+    ari-core/PREREG_handoff_study.md.
+    """
+    import os
+    return os.environ.get("ARI_FREEZE_CONTRACT", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 def collect_node_measurement_names(checkpoint_dir: str) -> dict:
     """Per-node measurement names emitted SO FAR: {node_dir_name: set(names)}.
 

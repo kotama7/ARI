@@ -1,8 +1,22 @@
 {
+  "description": "Typed SLURM lifecycle, strict SSH transport, capability probes, and digest-pinned containers.",
+  "entrypoint": "ari_skill_hpc/server.py",
+  "generated_from": "skill.yaml",
   "name": "hpc-skill",
-  "version": "0.1.0",
-  "description": "HPC environment tools for SLURM/Singularity",
-  "tools": [],
+  "package": "ari-skill-hpc",
   "runtime": "python",
-  "entrypoint": "src/server.py"
+  "schema_version": 1,
+  "tools": [
+    "job_submit",
+    "container_submit",
+    "job_status",
+    "job_result",
+    "job_logs",
+    "job_cancel",
+    "probe_platform_capabilities",
+    "counter_support",
+    "measure_counters",
+    "slurm_submit"
+  ],
+  "version": "0.3.1"
 }

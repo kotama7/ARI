@@ -1,5 +1,6 @@
-from __future__ import annotations
 """Tests for ari/container.py — unified container runtime abstraction."""
+
+from __future__ import annotations
 
 import os
 import subprocess
@@ -9,6 +10,7 @@ import pytest
 
 from ari.container import (
     ContainerConfig,
+    container_shell_argv,
     config_from_env,
     detect_runtime,
     get_container_info,
@@ -34,7 +36,10 @@ def test_detect_runtime_none_when_nothing_available(mock_cmd, mock_which):
 
 
 @patch("ari.container.os.environ", {"SLURM_JOB_ID": "12345"})
-@patch("ari.container.shutil.which", side_effect=lambda x: x if x == "singularity" else None)
+@patch(
+    "ari.container.shutil.which",
+    side_effect=lambda x: x if x == "singularity" else None,
+)
 @patch("ari.container._cmd_ok", return_value="singularity version 3.8.0")
 def test_detect_runtime_prefers_singularity_on_hpc(mock_cmd, mock_which):
     assert detect_runtime() in ("singularity", "apptainer")
@@ -101,8 +106,9 @@ def test_pull_image_singularity_saves_to_containers_dir(mock_run, mock_makedirs)
     # Output path must be inside containers/ and end with .sif
     # singularity pull [--force] <out> docker://<image>
     out_path = args[-2]
-    assert out_path.startswith("containers" + os.sep) or out_path.startswith("containers/"), \
-        f"Expected output inside containers/, got {out_path}"
+    assert out_path.startswith("containers" + os.sep) or out_path.startswith(
+        "containers/"
+    ), f"Expected output inside containers/, got {out_path}"
     assert out_path.endswith(".sif"), f"Expected .sif suffix, got {out_path}"
     # The docker:// URI must be the final positional arg
     assert args[-1] == "docker://ghcr.io/kotama7/ari:latest"
@@ -119,7 +125,9 @@ def test_pull_image_apptainer_saves_to_containers_dir(mock_run, mock_makedirs):
     args = mock_run.call_args[0][0]
     assert args[0] == "apptainer"
     out_path = args[-2]
-    assert out_path.startswith("containers" + os.sep) or out_path.startswith("containers/")
+    assert out_path.startswith("containers" + os.sep) or out_path.startswith(
+        "containers/"
+    )
     assert out_path.endswith(".sif")
 
 
@@ -142,7 +150,7 @@ def test_pull_image_no_image():
 def test_run_in_container_docker_command(mock_popen):
     mock_popen.return_value = MagicMock()
     cfg = ContainerConfig(image="myimage:latest", mode="docker")
-    proc = run_in_container(cfg, ["python", "run.py"], env={"FOO": "bar"}, workdir="/tmp/work")
+    run_in_container(cfg, ["python", "run.py"], env={"FOO": "bar"}, workdir="/tmp/work")
     args = mock_popen.call_args[0][0]
     assert args[0] == "docker"
     assert "run" in args
@@ -156,7 +164,7 @@ def test_run_in_container_docker_command(mock_popen):
 def test_run_in_container_singularity_command(mock_popen):
     mock_popen.return_value = MagicMock()
     cfg = ContainerConfig(image="myimage:latest", mode="singularity")
-    proc = run_in_container(cfg, ["python", "run.py"], workdir="/tmp/work")
+    run_in_container(cfg, ["python", "run.py"], workdir="/tmp/work")
     args = mock_popen.call_args[0][0]
     assert args[0] == "singularity"
     assert "exec" in args
@@ -186,7 +194,7 @@ def test_run_in_container_apptainer_also_writable_tmpfs(mock_popen):
 def test_run_in_container_none_falls_back_to_direct(mock_popen):
     mock_popen.return_value = MagicMock()
     cfg = ContainerConfig(image="", mode="none")
-    proc = run_in_container(cfg, ["python", "run.py"], workdir="/tmp/work")
+    run_in_container(cfg, ["python", "run.py"], workdir="/tmp/work")
     args = mock_popen.call_args[0][0]
     assert args == ["python", "run.py"]
 
@@ -220,8 +228,10 @@ def test_list_images_docker_no_output(mock_cmd):
 def test_list_images_singularity_scans_sif(tmp_path):
     sif_file = tmp_path / "myimage.sif"
     sif_file.write_bytes(b"\x00" * 1024)
-    with patch("ari.container._glob.glob", return_value=[str(sif_file)]), \
-         patch("ari.container.os.path.isdir", return_value=True):
+    with (
+        patch("ari.container._glob.glob", return_value=[str(sif_file)]),
+        patch("ari.container.os.path.isdir", return_value=True),
+    ):
         images = list_images("singularity")
     names = [img["name"] for img in images]
     assert "myimage.sif" in names
@@ -236,25 +246,31 @@ def test_list_images_singularity_scans_containers_dir(tmp_path, monkeypatch):
     sif_file.write_bytes(b"\x00" * (2 << 20))  # 2 MB
     images = list_images("singularity")
     names = [img["name"] for img in images]
-    assert "gcc-13.2.0.sif" in names, \
+    assert "gcc-13.2.0.sif" in names, (
         f"./containers/*.sif must be detected; got {names}"
+    )
 
 
 def test_list_images_singularity_containers_dir_in_scan_list(monkeypatch):
     """Verify the scan loop actually iterates over 'containers' as a candidate dir."""
     seen_dirs: list[str] = []
-    real_isdir = lambda d: True
+
+    def real_isdir(_directory: str) -> bool:
+        return True
 
     def _fake_glob(pat: str) -> list[str]:
         # pat looks like "<dir>/*.sif" — capture the directory we were called with
         seen_dirs.append(os.path.dirname(pat))
         return []
 
-    with patch("ari.container.os.path.isdir", side_effect=real_isdir), \
-         patch("ari.container._glob.glob", side_effect=_fake_glob):
+    with (
+        patch("ari.container.os.path.isdir", side_effect=real_isdir),
+        patch("ari.container._glob.glob", side_effect=_fake_glob),
+    ):
         list_images("singularity")
-    assert "containers" in seen_dirs, \
+    assert "containers" in seen_dirs, (
         f"'containers' must be in the scanned dir list; got {seen_dirs}"
+    )
 
 
 def test_list_images_none_returns_empty():
@@ -287,6 +303,7 @@ def test_get_container_info_returns_dict():
 def test_api_container_info_endpoint():
     """Test that the container info endpoint returns valid JSON."""
     from ari.container import get_container_info
+
     info = get_container_info()
     assert "runtime" in info
     assert "available" in info
@@ -299,6 +316,7 @@ def test_api_container_info_endpoint():
 def test_api_container_images_endpoint(mock_list):
     """Verify that the server route calls list_images and returns JSON."""
     from ari.container import list_images as _li
+
     result = _li()
     assert isinstance(result, list)
     assert result[0]["name"] == "img:v1"
@@ -310,6 +328,7 @@ def test_api_container_images_endpoint(mock_list):
 def test_settings_include_container_fields():
     """Verify container fields appear in the settings schema."""
     from ari.viz.api_settings import _api_get_settings
+
     settings = _api_get_settings()
     assert "container_mode" in settings
     assert "container_image" in settings
@@ -332,6 +351,7 @@ def _clean_container_env(monkeypatch):
 @pytest.fixture
 def _state():
     from ari.viz import state as _st
+
     return _st
 
 
@@ -374,30 +394,54 @@ def _build_proc_env(state_mod, tmp_path, monkeypatch, settings, wizard_data=None
 class TestContainerPropagationWizardToEnv:
     """Wizard container_image/container_mode → proc_env ARI_CONTAINER_*."""
 
-    def test_wizard_image_and_mode_injected(self, _state, tmp_path, monkeypatch, _clean_container_env):
-        env = _build_proc_env(_state, tmp_path, monkeypatch,
+    def test_wizard_image_and_mode_injected(
+        self, _state, tmp_path, monkeypatch, _clean_container_env
+    ):
+        env = _build_proc_env(
+            _state,
+            tmp_path,
+            monkeypatch,
             settings={},
-            wizard_data={"container_image": "ghcr.io/kotama7/ari:latest", "container_mode": "docker"})
+            wizard_data={
+                "container_image": "ghcr.io/kotama7/ari:latest",
+                "container_mode": "docker",
+            },
+        )
         assert env["ARI_CONTAINER_IMAGE"] == "ghcr.io/kotama7/ari:latest"
         assert env["ARI_CONTAINER_MODE"] == "docker"
 
-    def test_wizard_image_only(self, _state, tmp_path, monkeypatch, _clean_container_env):
-        env = _build_proc_env(_state, tmp_path, monkeypatch,
+    def test_wizard_image_only(
+        self, _state, tmp_path, monkeypatch, _clean_container_env
+    ):
+        env = _build_proc_env(
+            _state,
+            tmp_path,
+            monkeypatch,
             settings={},
-            wizard_data={"container_image": "myimage:v2"})
+            wizard_data={"container_image": "myimage:v2"},
+        )
         assert env["ARI_CONTAINER_IMAGE"] == "myimage:v2"
         assert "ARI_CONTAINER_MODE" not in env
 
-    def test_wizard_mode_only(self, _state, tmp_path, monkeypatch, _clean_container_env):
-        env = _build_proc_env(_state, tmp_path, monkeypatch,
+    def test_wizard_mode_only(
+        self, _state, tmp_path, monkeypatch, _clean_container_env
+    ):
+        env = _build_proc_env(
+            _state,
+            tmp_path,
+            monkeypatch,
             settings={},
-            wizard_data={"container_mode": "singularity"})
+            wizard_data={"container_mode": "singularity"},
+        )
         assert env["ARI_CONTAINER_MODE"] == "singularity"
         assert "ARI_CONTAINER_IMAGE" not in env
 
-    def test_no_container_in_wizard(self, _state, tmp_path, monkeypatch, _clean_container_env):
-        env = _build_proc_env(_state, tmp_path, monkeypatch,
-            settings={}, wizard_data={})
+    def test_no_container_in_wizard(
+        self, _state, tmp_path, monkeypatch, _clean_container_env
+    ):
+        env = _build_proc_env(
+            _state, tmp_path, monkeypatch, settings={}, wizard_data={}
+        )
         assert "ARI_CONTAINER_IMAGE" not in env
         assert "ARI_CONTAINER_MODE" not in env
 
@@ -405,25 +449,49 @@ class TestContainerPropagationWizardToEnv:
 class TestContainerPropagationSettingsFallback:
     """Settings.json container fields used as fallback when wizard omits them."""
 
-    def test_settings_image_used_as_fallback(self, _state, tmp_path, monkeypatch, _clean_container_env):
-        env = _build_proc_env(_state, tmp_path, monkeypatch,
-            settings={"container_image": "settings-image:v1", "container_mode": "docker"},
-            wizard_data={})
+    def test_settings_image_used_as_fallback(
+        self, _state, tmp_path, monkeypatch, _clean_container_env
+    ):
+        env = _build_proc_env(
+            _state,
+            tmp_path,
+            monkeypatch,
+            settings={
+                "container_image": "settings-image:v1",
+                "container_mode": "docker",
+            },
+            wizard_data={},
+        )
         assert env["ARI_CONTAINER_IMAGE"] == "settings-image:v1"
         assert env["ARI_CONTAINER_MODE"] == "docker"
 
-    def test_wizard_overrides_settings(self, _state, tmp_path, monkeypatch, _clean_container_env):
-        env = _build_proc_env(_state, tmp_path, monkeypatch,
+    def test_wizard_overrides_settings(
+        self, _state, tmp_path, monkeypatch, _clean_container_env
+    ):
+        env = _build_proc_env(
+            _state,
+            tmp_path,
+            monkeypatch,
             settings={"container_image": "old-image:v1", "container_mode": "docker"},
-            wizard_data={"container_image": "new-image:v2", "container_mode": "singularity"})
+            wizard_data={
+                "container_image": "new-image:v2",
+                "container_mode": "singularity",
+            },
+        )
         assert env["ARI_CONTAINER_IMAGE"] == "new-image:v2"
         assert env["ARI_CONTAINER_MODE"] == "singularity"
 
-    def test_settings_mode_auto_not_injected(self, _state, tmp_path, monkeypatch, _clean_container_env):
+    def test_settings_mode_auto_not_injected(
+        self, _state, tmp_path, monkeypatch, _clean_container_env
+    ):
         """mode=auto is the default, so settings should not inject it."""
-        env = _build_proc_env(_state, tmp_path, monkeypatch,
+        env = _build_proc_env(
+            _state,
+            tmp_path,
+            monkeypatch,
             settings={"container_image": "img:v1", "container_mode": "auto"},
-            wizard_data={})
+            wizard_data={},
+        )
         assert env["ARI_CONTAINER_IMAGE"] == "img:v1"
         assert "ARI_CONTAINER_MODE" not in env
 
@@ -437,16 +505,24 @@ class TestCliContainerEnvPrecedence:
         monkeypatch.setenv("ARI_CONTAINER_MODE", "docker")
         # Simulate the cli.py logic
         _ct_cfg_raw = {"image": "yaml-image:old", "mode": "singularity"}
-        _ct_image = os.environ.get("ARI_CONTAINER_IMAGE") or _ct_cfg_raw.get("image", "")
-        _ct_mode = os.environ.get("ARI_CONTAINER_MODE") or _ct_cfg_raw.get("mode", "auto")
+        _ct_image = os.environ.get("ARI_CONTAINER_IMAGE") or _ct_cfg_raw.get(
+            "image", ""
+        )
+        _ct_mode = os.environ.get("ARI_CONTAINER_MODE") or _ct_cfg_raw.get(
+            "mode", "auto"
+        )
         assert _ct_image == "env-image:latest"
         assert _ct_mode == "docker"
 
     def test_workflow_yaml_used_when_no_env(self, monkeypatch, _clean_container_env):
         """When no env vars, workflow.yaml values are used."""
         _ct_cfg_raw = {"image": "yaml-image:v1", "mode": "apptainer"}
-        _ct_image = os.environ.get("ARI_CONTAINER_IMAGE") or _ct_cfg_raw.get("image", "")
-        _ct_mode = os.environ.get("ARI_CONTAINER_MODE") or _ct_cfg_raw.get("mode", "auto")
+        _ct_image = os.environ.get("ARI_CONTAINER_IMAGE") or _ct_cfg_raw.get(
+            "image", ""
+        )
+        _ct_mode = os.environ.get("ARI_CONTAINER_MODE") or _ct_cfg_raw.get(
+            "mode", "auto"
+        )
         assert _ct_image == "yaml-image:v1"
         assert _ct_mode == "apptainer"
 
@@ -454,8 +530,12 @@ class TestCliContainerEnvPrecedence:
         """Empty string env var falls back to workflow.yaml."""
         # os.environ.get returns None for unset vars (not empty), so fallback works
         _ct_cfg_raw = {"image": "yaml-img:v1", "mode": "docker"}
-        _ct_image = os.environ.get("ARI_CONTAINER_IMAGE") or _ct_cfg_raw.get("image", "")
-        _ct_mode = os.environ.get("ARI_CONTAINER_MODE") or _ct_cfg_raw.get("mode", "auto")
+        _ct_image = os.environ.get("ARI_CONTAINER_IMAGE") or _ct_cfg_raw.get(
+            "image", ""
+        )
+        _ct_mode = os.environ.get("ARI_CONTAINER_MODE") or _ct_cfg_raw.get(
+            "mode", "auto"
+        )
         assert _ct_image == "yaml-img:v1"
         assert _ct_mode == "docker"
 
@@ -493,21 +573,39 @@ class TestRunShellInContainer:
     @patch("ari.container._run_shell_sandboxed")
     def test_no_image_runs_directly(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
-            args="echo hello", returncode=0, stdout="hello\n", stderr="",
+            args="echo hello",
+            returncode=0,
+            stdout="hello\n",
+            stderr="",
         )
         cfg = ContainerConfig(image="", mode="none")
-        result = run_shell_in_container(cfg, "echo hello", cwd="/tmp")
+        run_shell_in_container(cfg, "echo hello", cwd="/tmp")
         mock_run.assert_called_once()
         call_kwargs = mock_run.call_args
         assert call_kwargs.kwargs.get("shell") is True
 
     @patch("ari.container._run_shell_sandboxed")
+    def test_network_deny_refuses_direct_host_execution(self, mock_run):
+        cfg = ContainerConfig(image="", mode="none")
+        with pytest.raises(ValueError, match="requires a container"):
+            run_shell_in_container(
+                cfg,
+                "echo must-not-run",
+                cwd="/tmp",
+                network="deny",
+            )
+        mock_run.assert_not_called()
+
+    @patch("ari.container._run_shell_sandboxed")
     def test_docker_wraps_command(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="ok\n", stderr="",
+            args=[],
+            returncode=0,
+            stdout="ok\n",
+            stderr="",
         )
         cfg = ContainerConfig(image="myimg:v1", mode="docker")
-        result = run_shell_in_container(cfg, "python run.py", cwd="/work")
+        run_shell_in_container(cfg, "python run.py", cwd="/work")
         args = mock_run.call_args[0][0]
         assert args[0] == "docker"
         assert "run" in args
@@ -518,13 +616,33 @@ class TestRunShellInContainer:
         assert "-c" in args
         assert "python run.py" in args
 
+    def test_docker_network_deny_is_explicit(self):
+        cfg = ContainerConfig(image="myimg@sha256:" + "a" * 64, mode="docker")
+        with patch("ari.container._detect_container_shell", return_value="bash"):
+            args = container_shell_argv(
+                cfg, "python run.py", cwd="/work", network="deny"
+            )
+        assert args is not None
+        assert args[args.index("--network") + 1] == "none"
+
+        conflicting = ContainerConfig(
+            image="myimg:v1", mode="docker", extra_args=["--network=host"]
+        )
+        with pytest.raises(ValueError, match="cannot override"):
+            container_shell_argv(
+                conflicting, "python run.py", cwd="/work", network="deny"
+            )
+
     @patch("ari.container._run_shell_sandboxed")
     def test_singularity_wraps_command(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="ok\n", stderr="",
+            args=[],
+            returncode=0,
+            stdout="ok\n",
+            stderr="",
         )
         cfg = ContainerConfig(image="myimg:v1", mode="singularity")
-        result = run_shell_in_container(cfg, "python run.py", cwd="/work")
+        run_shell_in_container(cfg, "python run.py", cwd="/work")
         args = mock_run.call_args[0][0]
         assert args[0] == "singularity"
         assert "exec" in args
@@ -534,14 +652,24 @@ class TestRunShellInContainer:
         # Regression: without --writable-tmpfs the agent cannot apk/apt
         # in the read-only SIF and blocks on "missing git" style errors.
         assert "--writable-tmpfs" in args
+        assert "--cleanenv" in args
+        assert "--containall" in args
+
+    def test_unknown_mode_refuses_host_fallback(self):
+        cfg = ContainerConfig(image="myimg:v1", mode="invalid")
+        with pytest.raises(ValueError, match="refusing host fallback"):
+            container_shell_argv(cfg, "echo unsafe", cwd="/work")
 
     @patch("ari.container._run_shell_sandboxed")
     def test_apptainer_wraps_command(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="ok\n", stderr="",
+            args=[],
+            returncode=0,
+            stdout="ok\n",
+            stderr="",
         )
         cfg = ContainerConfig(image="myimg:v1", mode="apptainer")
-        result = run_shell_in_container(cfg, "ls -la", cwd="/work")
+        run_shell_in_container(cfg, "ls -la", cwd="/work")
         args = mock_run.call_args[0][0]
         assert args[0] == "apptainer"
         assert "exec" in args
@@ -551,10 +679,13 @@ class TestRunShellInContainer:
     @patch("ari.container._run_shell_sandboxed")
     def test_auto_mode_detects_runtime(self, mock_run, mock_detect):
         mock_run.return_value = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="ok\n", stderr="",
+            args=[],
+            returncode=0,
+            stdout="ok\n",
+            stderr="",
         )
         cfg = ContainerConfig(image="myimg:v1", mode="auto")
-        result = run_shell_in_container(cfg, "echo test")
+        run_shell_in_container(cfg, "echo test")
         mock_detect.assert_called_once()
         args = mock_run.call_args[0][0]
         assert args[0] == "docker"

@@ -8,10 +8,11 @@ LLM node scoring, lineage decisions, and root-idea selection.
 - `README.md` — this file.
 - `__init__.py` — package exports + authoritative module-map docstring.
 - `bfts.py` — `BFTS` loop and stage hooks (expand/select, pruning, frontier retire).
-- `bfts_prompt_builder.py` — TODO
+- `bfts_prompt_builder.py` — pure context builders for the expand/select prompts (`build_expand_context`, the candidate description lines) + the shared `_BUDGET` truncation limits.
 - `lineage_decision.py` — LLM lineage action + `lineage_decisions.jsonl` log.
 - `node.py` — `Node` data model + `NodeStatus` / `NodeLabel` enums.
 - `node_selection.py` — shared node-selection helpers + publication source-file selection.
+- `node_summary_view.py` — field-selectable parent operational summary for the child-prompt handoff (G3); derives `known_failures`, excludes machine-info fields.
 - `root_idea_selector.py` — run-start LLM root-idea pick + selection log.
 - `web_provenance.py` — read/write `bfts_web_provenance.json`, the marker recording that web search was opted into during BFTS exploration (flags the trajectory non-reproducible, P5).
 - `node_report/` — per-node `node_report.json` package.
@@ -19,6 +20,7 @@ LLM node scoring, lineage decisions, and root-idea selection.
   - `__init__.py` — re-exports the builder + legacy shim.
   - `builder.py` — v0.7+ `node_report.json` builder.
   - `legacy_reconstruct.py` — v0.5 → v0.7 reconstruct shim.
+  - `scientific_assurance.py` — project scientific assurance outcomes and evidence references into governed node reports.
 
 ## See also
 

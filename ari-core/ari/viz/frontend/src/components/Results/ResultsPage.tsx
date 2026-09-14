@@ -23,6 +23,13 @@ import { renderPaper } from './PaperWorkspace';
 import { renderContext, renderFigures, renderReviewScores, renderRepro } from './resultSections';
 
 
+/** Run-explicit legacy workspace URL: #/results?run=<checkpoint id>. */
+export function runFromResultsHash(hash = window.location.hash): string {
+  const query = hash.split('?')[1] ?? '';
+  return new URLSearchParams(query).get('run') ?? '';
+}
+
+
 export function ResultsPage() {
   const { t } = useI18n();
   const { state, checkpoints } = useAppContext();
@@ -65,7 +72,17 @@ export function ResultsPage() {
         .pop() ||
       '';
 
-    // Check if there's a pre-selected checkpoint from Experiments page
+    // A run-explicit URL is authoritative and makes the paper workspace
+    // bookmarkable/shareable. Keep the sessionStorage fallback for older
+    // Experiments-page handoffs.
+    const routedId = runFromResultsHash();
+    if (routedId) {
+      sessionStorage.removeItem('ari_selected_checkpoint');
+      setSelectedId(routedId);
+      return routedId;
+    }
+
+    // Check if there's a pre-selected checkpoint from older callers
     const storedId = sessionStorage.getItem('ari_selected_checkpoint');
     if (storedId) {
       sessionStorage.removeItem('ari_selected_checkpoint');
@@ -447,4 +464,3 @@ export function ResultsPage() {
     </div>
   );
 }
-

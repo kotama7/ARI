@@ -1,6 +1,6 @@
 # Config for scripts/check_directory_policy.py — the placement/naming policy gate
-# (subtask 028; design docs/refactoring/009 §5.4, 005_directory_consolidation_plan.md,
-# 000_master_refactoring_plan.md:140 ST-3-1).
+# (subtask 028; design refactoring plan 009 §5.4, plan 005 directory
+# consolidation, and the master refactoring plan ST-3-1).
 #
 # The checker GUARDS layout; it never moves/renames/merges/deletes the config trio
 # (that is subtask 003). All keys are overridable so subtask 003's landed layout can

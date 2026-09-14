@@ -15,7 +15,7 @@
 known:
   # -- B1: skill -> private ari-core (cross-seam; widen ari.public.* to fix) --
   - id: "ari-skill-idea/src/server.py::ari.lineage"
-    note: "B1 cross-seam (idea:614). ADAPT: route via a new ari.public.lineage shim."
+    note: "B1 cross-seam (idea:648). ADAPT: route via a new ari.public.lineage shim."
   - id: "ari-skill-paper-re/src/server.py::ari.clone"
     note: "B1 cross-seam (paper-re:146). ADAPT: route via a new ari.public.clone shim."
   - id: "ari-skill-transform/src/server.py::ari.orchestrator"

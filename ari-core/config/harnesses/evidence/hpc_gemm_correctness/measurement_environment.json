@@ -1,0 +1,18 @@
+{
+  "environment": {
+    "note": "recorded, not restricted; a variable outside this prefix set is neither captured nor known to be harmless",
+    "sha256": "sha256:8a4e0303fa46243311b85c755631c6b5105a4d27f4c8e65ae5fcd8f2f419061c",
+    "variables": {
+      "BLIS_NUM_THREADS": "1",
+      "GOTO_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    }
+  },
+  "environment_note": "variable VALUES are scrubbed of host identity here",
+  "placement": null,
+  "placement_note": "this harness pins no placement, so its evidence does not describe a machine",
+  "registration_commit": "880566d4e15e39b01dec34ee6f05a6274ee8e005"
+}

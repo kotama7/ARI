@@ -1,0 +1,129 @@
+{
+  "$defs": {
+    "ManuscriptEvaluationMetricV1": {
+      "additionalProperties": false,
+      "properties": {
+        "denominator": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Denominator"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "metric_id": {
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "numerator": {
+          "minimum": 0,
+          "title": "Numerator",
+          "type": "number"
+        },
+        "status": {
+          "enum": [
+            "measured",
+            "not_applicable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "metric_id",
+        "numerator",
+        "status"
+      ],
+      "title": "ManuscriptEvaluationMetricV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "blocked_reason_distribution": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Blocked Reason Distribution",
+      "type": "object"
+    },
+    "case_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 100000,
+      "title": "Case Ids",
+      "type": "array"
+    },
+    "dataset_id": {
+      "title": "Dataset Id",
+      "type": "string"
+    },
+    "evaluator_version": {
+      "title": "Evaluator Version",
+      "type": "string"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/ManuscriptEvaluationMetricV1"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Metrics",
+      "type": "array"
+    },
+    "report_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-evaluation-report/v1",
+      "default": "ari.manuscript-evaluation-report/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "topology_costs": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Topology Costs",
+      "type": "array"
+    }
+  },
+  "required": [
+    "dataset_id",
+    "evaluator_version",
+    "metrics",
+    "report_digest"
+  ],
+  "title": "ManuscriptEvaluationReportV1",
+  "type": "object"
+}

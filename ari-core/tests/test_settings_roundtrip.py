@@ -15,14 +15,13 @@ Also tests static round-trip contracts (field names, JSON keys, HTML element IDs
 """
 from __future__ import annotations
 import json
-import os
 import re
-import tempfile
-import threading
 import time
 import urllib.request
 import urllib.error
 from pathlib import Path
+
+import pytest
 
 _VIZ = Path(__file__).parent.parent / "ari/viz"
 _REACT_SRC = _VIZ / "frontend" / "src"
@@ -546,8 +545,8 @@ class TestLettaMemorySettings:
         ):
             assert needle in src, f"SettingsPage missing state hook: {needle}"
 
-    def test_settings_page_provider_model_two_stage(self):
-        """Memory card must offer a two-stage provider→model picker
+    def test_settings_page_provider_model_picker(self):
+        """Memory card must offer a provider→model picker
         for the embedding handle. The LLM picker was removed: ARI never
         invokes the Letta agent's chat LLM, so the model is hardcoded
         inside ari-skill-memory."""
@@ -621,8 +620,6 @@ class TestLettaMemorySettings:
 # ═══════════════════════════════════════════════════════════════════════════
 # INTEGRATION: Live HTTP roundtrip (skipped if server not running)
 # ═══════════════════════════════════════════════════════════════════════════
-
-import pytest
 
 _SERVER_URL = "http://localhost:9886"
 

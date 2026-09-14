@@ -9,10 +9,8 @@ body:
       value: >-
         Use this form for refactoring-program work items. Please read
         [`CONTRIBUTING.md`](../../CONTRIBUTING.md) (Software-engineering
-        discipline) and
-        [`docs/refactoring/012_github_workflow_integration_plan.md`](../../docs/refactoring/012_github_workflow_integration_plan.md)
-        before filing. The word "deprecated" is reserved for external contracts
-        only; use a classification verdict below for internal code.
+        discipline) before filing. The word "deprecated" is reserved for external
+        contracts only; use a classification verdict below for internal code.
   - type: input
     id: subtask
     attributes:
@@ -98,6 +96,5 @@ body:
       label: Self-attestation
       options:
         - label: >-
-            I have read `CONTRIBUTING.md` (Software-engineering discipline) and
-            `docs/refactoring/012_github_workflow_integration_plan.md`.
+            I have read `CONTRIBUTING.md` (Software-engineering discipline).
           required: true

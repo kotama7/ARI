@@ -1,0 +1,18 @@
+{
+  "actor_id": "kotama7 <kotamatakanori2@gmail.com>",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:af65a3e44ddd608157d41e27a7e19c86dbba93d8b4e8541efb37e8c01d470f7a",
+  "approved_date": "2026-08-07",
+  "authorization_basis": "Reviewed the measured clean task: the governed CPU probe ran through the typed Provider and opened cycles and instructions under policy level 0 with no security-setting change; the artifact is byte-identical to the job's declared output pin. Reviewed the stored capability-abstraction report. All sixteen registration gates pass.",
+  "from_status": "candidate",
+  "registration_evidence_digest": "sha256:6bc84105aa1f7882878617543fe3b96ddaa374301b6c94e2bf6b8ed14fb7024e",
+  "registration_report_digest": null,
+  "schema_version": "ari.knowledge-skill-promotion-approval/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:c40f2d023c5c34dc57142d8473cb12c9d28efd737d2b2e19c597ce7cff8a1870",
+    "id": "intel.linux-perf",
+    "manifest_sha256": "sha256:1d1e8980f509f3b817582cc07a4d18673a4ba148acb3da5c25219feaaf85ae0d",
+    "version": "0.1.0+git.e9d0b641"
+  },
+  "to_status": "verified"
+}

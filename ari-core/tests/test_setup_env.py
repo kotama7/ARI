@@ -43,6 +43,9 @@ PATH_EXCLUDE = (
 SYSTEM_VARS = {
     "HOME", "PATH", "USER", "SHELL", "PWD", "LANG", "LC_ALL", "TERM",
     "TMPDIR", "TMP", "TEMP",
+    # Per-connection secret generated and overwritten by ari-core. It is not a
+    # user setting and must never be offered in .env.
+    "ARI_CONTEXT_AUTHORITY_KEY",
 }
 
 # Vars that live inside vendored agentscope sources but we still document

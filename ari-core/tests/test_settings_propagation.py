@@ -267,7 +267,11 @@ class TestLLMClientComplete:
             )
             c.complete([{"role": "user", "content": "hi"}])
             kwargs = m.call_args[1]
-            assert kwargs.get("extra_body", {}).get("options", {}).get("think") is False
+            # Ollama reads the qwen3 thinking-disable flag at the TOP LEVEL of the
+            # request body (`think: false`), NOT under `options` — the old
+            # `options.think` was silently ignored and thinking stayed ON (see
+            # client.py:204). Assert the flag the server actually honours.
+            assert kwargs.get("extra_body", {}).get("think") is False
 
 
 # ══════════════════════════════════════════════

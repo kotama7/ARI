@@ -1,0 +1,73 @@
+{
+  "case_set": "native-perf-gemm-cases/v1@parity",
+  "controls": {
+    "clean": {
+      "median_seconds": 0.08096868265420198,
+      "median_speedup": 1.00103424266686,
+      "relative_spread": 0.01008202029005156,
+      "resolution_note": "",
+      "resolved": true,
+      "verdict": "pass"
+    },
+    "negatives": [
+      {
+        "detail": "0.1309x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
+        "name": "slow-but-correct",
+        "verdict": "fail"
+      },
+      {
+        "detail": "candidate output failed the residual bound (2.79e+11x)",
+        "name": "fast-but-wrong",
+        "verdict": "fail"
+      }
+    ]
+  },
+  "driver_digest": "sha256:1f72d2fbabdb8c35bac0d126fe5d41014ab316ecfe7432ac64c526ac5f746e96",
+  "passed": true,
+  "placement": {
+    "binding_is_set_by_the_harness": true,
+    "cpus_allowed": "0-191",
+    "cpus_allowed_count": 192,
+    "exclusive_allocation": true,
+    "machine": "x86_64",
+    "memory_policy_is_set_by_the_harness": false,
+    "mems_allowed": "0",
+    "numa_node_cpulists": {
+      "node0": "0-191"
+    },
+    "numa_nodes_spanned": 1,
+    "numa_nodes_total": 1,
+    "omp_dynamic": "FALSE",
+    "omp_places": "cores",
+    "omp_proc_bind": "spread",
+    "page_size_bytes": 4096,
+    "physical_cores": 96,
+    "scheduled_allocation": true,
+    "sha256": "sha256:140fef8f8e2c88599b4d50b9b742a83b72fa439fc2fc01e28472285e3dffdc99",
+    "thread_budget": "2",
+    "threads_per_core": 2.0
+  },
+  "problem": "gemm-dense-fp64/v1@2026q3",
+  "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
+  "reason": null,
+  "results": {
+    "clean_control": {
+      "median_speedup": 1.00103424266686,
+      "relative_spread": 0.01008202029005156,
+      "report_digest": "sha256:b60469624f9174f3b041397fe7a274cd9339e9b06c61998ff6a8b4c1eea9f56c",
+      "resolved": true,
+      "verdict": "pass"
+    },
+    "negative_control_slow": {
+      "detail": "0.1309x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
+      "report_digest": "sha256:4db02c1dd709f3d2d346750ae3122ed1fdaf9a5d7ad04d64e7ae63af092eba58",
+      "verdict": "fail"
+    },
+    "negative_control_wrong": {
+      "detail": "candidate output failed the residual bound (2.79e+11x)",
+      "report_digest": "sha256:64cd1cb46e46cf0d4399004cba55d7beb47dfce1bf2e3d63c555662d9b3ca85b",
+      "verdict": "fail"
+    }
+  },
+  "schema_version": "ari.native-perf-parity-report/v1"
+}

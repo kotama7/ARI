@@ -529,6 +529,25 @@ section{padding:clamp(76px,11vw,128px) 0;position:relative;}
   display:inline-block;font-family:var(--font-mono);font-size:.68rem;color:var(--cyan-soft);
   letter-spacing:.04em;background:var(--cyan-wash);padding:4px 10px;border-radius:4px;margin-top:14px;
 }
+.governance-flow{margin:0 0 54px;}
+.governance-flow-frame{
+  display:block;position:relative;overflow:hidden;
+  border:1px solid var(--cyan-line);border-radius:3px;background:var(--ink);
+  box-shadow:0 24px 70px var(--shadow-soft);
+}
+.governance-flow-frame::before,.governance-flow-frame::after{
+  content:'';position:absolute;z-index:1;width:20px;height:20px;pointer-events:none;
+}
+.governance-flow-frame::before{top:-1px;left:-1px;border-top:2px solid var(--cyan);border-left:2px solid var(--cyan);}
+.governance-flow-frame::after{right:-1px;bottom:-1px;border-right:2px solid var(--cyan);border-bottom:2px solid var(--cyan);}
+.governance-flow-frame img{display:block;width:100%;height:auto;transition:transform .35s cubic-bezier(.22,1,.36,1);}
+@media (hover:hover){
+  .governance-flow-frame:hover img{transform:scale(1.006);}
+}
+.governance-flow figcaption{
+  max-width:920px;margin:15px auto 0;text-align:center;
+  color:var(--muted);font-family:var(--font-mono);font-size:.72rem;line-height:1.65;
+}
 
 /* === FUTURE / VISION ====================================================== */
 .future-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:16px;margin-top:48px;}
@@ -623,9 +642,9 @@ footer a:hover{color:var(--cyan-soft);}
   .phil-quote::before{font-size:5rem;top:-26px;left:-8px;}
   section{padding:clamp(64px,9vw,96px) 0;}
 }
-/* nav collapses earlier than the content ladder: with 7 mono links the bar
-   needs ~860px (EN) before links start wrapping inside the 62px bar */
-@media (max-width:860px){
+/* nav collapses earlier than the content ladder: with 8 mono links the bar
+   needs ~960px (EN) before links start wrapping inside the 62px bar */
+@media (max-width:960px){
   .nav-toggle{display:flex;}
   .nav-links{
     position:absolute;top:100%;left:0;right:0;flex-direction:column;gap:0;
@@ -651,6 +670,9 @@ footer a:hover{color:var(--cyan-soft);}
   .anim-legend{flex-direction:column;align-items:flex-start;text-align:left;max-width:300px;}
   .anim-caption{font-size:.62rem;}
   .future-grid{gap:12px;}
+  .governance-flow-frame{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .governance-flow-frame img{width:1450px;max-width:none;}
+  .governance-flow figcaption{text-align:left;}
   footer{padding:44px 18px 40px;}
 }
 @media (max-width:560px){

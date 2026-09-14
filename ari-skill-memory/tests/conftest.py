@@ -4,7 +4,6 @@ to a tmp_path via the ``ckpt_env`` fixture.
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -25,9 +24,10 @@ def ckpt_env(tmp_path, monkeypatch):
     """Create a fresh checkpoint dir + env and yield its Path."""
     ckpt = tmp_path / "ckpt"
     ckpt.mkdir()
+    (ckpt / ".ari-test-memory-backend").write_text("test-only\n")
     monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(ckpt))
     monkeypatch.setenv("ARI_MEMORY_BACKEND", "in_memory")
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "nX")
+    monkeypatch.setenv("ARI_CONTEXT_AUTHORITY_KEY", "a" * 64)
     monkeypatch.setenv("ARI_MEMORY_ACCESS_LOG", "on")
     # Isolate backend cache per-test.
     from ari_skill_memory.backends import clear_backend_cache
@@ -40,6 +40,37 @@ def ckpt_env(tmp_path, monkeypatch):
 def backend(ckpt_env):
     from ari_skill_memory.backends import get_backend
     return get_backend(checkpoint_dir=ckpt_env)
+
+
+@pytest.fixture
+def authorized_context(ckpt_env):
+    """Issue the same signed capability that an ARI transport injects."""
+
+    from ari.public.call_context import ToolCallContextV1, authorize_tool_context
+
+    def issue(
+        tool_name: str,
+        *,
+        node_id: str = "nX",
+        parent_node_id: str | None = None,
+        ancestor_node_ids: list[str] | None = None,
+        run_id: str = "r",
+        phase: str = "bfts",
+    ) -> dict:
+        context = ToolCallContextV1.for_node(
+            run_id=run_id,
+            node_id=node_id,
+            parent_node_id=parent_node_id,
+            ancestor_node_ids=ancestor_node_ids or [],
+            phase=phase,
+        )
+        return authorize_tool_context(
+            context,
+            tool_name=tool_name,
+            authority_key="a" * 64,
+        )
+
+    return issue
 
 
 @pytest.fixture

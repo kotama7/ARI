@@ -1,21 +1,24 @@
 {
-  "name": "paper-writing-skill",
-  "version": "0.1.0",
-  "description": "LaTeX paper writing support for academic venues",
-  "tools": [
-    "list_venues",
-    "get_template",
-    "generate_section",
-    "compile_paper",
-    "check_format",
-    "review_section",
-    "revise_section",
-    "write_paper_iterative",
-    "review_compiled_paper",
-    "link_paper_claims",
-    "paper_refine",
-    "list_rubrics"
-  ],
+  "description": "LaTeX paper generation, review, claim linking, revision, and compilation.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "paper-skill",
+  "package": "ari-skill-paper",
   "runtime": "python",
-  "entrypoint": "src/server.py"
+  "schema_version": 1,
+  "tools": [
+    "check_format",
+    "compile_paper",
+    "finalize_paper_build",
+    "get_template",
+    "inject_code_availability",
+    "link_paper_claims",
+    "list_rubrics",
+    "list_venues",
+    "merge_reviews",
+    "paper_refine",
+    "review_compiled_paper",
+    "write_paper_iterative"
+  ],
+  "version": "0.3.0"
 }

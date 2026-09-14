@@ -1,0 +1,327 @@
+{
+  "$defs": {
+    "AnalysisArtifactTargetV1": {
+      "additionalProperties": false,
+      "description": "Optional closed-workspace destination for deterministic result artifacts.",
+      "properties": {
+        "relative_directory": {
+          "default": "analysis",
+          "title": "Relative Directory",
+          "type": "string"
+        },
+        "workspace": {
+          "$ref": "#/$defs/WorkspaceRefV1"
+        }
+      },
+      "required": [
+        "workspace"
+      ],
+      "title": "AnalysisArtifactTargetV1",
+      "type": "object"
+    },
+    "AnalysisDataSourceV1": {
+      "additionalProperties": false,
+      "description": "Digest-bound numeric column in a closed workspace.",
+      "properties": {
+        "backend_id_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Backend Id Column"
+        },
+        "environment_digest_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Environment Digest Column"
+        },
+        "expected_digest": {
+          "title": "Expected Digest",
+          "type": "string"
+        },
+        "format": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "csv",
+            "json",
+            "npy"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "max_bytes": {
+          "default": 67108864,
+          "maximum": 268435456,
+          "minimum": 1,
+          "title": "Max Bytes",
+          "type": "integer"
+        },
+        "pair_id_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pair Id Column"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "replicate_id_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replicate Id Column"
+        },
+        "value_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value Column"
+        },
+        "workspace": {
+          "$ref": "#/$defs/WorkspaceRefV1"
+        }
+      },
+      "required": [
+        "workspace",
+        "relative_path",
+        "expected_digest"
+      ],
+      "title": "AnalysisDataSourceV1",
+      "type": "object"
+    },
+    "AnalysisObservationV1": {
+      "additionalProperties": false,
+      "description": "One observed value and the identities needed to assess independence.",
+      "properties": {
+        "backend_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Backend Id"
+        },
+        "environment_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Environment Digest"
+        },
+        "pair_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pair Id"
+        },
+        "replicate_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replicate Id"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "AnalysisObservationV1",
+      "type": "object"
+    },
+    "MetricSampleSetV1": {
+      "additionalProperties": false,
+      "description": "A unit-bearing metric sample supplied inline or by immutable source.",
+      "properties": {
+        "metric_id": {
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "observations": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/AnalysisObservationV1"
+              },
+              "maxItems": 1000000,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observations"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnalysisDataSourceV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric_id",
+        "unit"
+      ],
+      "title": "MetricSampleSetV1",
+      "type": "object"
+    },
+    "WorkspaceRefV1": {
+      "additionalProperties": false,
+      "description": "One canonical writable root with no caller-controlled escape path.",
+      "properties": {
+        "root": {
+          "title": "Root",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.workspace-ref/v1",
+          "default": "ari.workspace-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "root"
+      ],
+      "title": "WorkspaceRefV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/analysis-request-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Deterministic summary request for one or more metrics.",
+  "properties": {
+    "analysis_plan_digest": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Analysis Plan Digest"
+    },
+    "artifact_target": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AnalysisArtifactTargetV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "confidence_level": {
+      "default": 0.95,
+      "exclusiveMaximum": 1.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Confidence Level",
+      "type": "number"
+    },
+    "datasets": {
+      "items": {
+        "$ref": "#/$defs/MetricSampleSetV1"
+      },
+      "maxItems": 1024,
+      "minItems": 1,
+      "title": "Datasets",
+      "type": "array"
+    },
+    "missing_policy": {
+      "default": "error",
+      "enum": [
+        "error",
+        "drop"
+      ],
+      "title": "Missing Policy",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.analysis-request/v1",
+      "default": "ari.analysis-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "datasets"
+  ],
+  "title": "ARI Analysis Request v1",
+  "type": "object"
+}

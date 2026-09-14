@@ -1,0 +1,35 @@
+{
+  "allowed_inputs": {
+    "abstract_failure_summary": true,
+    "constitutional_constraints": true,
+    "cost_budget": true,
+    "output_schema": true,
+    "raw_attack_text": false,
+    "replay_requirements": true,
+    "retired_fewshot_examples": false,
+    "retired_prompt_reasoning": false,
+    "retired_prompt_text": true,
+    "role_spec": true,
+    "target_defense_text": false
+  },
+  "budget_policy": {
+    "max_attempts": 1,
+    "max_tokens": 4000
+  },
+  "component_id": "registry_transition_engine",
+  "created_at": "",
+  "epoch_id": "ep_000003",
+  "prompt_hash": null,
+  "record_id": "eval_clnreq_0001",
+  "record_type": "clean_room_generation_request",
+  "replay_case_ids": [],
+  "requirements": [],
+  "retirement_event_id": "ret_000001",
+  "role": "reviewer",
+  "source_refs": [
+    "ret_000001"
+  ],
+  "status": "pending",
+  "target_role": "reviewer",
+  "trigger": "retirement_event"
+}

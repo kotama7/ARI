@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Aggregate the ``scripts/quality/*`` checker JSON into one quality report.
 
-Design: ``docs/refactoring/009_quality_scripts_plan.md`` §5.11 (aggregator spec)
-+ ``docs/refactoring/subtasks/031_add_quality_report_generator.md``.
+Design: refactoring plan 009 (quality scripts) §5.11 (aggregator spec) + subtask
+031 (add quality report generator). Both have been retired; the numbers are kept
+as provenance.
 
 This is the *aggregator* (subtask 031) — it **detects nothing itself**. It merges
 the stable §3 JSON envelope
@@ -16,9 +17,8 @@ emitted by the sibling source-quality checkers (``check_complexity``,
 ``check_viz_api_schema``, ``check_dead_code``, …) into a single roll-up in two
 forms: a human **Markdown** report and a machine **JSON** report (so the report
 itself can be diffed / ratcheted). The only self-computed numbers are per-area
-LOC (a trivial stdlib newline walk) which reproduce
-``docs/refactoring/reports/001_complexity_baseline.md`` (viz 8131, public 148,
-core 30277, skills-src 25495).
+LOC (a trivial stdlib newline walk) which reproduce the subtask 001 complexity
+baseline (viz 8131, public 148, core 30277, skills-src 25495).
 
 Graceful degradation is the core requirement: at delivery most Phase-8 checkers
 do not exist yet, so a missing checker / missing JSON / unparseable JSON /
@@ -370,7 +370,7 @@ def _baseline_ids(baseline: Any) -> set[tuple[str, str]]:
 def _dead_code_baseline_counts(payload: Any) -> dict[str, int]:
     """Per-classification counts from a frozen snapshot or a raw checker report.
 
-    Accepts either the compact ``docs/refactoring/reports/dead_code_baseline.json``
+    Accepts either the compact ``scripts/quality/baselines/dead_code_baseline.json``
     snapshot (a ``by_classification`` mapping) or, for robustness, a raw
     ``check_dead_code --format json`` report (whose ``summary`` carries the same
     per-classification counts).

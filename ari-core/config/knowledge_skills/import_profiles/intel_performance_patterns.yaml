@@ -1,0 +1,34 @@
+schema_version: 1
+id: intel.performance-patterns
+version: 0.1.0+git.e9d0b641
+title: Intel Performance Patterns
+description: Detect and correct reviewed x86 C/C++ CPU performance anti-patterns while preserving functional behavior.
+license: {body: MIT, references: MIT}
+applies_to:
+  roles: [generator]
+  phases: [bfts]
+  task_tags: [c, cpp, cpu-performance, simd, x86]
+requires:
+  capabilities:
+    - {ref: ari.code.inspect/v1, required: true}
+optional_capabilities:
+  - {ref: ari.code.edit/v1, required: false}
+  - {ref: ari.execution.benchmark/v1, required: false}
+  - {ref: ari.execution.compile/v1, required: false}
+  - {ref: ari.profiling.hardware-counters/v1, required: false}
+evaluation_obligations:
+  - {property_id: memory-safety, required_methods: [sanitizer]}
+  - {property_id: numerical-equivalence, required_methods: [differential-testing]}
+  - {property_id: performance-regression, required_methods: [benchmark-comparison]}
+  - {property_id: reproducibility, required_methods: [repeated-execution]}
+authority_ceiling:
+  side_effects: [read-only, workspace-write]
+forbidden_capabilities: [ari.publish.external/v1, ari.registry.write/v1]
+dependencies: []
+conflicts: []
+composition: {slot: domain-method, priority: 80, exclusive: false}
+body_normalization: ari-wrapper-v1
+curation_notes:
+  - Apply x86- and ISA-specific advice only after the admitted environment confirms the required CPU features.
+  - Treat bundled C examples and executable benchmark scripts as authority-none attachments; never compile or run them merely because the upstream body names them.
+  - Preserve functional semantics and require independent correctness evidence before accepting a performance change.

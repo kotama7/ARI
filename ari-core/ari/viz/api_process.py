@@ -63,9 +63,19 @@ def _api_gpu_monitor_action(body: bytes) -> dict:
     ``start`` requires ``confirmed`` (else returns a needs_confirm warning);
     when not already running it launches the monitor script detached and stores
     the handle in ``_st._gpu_monitor_proc``. ``stop`` terminates it.
+
+    MN-6 (gui_refresh task 09 Wave 5a, RR-P0-6/RR-P0-9): ``stop``
+    additionally requires a server-issued confirmation challenge
+    (``challenge_id`` bound to ``gpu-monitor-stop`` + target ``"*"``)
+    unless ``ARI_GUI_CHALLENGES=0``; refusals are 428 via ``_status``.
     """
     data_g = json.loads(body or b'{}')
     action_g = data_g.get("action", "")
+    if action_g == "stop":
+        from .v1.challenges import require_challenge
+        refusal = require_challenge("gpu-monitor-stop", "*", data_g)
+        if refusal is not None:
+            return refusal
     if action_g == "start":
         if not data_g.get("confirmed"):
             return {"ok": False, "needs_confirm": True,
@@ -88,14 +98,28 @@ def _api_gpu_monitor_action(body: bytes) -> dict:
         return {"ok": False, "msg": "unknown action"}
 
 
-def _api_stop() -> dict:
+def _api_stop(body: bytes = b"") -> dict:
     """POST /api/stop — stop all experiment processes.
 
     Escalates SIGTERM -> SIGKILL on the main experiment (via ``_last_proc`` or
     the checkpoint ``.ari_pid`` fallback), stops the GPU monitor, runs a pkill
     safety net, verifies survivors, and removes the stale PID file. Returns a
     detailed report dict.
+
+    MN-6 (gui_refresh task 09 Wave 5a, RR-P0-6/RR-P0-9): requires a
+    server-issued confirmation challenge (``challenge_id`` bound to
+    ``stop-all`` + target ``"*"``) unless ``ARI_GUI_CHALLENGES=0``;
+    refusals are 428 via ``_status`` and touch no process.
     """
+    try:
+        data = json.loads(body or b"{}")
+    except ValueError:
+        data = {}
+    from .v1.challenges import require_challenge
+    refusal = require_challenge("stop-all", "*", data if isinstance(data, dict) else {})
+    if refusal is not None:
+        return refusal
+
     report = {"main": "none", "gpu_monitor": "none", "pkill": []}
 
     # --- 1. Main experiment process ---

@@ -14,8 +14,11 @@ import manifest as M
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
-def _leaf(text: str, cat: str = "Code Development",
-          quote: str = "the mask network outputs 0 for critical steps") -> dict:
+def _leaf(
+    text: str,
+    cat: str = "Code Development",
+    quote: str = "The MaskNetwork class outputs 0 for inputs identified as critical states",
+) -> dict:
     return {
         "id": str(uuid.uuid4()),
         "requirements": text,
@@ -27,14 +30,21 @@ def _leaf(text: str, cat: str = "Code Development",
     }
 
 
-def _envelope_partial(leaves: int = 60) -> dict:
+def _envelope_partial(
+    leaves: int = 60,
+    *,
+    quote: str = "The MaskNetwork class outputs 0 for inputs identified as critical states",
+) -> dict:
     children = []
     for i in range(leaves):
         cat = ["Code Development", "Code Execution", "Result Analysis"][i % 3]
-        children.append(_leaf(
-            text=f"Leaf #{i}: a definite verifiable claim about implementation step {i}.",
-            cat=cat,
-        ))
+        children.append(
+            _leaf(
+                text=f"Leaf #{i}: a definite verifiable claim about implementation step {i}.",
+                cat=cat,
+                quote=quote,
+            )
+        )
     return {
         "reproduce_contract": {
             "script_path": "reproduce.sh",
@@ -66,17 +76,17 @@ def test_compute_target_leaf_count_capped_min():
 
 
 def test_extract_json_object_handles_fences():
-    raw = "```json\n{\"a\": 1}\n```"
+    raw = '```json\n{"a": 1}\n```'
     assert G._extract_json_object(raw) == {"a": 1}
 
 
 def test_extract_json_object_handles_thinking_tags():
-    raw = "<think>reasoning</think>\n{\"a\": 2}"
+    raw = '<think>reasoning</think>\n{"a": 2}'
     assert G._extract_json_object(raw) == {"a": 2}
 
 
 def test_extract_json_object_extracts_outermost_braces():
-    raw = "Some preamble text {\"x\": {\"y\": 3}} trailing"
+    raw = 'Some preamble text {"x": {"y": 3}} trailing'
     assert G._extract_json_object(raw) == {"x": {"y": 3}}
 
 
@@ -117,13 +127,20 @@ def test_ensure_uuid_replaces_invalid():
 def test_collapse_single_leaf_child_merges_into_parent_as_leaf():
     """Parent + single leaf child → one merged leaf carrying both texts."""
     n = {
-        "id": "p", "weight": 2, "requirements": "Parent claim",
-        "sub_tasks": [{
-            "id": "c", "weight": 1, "requirements": "Logged",
-            "sub_tasks": [], "task_category": "Code Execution",
-            "finegrained_task_category": "Method Implementation",
-            "rationale_from_paper": {"section": "§2", "quote": "x"},
-        }],
+        "id": "p",
+        "weight": 2,
+        "requirements": "Parent claim",
+        "sub_tasks": [
+            {
+                "id": "c",
+                "weight": 1,
+                "requirements": "Logged",
+                "sub_tasks": [],
+                "task_category": "Code Execution",
+                "finegrained_task_category": "Method Implementation",
+                "rationale_from_paper": {"section": "§2", "quote": "x"},
+            }
+        ],
     }
     G._collapse_single_child_chains(n)
     assert n["id"] == "p", "parent id retained"
@@ -144,18 +161,34 @@ def test_collapse_single_child_with_grandchildren_strips_leaf_fields():
     category').
     """
     n = {
-        "id": "p", "weight": 2, "requirements": "Parent",
-        "sub_tasks": [{
-            "id": "c", "weight": 1, "requirements": "Middle",
-            # The child carries leaf fields it shouldn't (e.g. LLM mistake).
-            "task_category": "Code Development",
-            "finegrained_task_category": "Method Implementation",
-            "rationale_from_paper": {"section": "§3", "quote": "y"},
-            "sub_tasks": [
-                {"id": "g1", "weight": 1, "requirements": "leaf 1", "sub_tasks": []},
-                {"id": "g2", "weight": 1, "requirements": "leaf 2", "sub_tasks": []},
-            ],
-        }],
+        "id": "p",
+        "weight": 2,
+        "requirements": "Parent",
+        "sub_tasks": [
+            {
+                "id": "c",
+                "weight": 1,
+                "requirements": "Middle",
+                # The child carries leaf fields it shouldn't (e.g. LLM mistake).
+                "task_category": "Code Development",
+                "finegrained_task_category": "Method Implementation",
+                "rationale_from_paper": {"section": "§3", "quote": "y"},
+                "sub_tasks": [
+                    {
+                        "id": "g1",
+                        "weight": 1,
+                        "requirements": "leaf 1",
+                        "sub_tasks": [],
+                    },
+                    {
+                        "id": "g2",
+                        "weight": 1,
+                        "requirements": "leaf 2",
+                        "sub_tasks": [],
+                    },
+                ],
+            }
+        ],
     }
     G._collapse_single_child_chains(n)
     assert n["id"] == "p"
@@ -169,7 +202,9 @@ def test_collapse_single_child_with_grandchildren_strips_leaf_fields():
 
 def test_collapse_two_child_node_unchanged():
     n = {
-        "id": "p", "weight": 2, "requirements": "Parent",
+        "id": "p",
+        "weight": 2,
+        "requirements": "Parent",
         "sub_tasks": [
             {"id": "c1", "weight": 1, "requirements": "A", "sub_tasks": []},
             {"id": "c2", "weight": 1, "requirements": "B", "sub_tasks": []},
@@ -183,17 +218,32 @@ def test_collapse_two_child_node_unchanged():
 def test_collapse_deep_chain_fully_flattens():
     """4-deep single-child chain collapses to a single leaf."""
     n = {
-        "id": "a", "weight": 1, "requirements": "A",
-        "sub_tasks": [{
-            "id": "b", "weight": 1, "requirements": "B",
-            "sub_tasks": [{
-                "id": "c", "weight": 1, "requirements": "C",
-                "sub_tasks": [{
-                    "id": "d", "weight": 1, "requirements": "D",
-                    "sub_tasks": [], "task_category": "Code Execution",
-                }],
-            }],
-        }],
+        "id": "a",
+        "weight": 1,
+        "requirements": "A",
+        "sub_tasks": [
+            {
+                "id": "b",
+                "weight": 1,
+                "requirements": "B",
+                "sub_tasks": [
+                    {
+                        "id": "c",
+                        "weight": 1,
+                        "requirements": "C",
+                        "sub_tasks": [
+                            {
+                                "id": "d",
+                                "weight": 1,
+                                "requirements": "D",
+                                "sub_tasks": [],
+                                "task_category": "Code Execution",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
     }
     G._collapse_single_child_chains(n)
     assert n["id"] == "a"
@@ -208,7 +258,9 @@ def test_collapse_deep_chain_fully_flattens():
 def test_strip_removes_leaf_fields_from_non_leaf():
     """LLM sometimes attaches task_category to internal nodes — grader rejects."""
     n = {
-        "id": "p", "weight": 1, "requirements": "Parent",
+        "id": "p",
+        "weight": 1,
+        "requirements": "Parent",
         "task_category": "Code Development",
         "finegrained_task_category": "Method Implementation",
         "rationale_from_paper": {"section": "§1", "quote": "z"},
@@ -225,14 +277,20 @@ def test_strip_removes_leaf_fields_from_non_leaf():
 
 def test_strip_preserves_leaf_fields_on_leaves():
     n = {
-        "id": "p", "weight": 1, "requirements": "Parent",
-        "sub_tasks": [{
-            "id": "c", "weight": 1, "requirements": "leaf",
-            "sub_tasks": [],
-            "task_category": "Code Development",
-            "finegrained_task_category": "Method Implementation",
-            "rationale_from_paper": {"section": "§1", "quote": "z"},
-        }],
+        "id": "p",
+        "weight": 1,
+        "requirements": "Parent",
+        "sub_tasks": [
+            {
+                "id": "c",
+                "weight": 1,
+                "requirements": "leaf",
+                "sub_tasks": [],
+                "task_category": "Code Development",
+                "finegrained_task_category": "Method Implementation",
+                "rationale_from_paper": {"section": "§1", "quote": "z"},
+            }
+        ],
     }
     stripped = G._strip_leaf_fields_from_non_leaves(n)
     assert stripped == 0
@@ -245,18 +303,34 @@ def test_strip_preserves_leaf_fields_on_leaves():
 def test_strip_recurses_through_tree():
     """Multiple non-leaves at different depths each get cleaned."""
     n = {
-        "id": "root", "weight": 1, "requirements": "R",
+        "id": "root",
+        "weight": 1,
+        "requirements": "R",
         "task_category": "Code Development",  # ← on root non-leaf
-        "sub_tasks": [{
-            "id": "mid", "weight": 1, "requirements": "M",
-            "finegrained_task_category": "Method Implementation",  # ← on mid non-leaf
-            "sub_tasks": [
-                {"id": "l1", "weight": 1, "requirements": "x", "sub_tasks": [],
-                 "task_category": "Code Execution"},
-                {"id": "l2", "weight": 1, "requirements": "y", "sub_tasks": [],
-                 "task_category": "Result Analysis"},
-            ],
-        }],
+        "sub_tasks": [
+            {
+                "id": "mid",
+                "weight": 1,
+                "requirements": "M",
+                "finegrained_task_category": "Method Implementation",  # ← on mid non-leaf
+                "sub_tasks": [
+                    {
+                        "id": "l1",
+                        "weight": 1,
+                        "requirements": "x",
+                        "sub_tasks": [],
+                        "task_category": "Code Execution",
+                    },
+                    {
+                        "id": "l2",
+                        "weight": 1,
+                        "requirements": "y",
+                        "sub_tasks": [],
+                        "task_category": "Result Analysis",
+                    },
+                ],
+            }
+        ],
     }
     stripped = G._strip_leaf_fields_from_non_leaves(n)
     assert stripped == 2, "one field on root + one on mid"
@@ -296,7 +370,10 @@ async def test_generate_rubric_round_trip(tmp_path):
 @pytest.mark.asyncio
 async def test_generate_rubric_retries_on_bad_json(tmp_path):
     paper_text = "tiny paper text " * 50
-    env = _envelope_partial(leaves=50)
+    parent = "Reproduce the tiny-paper experiment and its reported outputs."
+    skeleton = _skeleton_envelope([parent])
+    subtree = _envelope_partial(leaves=50, quote="tiny paper text")["rubric"]
+    subtree["requirements"] = parent
     out_path = tmp_path / "rubric.json"
 
     calls = {"n": 0}
@@ -307,7 +384,9 @@ async def test_generate_rubric_retries_on_bad_json(tmp_path):
             return "not JSON at all"
         if calls["n"] == 2:
             return "{ broken json"
-        return json.dumps(env)
+        if "SKELETON" in prompt:
+            return json.dumps(skeleton)
+        return json.dumps(subtree)
 
     res = await G.generate_rubric_async(
         paper_text=paper_text,
@@ -317,7 +396,7 @@ async def test_generate_rubric_retries_on_bad_json(tmp_path):
         llm_call=fake_llm,
     )
     assert "error" not in res, res
-    assert calls["n"] == 3
+    assert calls["n"] == 4
     assert res["leaves_count"] == 50
 
 
@@ -348,13 +427,17 @@ async def test_generate_rubric_clamps_invalid_finegrained(tmp_path):
     The generator must clamp them before write/freeze and surface what was changed.
     """
     out_path = tmp_path / "rubric.json"
-    env = _envelope_partial(leaves=50)
+    env = _envelope_partial(leaves=50, quote="paper paper")
     # Stomp three leaves with the two real failure modes + a novel string.
     env["rubric"]["sub_tasks"][0]["finegrained_task_category"] = "Result Visualization"
-    env["rubric"]["sub_tasks"][1]["finegrained_task_category"] = "Result Analysis Implementation"
+    env["rubric"]["sub_tasks"][1]["finegrained_task_category"] = (
+        "Result Analysis Implementation"
+    )
     env["rubric"]["sub_tasks"][2]["finegrained_task_category"] = "Quantum Foo Bar Baz"
     env["rubric"]["sub_tasks"][3]["task_category"] = "Result Analysis"
-    env["rubric"]["sub_tasks"][3]["finegrained_task_category"] = "results visualization"  # case-fix path
+    env["rubric"]["sub_tasks"][3]["finegrained_task_category"] = (
+        "results visualization"  # case-fix path
+    )
 
     async def fake_llm(prompt: str) -> str:
         return json.dumps(env)
@@ -395,11 +478,14 @@ async def test_generate_rubric_clamps_invalid_finegrained(tmp_path):
 @pytest.mark.asyncio
 async def test_generate_rubric_auto_target(tmp_path):
     paper_text = " ".join(["word"] * 5400)
-    env = _envelope_partial(leaves=72)
+    parent = "Reproduce the automatically sized experiment coverage."
+    skeleton = _skeleton_envelope([parent])
+    subtree = _envelope_partial(leaves=72, quote="word word word")["rubric"]
+    subtree["requirements"] = parent
     out_path = tmp_path / "rubric.json"
 
     async def fake_llm(prompt: str) -> str:
-        return json.dumps(env)
+        return json.dumps(skeleton if "SKELETON" in prompt else subtree)
 
     res = await G.generate_rubric_async(
         paper_text=paper_text,
@@ -416,13 +502,15 @@ def _skeleton_envelope(parent_reqs: list[str]) -> dict:
     """Skeleton-pass response: root + N direct children, each empty."""
     children = []
     for i, req in enumerate(parent_reqs):
-        children.append({
-            "id": str(uuid.uuid4()),
-            "requirements": req,
-            "weight": 2,
-            "target_subtree_leaves": 8,
-            "sub_tasks": [],
-        })
+        children.append(
+            {
+                "id": str(uuid.uuid4()),
+                "requirements": req,
+                "weight": 2,
+                "target_subtree_leaves": 8,
+                "sub_tasks": [],
+            }
+        )
     return {
         "version": "3",
         "reproduce_contract": {
@@ -447,6 +535,7 @@ def _subtree_node(parent_req: str, n_leaves: int = 4) -> dict:
     folded into their parent and would otherwise flatten this fixture.
     """
     half = max(1, n_leaves // 2)
+
     def _leaves(prefix: str, count: int) -> list[dict]:
         return [
             _leaf(
@@ -455,6 +544,7 @@ def _subtree_node(parent_req: str, n_leaves: int = 4) -> dict:
             )
             for i in range(count)
         ]
+
     internal_a = {
         "id": str(uuid.uuid4()),
         "requirements": f"Subgroup A under {parent_req[:30]}",
@@ -476,7 +566,7 @@ def _subtree_node(parent_req: str, n_leaves: int = 4) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_two_stage_generates_skeleton_then_subtrees(tmp_path):
+async def test_hierarchical_generation_builds_skeleton_then_subtrees(tmp_path):
     """Two-stage generation issues 1+N calls, merges subtrees, and the
     resulting rubric is deeper than what one call produced."""
     paper_text = (FIXTURES / "paper_simple.tex").read_text()
@@ -505,7 +595,6 @@ async def test_two_stage_generates_skeleton_then_subtrees(tmp_path):
         target_leaf_count=20,
         model="test/mock",
         llm_call=fake_llm,
-        two_stage=True,
     )
     assert "error" not in res, res
     # 1 skeleton + 2 subtree calls
@@ -516,17 +605,19 @@ async def test_two_stage_generates_skeleton_then_subtrees(tmp_path):
     assert res["leaves_count"] == 10
     written = json.loads(out_path.read_text())
     assert M.verify(written) is True
+
     # ``target_subtree_leaves`` is a generator-internal hint — must NOT
     # leak into the persisted envelope (not in the schema's allow-list).
     def _no_budget_leakage(n):
         assert "target_subtree_leaves" not in n
         for c in n.get("sub_tasks", []):
             _no_budget_leakage(c)
+
     _no_budget_leakage(written["rubric"])
 
 
 @pytest.mark.asyncio
-async def test_two_stage_drops_invalid_leaves_instead_of_failing(tmp_path):
+async def test_hierarchical_generation_drops_invalid_leaves(tmp_path):
     """If a subtree call returns a leaf with too-short quote (<10 chars),
     the prune pass should drop it and the rubric should still validate."""
     paper_text = (FIXTURES / "paper_simple.tex").read_text()
@@ -549,7 +640,6 @@ async def test_two_stage_drops_invalid_leaves_instead_of_failing(tmp_path):
         target_leaf_count=20,
         model="test/mock",
         llm_call=fake_llm,
-        two_stage=True,
     )
     assert "error" not in res, res
     # 4 leaves emitted, 2 were invalid → 2 should remain
@@ -565,7 +655,10 @@ async def test_generate_rubric_preserves_execution_profile(tmp_path):
     P1 acceptance criterion for HPC-aware rubrics (cf. PLAN_MPI_EXIT.md §5).
     """
     paper_text = "We ran TS-SpGEMM on 4 nodes with 8 MPI ranks per node. " * 80
-    env = _envelope_partial(leaves=20)
+    env = _envelope_partial(
+        leaves=20,
+        quote="We ran TS-SpGEMM on 4 nodes with 8 MPI ranks per node.",
+    )
     env["reproduce_contract"]["execution_profile"] = {
         "kind": "mpi_gpu",
         "paper_max_ranks": 32,
@@ -583,7 +676,7 @@ async def test_generate_rubric_preserves_execution_profile(tmp_path):
         "memory_gb_per_node": 256,
         "constraint": "skylake",
         "module_loads": ["cuda/12.4", "openmpi/4.1"],
-        "extra_sbatch_args": ["--account=projX"],
+        "account": "projX",
     }
     out_path = tmp_path / "rubric.json"
 
@@ -606,7 +699,7 @@ async def test_generate_rubric_preserves_execution_profile(tmp_path):
     assert prof["exclusive"] is True
     assert prof["gpu_type"] == "v100"
     assert prof["module_loads"] == ["cuda/12.4", "openmpi/4.1"]
-    assert prof["extra_sbatch_args"] == ["--account=projX"]
+    assert prof["account"] == "projX"
     # sha256 covers the full envelope including execution_profile.
     assert M.verify(written) is True
 
@@ -616,7 +709,7 @@ async def test_generate_rubric_without_execution_profile_unchanged(tmp_path):
     """Backward compat: legacy single-node paper rubric without
     execution_profile still generates + validates."""
     paper_text = "A small CPU-only paper. " * 80
-    env = _envelope_partial(leaves=15)
+    env = _envelope_partial(leaves=15, quote="A small CPU-only paper.")
     assert "execution_profile" not in env["reproduce_contract"]
     out_path = tmp_path / "rubric.json"
 
@@ -648,33 +741,58 @@ def test_skeleton_prompt_includes_execution_profile_guidance():
     assert "module_loads" in rendered
 
 
-def test_single_call_prompt_also_includes_execution_profile_guidance():
-    """The single-call ``adversarial_reviewer.md`` template (used when
-    `two_stage=False`) must carry the same execution_profile guidance.
-    Without it, users who opt into single-call mode silently lose the
-    HPC pathway — discovered during the v0.7.2 real-LLM smoke against
-    sc24-00052, which returned ``execution_profile: null`` when
-    `two_stage=False` despite the paper being MPI."""
-    rendered = G._render_prompt(paper_text="X" * 100, target_leaves=50)
-    assert "execution_profile" in rendered
-    assert "kind" in rendered
-    assert "mpi" in rendered
-    assert "gpu_single" in rendered
-    assert "module_loads" in rendered
-    assert "OMIT" in rendered  # explicit instruction for non-HPC papers
-
-
 def test_prompt_includes_expected_artifacts_discipline():
     """A2: rubric prompt must explicitly tell the LLM how to populate
     expected_artifacts — over-specifying it (especially with figure paths
     the experiment program doesn't emit) tanks reproducibility scoring."""
-    rendered = G._render_prompt(paper_text="X" * 100, target_leaves=50)
-    # The dedicated section must appear.
-    assert "EXPECTED_ARTIFACTS DISCIPLINE" in rendered
+    rendered = G._render_skeleton_prompt(paper_text="X" * 100, target_leaves=50)
+    assert "expected_artifacts" in rendered
     # Concrete rules the LLM must follow.
-    assert "post-hoc plotting" in rendered
-    assert "results.csv" in rendered
-    assert "fig_1.pdf" in rendered
-    # The final schema block should reference the new "RULES above" hint
-    # rather than the old "<relative paths produced by reproduce.sh>".
-    assert "see RULES above" in rendered
+    assert "List ONLY files the experiment program actually emits" in rendered
+    assert "CSVs, JSONs" in rendered
+    assert "paper figures" in rendered
+    assert "Keep short (1–4 entries)" in rendered
+
+
+class TestProviderProvenance:
+    """`_provider` names who served the model, for the provenance record.
+
+    It used to read the prefix and nothing else, so an id that routes bare --
+    which is how OpenAI and Anthropic ids route -- recorded `unknown`. That
+    covered the shipped defaults for the replicator, the audit and the judge,
+    so a default run produced rubrics whose provenance could not say what
+    generated them.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_explicit_override(self, monkeypatch):
+        monkeypatch.delenv("ARI_MODEL_RUBRIC_GEN_PROVIDER", raising=False)
+
+    @pytest.mark.parametrize(
+        "model, expected",
+        [
+            # The three shipped ORS defaults. Each recorded "unknown" before.
+            ("claude-opus-4-7", "anthropic"),
+            ("gpt-4o-2024-11-20", "openai"),
+            ("gemini/gemini-2.5-pro", "gemini"),
+            ("o3", "openai"),
+            ("ollama_chat/qwen3:8b", "ollama_chat"),
+        ],
+    )
+    def test_routable_models_record_the_provider_that_serves_them(
+        self, model, expected
+    ):
+        assert G._provider(model) == expected
+
+    def test_unplaceable_model_still_degrades_to_unknown(self):
+        """An id nothing can place must not fail the run -- the record is an
+        annotation on the artifact, not a precondition for producing it."""
+        assert G._provider("totally-made-up-model-xyz") == "unknown"
+
+    def test_prefixed_private_model_falls_back_to_its_prefix(self):
+        """A gateway id litellm does not know still carries its own provider."""
+        assert G._provider("my-gateway/some-model") == "my-gateway"
+
+    def test_explicit_override_still_wins(self, monkeypatch):
+        monkeypatch.setenv("ARI_MODEL_RUBRIC_GEN_PROVIDER", "internal-proxy")
+        assert G._provider("gpt-4o") == "internal-proxy"

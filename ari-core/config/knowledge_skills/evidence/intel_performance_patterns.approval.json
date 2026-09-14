@@ -1,0 +1,18 @@
+{
+  "actor_id": "kotama7 <kotamatakanori2@gmail.com>",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:4317b7e6fd3c41874733cf5ce442c1fda58d8915d6c69a6d46165e268927e89a",
+  "approved_date": "2026-08-07",
+  "authorization_basis": "Reviewed the measured clean task: an independently authored accumulator task passed exact differential checks, sanitizer checks, and four alternating warm replays above the 1.05x gate. Reviewed the stored capability-abstraction report. All sixteen registration gates pass.",
+  "from_status": "candidate",
+  "registration_evidence_digest": "sha256:7fc561e9a63005e1b18b6b5ade7cd0ca69187c74be956baaef3c00e0c0edba0b",
+  "registration_report_digest": null,
+  "schema_version": "ari.knowledge-skill-promotion-approval/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:6d435fbbb0b1a1c229b373974d12cc6d998c21a03a9606b735de40e97ea841cd",
+    "id": "intel.performance-patterns",
+    "manifest_sha256": "sha256:a37ccd515c6eec8f81ded65d47dd155e1c5c2b5300597a484999849f74342d46",
+    "version": "0.1.0+git.e9d0b641"
+  },
+  "to_status": "verified"
+}

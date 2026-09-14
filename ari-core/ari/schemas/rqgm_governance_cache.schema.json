@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/rqgm_governance_cache.schema.json",
+  "title": "ARI-RQGM governance result cache record",
+  "description": "One line of the append-only {ckpt}/rqgm_governance_cache.jsonl (docs/reference/rqgm_schemas.md, \"Governance-cache schema (Task 12)\"; docs/reference/file_formats.md, \"rqgm_governance_cache.jsonl (RQGM Task 12)\" for the replay lookup rule; owned by Task 12). cache_key = sha256(artifact_hash \\x1f prompt_hash \\x1f role \\x1f epoch_id \\x1f input_context_hash \\x1f output_schema_hash)[:16]; created_at is provenance only and NEVER part of the key (P2 — no wall-clock inputs). Entries are never invalidated in place: a retired prompt's entries simply stop being addressable because its prompt_hash never recurs in a lookup (invariant 13). Replay lookup rule: replaying case c against prompt p computes the key with epoch_id = c.origin_epoch_id and prompt_hash = p.hash. Additive-only evolution.",
+  "type": "object",
+  "required": ["schema_version", "cache_key", "role", "epoch_id", "prompt_hash"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "cache_key": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+    "role": {"type": "string"},
+    "epoch_id": {"type": "string"},
+    "prompt_hash": {"type": "string"},
+    "artifact_hash": {"type": "string"},
+    "input_context_hash": {"type": "string"},
+    "output_schema_hash": {"type": "string"},
+    "result_ref": {"type": "string"},
+    "score": {"type": "number"},
+    "created_at": {"type": "string"}
+  }
+}

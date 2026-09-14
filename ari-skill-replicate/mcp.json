@@ -1,11 +1,15 @@
 {
-  "name": "ari-skill-replicate",
-  "version": "0.1.0",
-  "description": "Auto-generates and audits PaperBench-compatible reproducibility rubrics from papers.",
-  "tools": [
-    "generate_rubric",
-    "audit_rubric"
-  ],
+  "description": "Generate and audit PaperBench-compatible reproducibility rubrics.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "replicate-skill",
+  "package": "ari-skill-replicate",
   "runtime": "python",
-  "entrypoint": "src/server.py"
+  "schema_version": 1,
+  "tools": [
+    "audit_rubric",
+    "generate_rubric",
+    "suggest_target_leaf_count"
+  ],
+  "version": "0.4.0"
 }

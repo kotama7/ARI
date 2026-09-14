@@ -31,6 +31,7 @@ def test_react_truncate(tmp_path, monkeypatch):
     monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
     monkeypatch.setenv("ARI_MEMORY_BACKEND", "in_memory")
     monkeypatch.setenv("ARI_REACT_MEMORY_MAX_ENTRY_CHARS", "10")
+    (tmp_path / ".ari-test-memory-backend").write_text("test-only\n")
     b = get_backend(checkpoint_dir=tmp_path)
     b.react_add("a" * 100)
     out = b.react_get_all()

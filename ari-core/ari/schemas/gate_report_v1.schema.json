@@ -1,0 +1,265 @@
+{
+  "$defs": {
+    "GateFindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_path": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact Path"
+        },
+        "claim_id": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Claim Id"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "numeric_id": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Numeric Id"
+        },
+        "schema_version": {
+          "const": "ari.gate-finding/v1",
+          "default": "ari.gate-finding/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "blocking",
+            "advisory"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "severity",
+        "type",
+        "message"
+      ],
+      "title": "GateFindingV1",
+      "type": "object"
+    },
+    "GateFormulaProvenanceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "formulas_used": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Formulas Used",
+          "type": "array"
+        },
+        "metric_contract_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric Contract Digest"
+        },
+        "registry_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Registry Digest",
+          "type": "string"
+        },
+        "unit_conversions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Unit Conversions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "registry_digest"
+      ],
+      "title": "GateFormulaProvenanceV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/gate-report-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Deterministic hard-gate result with typed finding separation.",
+  "properties": {
+    "advisory_findings": {
+      "items": {
+        "$ref": "#/$defs/GateFindingV1"
+      },
+      "title": "Advisory Findings",
+      "type": "array"
+    },
+    "blocking_findings": {
+      "items": {
+        "$ref": "#/$defs/GateFindingV1"
+      },
+      "title": "Blocking Findings",
+      "type": "array"
+    },
+    "comparison_scope": {
+      "enum": [
+        "any",
+        "same_environment"
+      ],
+      "title": "Comparison Scope",
+      "type": "string"
+    },
+    "evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Digest",
+      "type": "string"
+    },
+    "formula_provenance": {
+      "$ref": "#/$defs/GateFormulaProvenanceV1"
+    },
+    "gate": {
+      "const": "claim_evidence_hard_gate",
+      "default": "claim_evidence_hard_gate",
+      "title": "Gate",
+      "type": "string"
+    },
+    "metrics": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      },
+      "title": "Metrics",
+      "type": "object"
+    },
+    "phase": {
+      "enum": [
+        "draft",
+        "final"
+      ],
+      "title": "Phase",
+      "type": "string"
+    },
+    "policy_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Digest",
+      "type": "string"
+    },
+    "policy_mode": {
+      "enum": [
+        "off",
+        "warn",
+        "strict"
+      ],
+      "title": "Policy Mode",
+      "type": "string"
+    },
+    "report_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.gate-report/v1",
+      "default": "ari.gate-report/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "should_block": {
+      "title": "Should Block",
+      "type": "boolean"
+    },
+    "source_run_id": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Source Run Id",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "warn",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "report_digest",
+    "source_run_id",
+    "phase",
+    "policy_mode",
+    "comparison_scope",
+    "status",
+    "should_block",
+    "policy_digest",
+    "evidence_digest",
+    "formula_provenance",
+    "metrics"
+  ],
+  "title": "ARI Gate Report v1",
+  "type": "object"
+}

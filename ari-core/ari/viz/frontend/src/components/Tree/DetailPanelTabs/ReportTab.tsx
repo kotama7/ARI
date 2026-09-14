@@ -22,14 +22,6 @@ export function ReportTab({ reportLoading, reportError, reportData }: ReportTabP
       {reportError && <ErrorState message={reportError} inline />}
       {reportData && (
         <div>
-          {reportData.delta_vs_parent && (
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
-                {t('report_delta_vs_parent')}
-              </div>
-              <div>{reportData.delta_vs_parent}</div>
-            </div>
-          )}
           {reportData.self_assessment?.headline && (
             <div style={{ marginBottom: 8 }}>
               <div style={{ color: 'var(--muted)', marginBottom: 2 }}>
@@ -67,24 +59,29 @@ export function ReportTab({ reportLoading, reportError, reportData }: ReportTabP
               {t('report_files_changed')}
             </div>
             <div style={{ fontSize: '.72rem' }}>
-              {reportData.files_changed.added.length > 0 && (
-                <div>
-                  <span style={{ color: '#10b981' }}>+ added:</span>{' '}
-                  {reportData.files_changed.added.map((e) => e.path).join(', ')}
-                </div>
-              )}
-              {reportData.files_changed.modified.length > 0 && (
-                <div>
-                  <span style={{ color: '#3b82f6' }}>~ modified:</span>{' '}
-                  {reportData.files_changed.modified.map((e) => e.path).join(', ')}
-                </div>
-              )}
-              {reportData.files_changed.deleted.length > 0 && (
-                <div>
-                  <span style={{ color: '#ef4444' }}>− deleted:</span>{' '}
-                  {reportData.files_changed.deleted.join(', ')}
-                </div>
-              )}
+              {([
+                { key: 'added', color: '#10b981', label: '+ added' },
+                { key: 'modified', color: '#3b82f6', label: '~ modified' },
+                { key: 'deleted', color: '#ef4444', label: '− deleted' },
+              ] as const).map(({ key, color, label }) => {
+                const entries = reportData.files_changed[key];
+                if (!entries || entries.length === 0) return null;
+                return (
+                  <div key={key} style={{ marginBottom: 3 }}>
+                    <span style={{ color }}>{label}:</span>
+                    <ul style={{ margin: '1px 0 0 14px', padding: 0, listStyle: 'none' }}>
+                      {entries.map((e) => (
+                        <li key={e.path}>
+                          <code>{e.path}</code>
+                          {e.note ? (
+                            <span style={{ color: 'var(--muted)' }}> — {e.note}</span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
               {reportData.files_changed.added.length === 0 &&
                 reportData.files_changed.modified.length === 0 &&
                 reportData.files_changed.deleted.length === 0 && (
@@ -111,11 +108,6 @@ export function ReportTab({ reportLoading, reportError, reportData }: ReportTabP
                 {reportData.build_command ? reportData.build_command + '\n' : ''}
                 {reportData.run_command || ''}
               </pre>
-            </div>
-          )}
-          {reportData.migration_source === 'auto' && (
-            <div style={{ color: '#f59e0b', fontSize: '.7rem' }}>
-              ⚠ {t('report_migrated_auto')}
             </div>
           )}
         </div>

@@ -271,10 +271,9 @@ pdftoppm -png -r 100 -f <first> -l <last> en/main.pdf /tmp/pg
 
 The appendix runs single column (`\clearpage\onecolumn` before
 `\appendix`, `\clearpage\twocolumn` before `\printbibliography`) so the
-listings wrap at full page width. The `\clearpage` around `\onecolumn`
-is required: a bare `\onecolumn` after `\appendix` is silently ignored
-under xelatex/ctex (the zh build), leaving the appendix two-column and
-the listings overflowing.
+listings wrap at full page width. Keep the explicit `\clearpage` around
+the column switch: it makes the transition reliable across engines and
+prevents the prompt appendix from remaining two-column.
 
 ## 8. What NOT to do
 

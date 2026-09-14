@@ -75,17 +75,17 @@ def _format_parent_report_block(node: Node) -> str:
     sa = rep.get("self_assessment") or {}
     concerns = sa.get("concerns") or []
     hints = rep.get("next_steps_hints") or []
-    delta = (rep.get("delta_vs_parent") or "").strip()
     fc = rep.get("files_changed") or {}
     added = [e.get("path") for e in (fc.get("added") or [])][: _BUDGET.list_top_n]
     modified = [e.get("path") for e in (fc.get("modified") or [])][: _BUDGET.list_top_n]
+    deleted = [e.get("path") for e in (fc.get("deleted") or [])][: _BUDGET.list_top_n]
     parts = ["\nParent node_report (structured self-report):"]
-    if delta:
-        parts.append(f"  delta_vs_parent: {delta[: _BUDGET.parent_delta_chars]}")
     if added:
         parts.append(f"  files added: {added}")
     if modified:
         parts.append(f"  files modified: {modified}")
+    if deleted:
+        parts.append(f"  files deleted: {deleted}")
     if concerns:
         parts.append("  concerns flagged by evaluator:")
         for c in concerns[: _BUDGET.list_top_n]:
@@ -290,8 +290,21 @@ class BFTS:
           ``my_count * 2 <= max_count``).
         - 0.0 otherwise.
 
-        This is intentionally soft: scientific_score still dominates ranking.
+        This is intentionally soft: the deterministic ranking score still
+        dominates ranking.
+
+        SITE 3/3 of the label feature (see ``ari.agent.loop.labels_disabled``). This
+        is the site nobody expects: the default frontier score is
+        ``scientific_plus_diversity``, so WHICH node gets expanded depends on the
+        label history. A study that believed it had "turned labels off" (by a
+        record-suppression flag, since removed) was still having its search steered
+        here. With ``ARI_BFTS_NO_LABEL`` the feature is off, so selection must not
+        consult labels at all: return 0.0 and let ``_scientific_score`` alone rank
+        the frontier.
         """
+        from ari.agent.loop import labels_disabled as _labels_off
+        if _labels_off():
+            return 0.0
         with self._lock:
             history_snapshot = list(self._recent_label_history)
         if not history_snapshot:
@@ -314,7 +327,8 @@ class BFTS:
         """Score a candidate node for the deterministic selector fallback.
 
         Strategy is controlled by ``BFTSConfig.frontier_score``:
-          - ``scientific_only``: raw ``_scientific_score`` only.
+          - ``scientific_only``: raw ``_scientific_score`` only. For speedup
+            tasks this is the native valid geomean speedup, not a [0,1] score.
           - ``scientific_plus_diversity`` (default): adds the diversity
             bonus so chronic-label nodes lose ties.
           - ``depth_penalized``: subtracts ``depth_penalty_lambda * depth``
@@ -434,6 +448,15 @@ class BFTS:
         if len(candidates) == 1:
             return candidates[0]
 
+        # G9a (handoff study): controlled deterministic selection. Bypass the
+        # stochastic LLM selector and rank by the deterministic frontier scorer
+        # so the handoff arm is the only varying factor (PREREG §7.1). Requires a
+        # populated metrics["_scientific_score"] (deterministic evaluator, B2).
+        # In the HPC handoff study this is the native geomean speedup so BFTS
+        # keeps ordering high-performing nodes instead of clipping at a target.
+        if getattr(self.config, "deterministic_selector", False):
+            return self._select_fallback(candidates)
+
         memories = memory.search(experiment_goal, limit=5)
         memory_context = (
             json.dumps(memories, ensure_ascii=False) if memories else "No relevant memories."
@@ -489,6 +512,15 @@ class BFTS:
           depth limit (B-2).
         - ``metrics['_sterile'] is True`` retires nodes flagged sterile by
           the file-diff gate in the run loop (B-4).
+        - ``metrics['_valid_for_frontier'] is False`` retires nodes excluded
+          by RQGM selective erasure (docs/concepts/rqgm_architecture.md,
+          "Key invariants" — selective erasure is logical-only). The key is
+          only ever written by RQGM machinery (the FrontierRepairEngine on
+          the exploration tree; the paper-archive runtime on draft nodes), so
+          this clause is inert dead code under ``simple_bfts`` (the
+          ``_sterile`` pattern) — and deliberately read unconditionally, so a
+          node erased under ``ari_rqgm`` stays excluded after a mode switch
+          back (contamination does not become clean by switching modes).
         """
         cfg = self.config
         if current_total >= cfg.max_total_nodes:
@@ -497,6 +529,8 @@ class BFTS:
             return True
         metrics = node.metrics or {}
         if metrics.get("_sterile") is True:
+            return True
+        if metrics.get("_valid_for_frontier", True) is False:
             return True
         return False
 
@@ -516,6 +550,11 @@ class BFTS:
             raise ValueError("No frontier nodes to select from")
         if len(frontier) == 1:
             return frontier[0]
+
+        # G9a (handoff study): deterministic expansion selection (see
+        # select_next_node) — skip the LLM, rank by the frontier scorer.
+        if getattr(self.config, "deterministic_selector", False):
+            return self._select_fallback(frontier)
 
         candidate_descriptions = build_expand_select_candidate_descriptions(frontier)
 
@@ -579,13 +618,36 @@ class BFTS:
           - Tree diversity metrics (unique labels seen so far, depth distribution)
           - Already-spawned children of this parent (to avoid duplication)
         """
-        # ── Parent's node_report (delta_vs_parent / concerns / hints) ──
+        # ── Parent's node_report (file changes / concerns / hints) ──
         # Best-effort: when present, this enriches the prompt with the
         # parent's structured self-assessment so the planner can target
         # specific weaknesses or follow up on concrete next-step hints.
         # This read + the sibling-report read are the two filesystem inputs;
         # they stay in BFTS and are handed to the (pure) context builder.
-        parent_report_block = _format_parent_report_block(node)
+        # Study control (handoff ablation): HandoffConfig.inject_planner_block.
+        # Every handoff mode resolves it to False (ari/config/__init__.py) because
+        # the arm's own channel must be the ONLY inheritance path — but nothing
+        # consulted it, so this block was injected in EVERY arm. That handed even
+        # code_only children the parent's structured self-report through the
+        # planner prompt, i.e. an un-ablated summary channel shared by all arms,
+        # which pushes the between-arm difference the study measures toward zero.
+        # `ARI_HANDOFF_PLANNER_BLOCK` (default on: normal ARI behaviour is
+        # unchanged; the study's mode resolution turns it off).
+        import os as _os_pb
+        _pb_env = _os_pb.environ.get("ARI_HANDOFF_PLANNER_BLOCK", "").strip().lower()
+        if _pb_env:
+            _pb_on = _pb_env not in ("0", "false", "no", "off")
+        else:
+            # No env override: obey HandoffConfig.inject_planner_block, which every
+            # handoff mode resolves to False. Reading only the env left that field
+            # dead — the exact defect this gate was added to fix — so a study run
+            # that forgot the env var would silently restore the block in EVERY arm.
+            _ho_pb = getattr(getattr(self, "handoff", None), "inject_planner_block", None)
+            if _ho_pb is None:
+                _ho_pb = getattr(getattr(self.config, "handoff", None),
+                                 "inject_planner_block", True)
+            _pb_on = bool(_ho_pb)
+        parent_report_block = _format_parent_report_block(node) if _pb_on else ""
         sibling_reports = self._load_sibling_node_reports(existing_children or [])
 
         # Subtask 011 §7-A: pure context serialization lives in the builder.
@@ -604,13 +666,18 @@ class BFTS:
         )
 
         # Phase PC5: see ``ari/prompts/orchestrator/bfts_expand.md``.
+        # RQGM Task 07 §7: the key is config-swappable like the two selector
+        # prompts; the default preserves the previous hardcoded literal.
         from ari.prompts import FilesystemPromptLoader as _PL_be
         from ari.prompts import record_prompt_use as _record_prompt_use
-        _exp_text, _exp_hash = _PL_be().load_versioned("orchestrator/bfts_expand")
+        _expand_key = getattr(
+            self.config, "expand_prompt", "orchestrator/bfts_expand"
+        )
+        _exp_text, _exp_hash = _PL_be().load_versioned(_expand_key)
         prompt = _exp_text.format(**_ctx)
         # Subtask 044: prompt provenance (byte-identical rendered output).
         _record_prompt_use(
-            "orchestrator/bfts_expand", _exp_hash, rendered_text=prompt,
+            _expand_key, _exp_hash, rendered_text=prompt,
             model=getattr(getattr(self.llm, "config", None), "model", "") or "",
             node_id=node.id, phase="bfts",
         )
@@ -640,6 +707,29 @@ class BFTS:
                 # I-6: regex-based fallback with word boundaries.
                 label = _infer_label_from_text(str(item), node.has_real_data)
                 direction_text = str(item)
+
+            # Study control (handoff ablation): derive the node label DETERMINISTICALLY
+            # from the direction (keyword inference) and DROP any LLM-proposed label, so
+            # no LLM-proposed label enters node_report / tree.json. The direction itself
+            # is unchanged. `ARI_BFTS_DETERMINISTIC_LABEL`.
+            import os as _os_dl
+            if _os_dl.environ.get("ARI_BFTS_DETERMINISTIC_LABEL", "").strip().lower() in (
+                "1", "true", "yes", "on",
+            ):
+                label = _infer_label_from_text(str(direction_text), node.has_real_data)
+                raw_label_text = ""
+
+            # Study control (handoff ablation): give EVERY child the same neutral
+            # direction so the planner's varied labels (improve / ablate / draft)
+            # cannot confound a between-arm comparison of the inheritance channel.
+            # Off by default. `ARI_BFTS_UNIFORM_DIRECTION`.
+            import os as _os_ud
+            if _os_ud.environ.get("ARI_BFTS_UNIFORM_DIRECTION", "").strip().lower() in (
+                "1", "true", "yes", "on",
+            ):
+                direction_text = "Improve the inherited solution to achieve a better task score."
+                raw_label_text = "improve"
+                label = NodeLabel.from_str("improve")
 
             child = Node(
                 id=child_id,

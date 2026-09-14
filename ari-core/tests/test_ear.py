@@ -32,7 +32,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 import yaml
 
 # Make sure ari-skill-transform/src is importable
@@ -140,7 +139,6 @@ def _make_chain_checkpoint(tmp_path: Path, *, with_uploads: bool = False,
                 "inherited_unchanged": [],
             },
             "what_was_done": delta,
-            "delta_vs_parent": delta,
             "metrics": metrics,
             "self_assessment": {
                 "succeeded": True,
@@ -157,7 +155,6 @@ def _make_chain_checkpoint(tmp_path: Path, *, with_uploads: bool = False,
             "artifacts": [],
             "evaluator_reason": delta,
             "trace_log_summary": "",
-            "migration_source": "fresh",
         }
         (wd / "node_report.json").write_text(json.dumps(report, indent=2))
 
@@ -354,7 +351,7 @@ def test_TC8_figures_at_top_level(tmp_path: Path):
     assert not (ear / "data" / "figures").exists()
 
 
-# ── T-C9: EVOLUTION.md contains delta_vs_parent and no opaque node ids ──
+# ── T-C9: EVOLUTION.md contains trajectory facts and no opaque node ids ──
 
 
 def test_TC9_evolution_md_uses_step_labels_not_node_ids(tmp_path: Path):
@@ -368,7 +365,7 @@ def test_TC9_evolution_md_uses_step_labels_not_node_ids(tmp_path: Path):
     assert "draft" in evo
     assert "improve" in evo
     assert "validation" in evo
-    # Each contributing node's delta_vs_parent appears verbatim.
+    # Each contributing node's narrative remains available alongside structured changes.
     assert "Initial naïve baseline" in evo
     assert "loop tiling" in evo
     assert "Re-ran with 5 seeds" in evo
@@ -484,12 +481,11 @@ def test_TC11_architecture_section_optional(tmp_path: Path):
     assert "Three-loop CSR with k-tile blocking" in readme2
 
 
-# ── T-C12: report-absent fallback (workdir scan) ────────────────────────
+# ── T-C12: report-absent fail-closed behaviour ─────────────────────────
 
 
-def test_TC12_fallback_to_workdir_scan_when_no_reports(tmp_path: Path):
-    """If no node_report.json exists for any node, generate_ear falls back
-    to a whitelist scan of the best node's work_dir."""
+def test_TC12_missing_reports_do_not_trigger_workdir_scan(tmp_path: Path):
+    """Missing reports remain visible and never trigger a silent scan."""
     ckpt = _make_chain_checkpoint(tmp_path)
     # Wipe every node_report.json.
     workspace = ckpt.parent.parent
@@ -499,12 +495,11 @@ def test_TC12_fallback_to_workdir_scan_when_no_reports(tmp_path: Path):
 
     fn = _get_generate_ear()
     out = fn(str(ckpt))
-    assert out["code_layout"] == "fallback_workdir_scan"
+    assert out["code_layout"] == "node_report_unavailable"
     assert out["top_node_id"] == "node_validation"
     code_dir = ckpt / "ear" / "code"
-    # validation work_dir holds the inherited files.
-    assert (code_dir / "main.cpp").is_file()
-    assert (code_dir / "tiling.h").is_file()
+    assert not (code_dir / "main.cpp").is_file()
+    assert not (code_dir / "tiling.h").is_file()
 
 
 # ── T-C13: _provenance.json schema ──────────────────────────────────────
@@ -638,6 +633,26 @@ def test_TC15_generate_ear_is_idempotent(tmp_path: Path):
         if str(k).startswith("code/") or str(k).startswith("data/") \
                 or str(k).startswith("figures/"):
             assert snap1[k] == snap2[k], f"{k} differs across re-runs"
+
+
+def test_TC15b_regeneration_removes_stale_generated_surfaces(tmp_path: Path):
+    ckpt = _make_chain_checkpoint(tmp_path, with_uploads=True, with_figures=True)
+    fn = _get_generate_ear()
+    fn(str(ckpt))
+    ear = ckpt / "ear"
+    (ear / "code" / "stale.cpp").write_text("stale\n")
+    (ear / "data" / "stale.csv").write_text("stale\n")
+    (ear / "figures" / "stale.png").write_bytes(b"stale")
+    (ear / "locks" / "stale.lock").parent.mkdir(parents=True, exist_ok=True)
+    (ear / "locks" / "stale.lock").write_text("stale\n")
+
+    fn(str(ckpt))
+
+    assert not (ear / "code" / "stale.cpp").exists()
+    assert not (ear / "data" / "stale.csv").exists()
+    assert not (ear / "figures" / "stale.png").exists()
+    assert not (ear / "locks" / "stale.lock").exists()
+    assert (ear / "evidence.index.json").is_file()
 
 
 # ── T-C16: legacy-layout → new-layout migration via re-generate ─────────

@@ -1,0 +1,153 @@
+{
+  "$id": "https://ari.dev/schemas/capability-contract-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Versioned semantic meaning of one executable capability.",
+  "properties": {
+    "artifact_rules": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Artifact Rules",
+      "type": "array"
+    },
+    "capability_ref": {
+      "pattern": "^ari\\.[a-z0-9][a-z0-9.-]*/v[1-9][0-9]*$",
+      "title": "Capability Ref",
+      "type": "string"
+    },
+    "compatibility_rules": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Compatibility Rules",
+      "type": "array"
+    },
+    "context_requirement": {
+      "default": "none",
+      "enum": [
+        "none",
+        "run",
+        "node"
+      ],
+      "title": "Context Requirement",
+      "type": "string"
+    },
+    "contract_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Contract Digest",
+      "type": "string"
+    },
+    "contract_version": {
+      "pattern": "^v[1-9][0-9]*$",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "credential_scope_class": {
+      "default": "none",
+      "title": "Credential Scope Class",
+      "type": "string"
+    },
+    "deprecated": {
+      "default": false,
+      "title": "Deprecated",
+      "type": "boolean"
+    },
+    "description": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "determinism_class": {
+      "enum": [
+        "deterministic",
+        "conditional",
+        "stochastic",
+        "live-data"
+      ],
+      "title": "Determinism Class",
+      "type": "string"
+    },
+    "environment_requirements": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Environment Requirements",
+      "type": "array"
+    },
+    "nondeterminism_fields": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Nondeterminism Fields",
+      "type": "array"
+    },
+    "replacement_ref": {
+      "anyOf": [
+        {
+          "pattern": "^ari\\.[a-z0-9][a-z0-9.-]*/v[1-9][0-9]*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Replacement Ref"
+    },
+    "required_permissions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Permissions",
+      "type": "array"
+    },
+    "resource_type": {
+      "default": "process",
+      "title": "Resource Type",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.capability-contract/v1",
+      "default": "ari.capability-contract/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "side_effect_class": {
+      "enum": [
+        "read-only",
+        "workspace-write",
+        "scheduler-submit",
+        "external-write",
+        "physical-actuation"
+      ],
+      "title": "Side Effect Class",
+      "type": "string"
+    },
+    "status_semantics": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Status Semantics",
+      "type": "object"
+    },
+    "title": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "capability_ref",
+    "contract_version",
+    "title",
+    "description",
+    "side_effect_class",
+    "determinism_class",
+    "compatibility_rules",
+    "contract_digest"
+  ],
+  "title": "ARI Capability Contract v1",
+  "type": "object"
+}

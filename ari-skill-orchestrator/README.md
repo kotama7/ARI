@@ -1,73 +1,61 @@
 # ari-skill-orchestrator
 
-Exposes ARI itself as an MCP server so external agents, IDEs, and
-scripts can trigger ARI experiment runs.  Recursive ARI-inside-ARI
-launches are supported (with a depth cap).
+Authenticated, durable MCP control plane for asynchronous ARI experiment runs.
+It exposes a fixed 12-tool surface over a SQLite run registry and verified,
+content-addressed artifacts.
 
-## Overview
+## Guarantees
 
-ARI can act both as a standalone CLI and as an MCP server embedded
-in other systems.  This skill is that bridge.  When invoked from
-inside a parent ARI run, it inherits the parent's checkpoint scope
-via `ARI_PARENT_RUN_ID` and refuses to spawn beyond
-`ARI_MAX_RECURSION_DEPTH`.
+- `run_experiment` requires an idempotency key; a retry cannot start a second run.
+- Run state is an atomic state machine, not a checkpoint-directory guess.
+- Restart recovery verifies a digest-bound runner receipt plus PID start time.
+- Cancellation reaches the child process group and settles one terminal state.
+- Principal ownership is enforced for status, cancellation, and every artifact read.
+- Recursion, run count, node count, cost, CPU, and timeout quotas fail before launch.
+- Parent environment variables are allowlisted; model credentials cross only through
+  the declared `model.provider` scope and are never stored in request metadata.
+- Callers receive artifact SHA-256 references, never checkpoint paths.
+- Skill/workflow inspection reads only the run's verified `SKILLS.lock` and removes
+  entrypoints, environment declarations, credentials, and raw schemas.
 
 ## Tools
 
-| Tool | Description |
+| Tool | Purpose |
 |---|---|
-| `run_experiment` | Accept an experiment.md, launch `ari run` asynchronously, return `{run_id, checkpoint_dir, status}` |
-| `get_status` | Per-run progress, node count, best metric, elapsed seconds |
-| `list_runs` | Summary list of every known run |
-| `get_paper` | Generated LaTeX section / compiled PDF path for a run |
+| `run_experiment` | Idempotently submit a bounded run |
+| `get_status`, `get_result`, `stop_experiment` | Poll, collect, or cancel its lifecycle |
+| `list_runs`, `list_children` | Read an owner-scoped run/lineage index |
+| `list_artifacts`, `read_artifact` | Resolve verified content by SHA-256 |
+| `get_paper`, `get_ear` | Return scoped publication/evidence references |
+| `list_skills`, `get_workflow` | Return sanitized immutable lock views |
 
-## Files written under the checkpoint
+`read_file`, `list_files`, a request-level API key, substring run lookup, checkpoint
+state inference, and the custom REST/SSE server were removed in v2.
 
-- `orchestrator_logs/<run_id>/ari.log` — per-child run log
-- `orchestrator_logs/<run_id>/launch_config.json` — exact env + args
-- `orchestrator_logs/<run_id>/run_meta.json` — run metadata
+## Transports
 
-## Environment variables
-
-| Variable | Purpose | Default |
-|---|---|---|
-| `ARI_WORKSPACE` | Root directory for all runs | (none — required) |
-| `ARI_ORCHESTRATOR_PORT` | MCP server listen port | `9890` |
-| `ARI_ORCHESTRATOR_LOGS` | Per-run log directory | `$ARI_WORKSPACE/orchestrator_logs` |
-| `ARI_PARENT_RUN_ID` | Parent run id (auto-set during recursion) | (auto) |
-| `ARI_MAX_RECURSION_DEPTH` | Depth cap for ARI-inside-ARI | `3` |
-
-## Recursion safety
-
-`run_experiment` invoked from inside ARI sets `ARI_PARENT_RUN_ID`
-on the child, and `ARI_MAX_RECURSION_DEPTH` is decremented as the
-chain grows.  When the depth would exceed the cap the call is
-rejected before any subprocess is spawned, preventing runaway
-recursion.
-
-## Use cases
-
-- **Claude Desktop**: trigger ARI experiments directly from chat.
-- **Multi-agent orchestration**: chain ARI with other research
-  agents.
-- **CI / CD integration**: automate experiment pipelines.
-
-## Test gap
-
-This skill currently has **no automated tests**.  A minimal smoke
-test (MCP handshake + mocked `ari run` subprocess) is the
-recommended next step.  Track this as part of the skill's future
-work — `docs/guides/testing.md` describes the pattern to follow.
-
-## Development
+Stdio is the canonical local transport:
 
 ```bash
-python -m ari_skill_orchestrator.server &
-curl -X POST http://localhost:9890/api/run -d '{...}'
+python ari-skill-orchestrator/src/server.py
 ```
 
-## See also
+The optional network surface is MCP Streamable HTTP, not a parallel REST API. It
+binds to loopback by default and refuses to start without a mode-0600 file of bearer
+token SHA-256 digests:
 
-- `docs/reference/skills.md#ari-skill-orchestrator` — high-level summary.
-- `docs/reference/mcp_tools.md` — argument signatures.
-- `docs/reference/environment_variables.md` — env var table.
+```bash
+ARI_ORCHESTRATOR_HTTP_TOKENS_FILE=/secure/token-digests.json \
+  python ari-skill-orchestrator/src/server.py --transport streamable-http
+```
+
+See [Orchestrator control plane](../docs/reference/orchestrator.md) for contracts,
+token-file format, quotas, recovery, artifact admission, and migration.
+
+## Verification
+
+```bash
+pytest -q ari-skill-orchestrator/tests
+python ari-skill-orchestrator/scripts/sync_contracts.py
+python scripts/check_skill_manifests.py
+```

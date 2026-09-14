@@ -7,3 +7,328 @@ models:
   # Default model for LLM-driven lineage decisions when no env override
   # is set.  Read by ``ari/orchestrator/lineage_decision.py:_default_model``.
   lineage_decision_default: gpt-4o-mini
+
+# Knowledge–Capability–Assurance defaults are deliberately legacy-inert.
+# `simple_bfts` with these values takes no new imports/runtime path, writes no
+# catalog snapshots or locks, and preserves the existing prompt/tool surface.
+knowledge:
+  mode: "off"
+capability_binding:
+  mode: legacy
+assurance:
+  mode: "off"
+
+# Manuscript Complete is an independent, opt-in post-exploration boundary.
+# Off writes no `.ari-manuscript` artifacts and preserves the legacy paper path.
+manuscript:
+  mode: "off"
+  profile: generic_empirical_v1
+  brief_character_budget: 24000
+  repair:
+    policy: disabled
+    max_rounds: 2
+    max_new_nodes: 8
+    max_experiment_runs: 12
+    max_llm_calls: 8
+    max_resource_units: null
+    on_exhaustion: block
+
+# RQGM epoch defaults (docs/reference/configuration.md, "`rqgm.epoch` —
+# epoch-boundary sizing").  Mirrors the typed
+# ``ari.config.RQGMEpochConfig`` pydantic defaults — parity is pinned by
+# ``ari-core/tests/test_rqgm_state_store.py`` so the two homes cannot drift.
+# Inert unless `ari.mode: ari_rqgm` and `rqgm.enabled: true` agree.
+rqgm:
+  epoch:
+    boundary: node_count      # v1: only node_count; trigger policy detail in Task 05
+    nodes_per_epoch: 10
+  # ConstitutionalKernel posture (docs/reference/configuration.md,
+  # "`rqgm.kernel` — ConstitutionalKernel posture").  Mirrors
+  # the typed ``ari.config.RQGMKernelConfig`` pydantic defaults — parity is
+  # pinned by ``ari-core/tests/test_rqgm_kernel.py``.  Numeric tolerances
+  # ONLY: the rule tables are frozen code (never config, plan 04 §5.1).
+  kernel:
+    enforcement: standard     # standard | audit_only (warn-everything rollout)
+    audit_chain: auto         # verify the hash chain iff chain fields present
+    float_tolerance: 1.0e-9
+  # GovernanceOrchestrator budgets/posture (docs/reference/configuration.md,
+  # "`rqgm.governance` — GovernanceOrchestrator budgets and posture").
+  # Mirrors the typed ``ari.config.RQGMGovernanceConfig`` /
+  # ``ari.config.RQGMReplayConfig`` pydantic defaults — parity is pinned by
+  # ``ari-core/tests/test_rqgm_governance.py``.  Task 12 owns the budget
+  # numbers; this block owns the consumption points.
+  governance:
+    enabled: true                  # Task 13 §5.1: ablation rungs B2-B4 set false
+    default_level: 1
+    full_governance_only_on_top_k: 3
+    judge_on_disputed_only: true
+    impeachment_only_at_epoch_boundary: true
+    max_llm_calls_per_audit: 12
+    # Per-epoch per-role governance call caps
+    # (docs/reference/configuration.md, "`rqgm.budgets` — per-epoch
+    # governance spend caps").  The adversary cap deliberately lives ONLY in
+    # ``rqgm.adversarial.max_adversary_calls_per_epoch`` (one schema home).
+    max_defender_calls_per_epoch: 12
+    max_judge_calls_per_epoch: 8
+    low_confidence_threshold: 0.4  # reviewer confidence below => disputed
+    novelty_claim_threshold: 0.8   # novelty axis at/above => L2 contested
+    max_motions_per_epoch: 2
+    bond_units_per_motion: 1
+    jury_panel_enabled: false      # JuryPanel off in v1
+    fail_mode: open                # open = degrade to no-action report
+  replay:
+    max_cases_per_epoch: 8
+    max_cases_for_retirement: 12
+    use_cached_results: true
+  # RegistryTransitionEngine thresholds (docs/reference/configuration.md,
+  # "`rqgm.transition` — RegistryTransitionEngine thresholds").
+  # Mirrors the typed ``ari.config.RQGMTransitionConfig`` pydantic defaults
+  # — parity is pinned by ``ari-core/tests/test_rqgm_transition_engine.py``.
+  # Thresholds are the ONLY tunable part; the T1-T21 table topology is fixed
+  # code (``ari/rqgm/transition_rules.py``), never config.
+  transition:
+    replay_pass_threshold: 0.8
+    replay_min_cases: 4
+    shadow_pass_threshold: 0.7
+    shadow_min_samples: 5
+    shadow_max_epochs: 2
+    shadow_retry_limit: 1
+    probation_min_epochs: 1
+    warning_escalation_count: 2
+    warning_memory_epochs: 3
+    retirement_replay_min_cases: 8   # <= replay.max_cases_for_retirement
+    candidate_max_age_epochs: 3
+    max_adoptions_per_role_per_boundary: 1
+  # Adversarial-loop triggers/budgets (docs/reference/configuration.md,
+  # "`rqgm.adversarial` — attack→defense→adjudication loop").
+  # Mirrors the typed ``ari.config.RQGMAdversarialConfig`` pydantic defaults
+  # — parity is pinned by ``ari-core/tests/test_rqgm_adversarial.py``.
+  # Task 12 owns final tuning.  ``enabled`` is meaningful only when
+  # ``ari.mode: ari_rqgm`` and ``rqgm.enabled: true`` agree.
+  adversarial:
+    enabled: true
+    types: [overclaim, metric_gaming, prior_art, reproducibility,
+            evidence_gap, cost_explosion, prompt_injection,
+            paper_self_preference]   # eighth type (paper-phase); inert off it
+    max_attacks_per_node: 3
+    max_adversary_calls_per_epoch: 24
+    sample_mod: 5                  # deterministic 1-in-N sampling (P2-safe)
+    jump_threshold: 0.25
+    full_governance_only_on_top_k: 3
+    penalty:
+      cap: 0.5
+      severity_weights: {low: 0.05, medium: 0.15, high: 0.3, critical: 0.5}
+    pool:
+      max_cases: 64
+      min_severity: medium
+      min_per_type: 2
+  # Shadow live-evaluation sampling (docs/reference/configuration.md,
+  # "`rqgm.shadow` — shadow live-evaluation sampling").
+  # Mirrors the typed ``ari.config.RQGMShadowConfig`` pydantic defaults
+  # — parity is pinned by ``ari-core/tests/test_rqgm_prompt_lifecycle.py``.
+  # Shadow output is observation-only: it never reaches BFTS scores.
+  shadow:
+    enabled: true                  # off == a zero shadow budget (Task 12)
+    sample_rate: 0.2               # deterministic hash sampling (P2-safe)
+    max_shadow_calls_per_epoch: 10
+  # Prompt-evolution candidate caps (docs/reference/configuration.md,
+  # "`rqgm.prompt_evolution` — candidate caps").
+  # Mirrors the typed ``ari.config.RQGMPromptEvolutionConfig`` pydantic
+  # defaults — parity is pinned by
+  # ``ari-core/tests/test_rqgm_prompt_lifecycle.py``.  Task 12 owns final
+  # budget tuning.  Meaningful only when ``ari.mode: ari_rqgm`` and
+  # ``rqgm.enabled: true`` agree.
+  prompt_evolution:
+    enabled: true
+    max_candidates_per_role_per_epoch: 1
+    max_total_candidates_per_epoch: 4
+    max_clean_room_generations_per_epoch: 1
+    mutation_kinds: [freeform_mutation, threshold_tuning, schema_tightening,
+                     specialization, distillation]
+  # Governed utility evolution (docs/reference/configuration.md,
+  # "`rqgm.utility_evolution` — governed rewriting of the score itself"): the
+  # score ITSELF is rewritten at epoch boundaries, through the governed path
+  # only (PolicyMutator -> CandidateValidationPipeline ->
+  # RegistryTransitionEngine -> ConstitutionalKernel).  Mirrors the typed
+  # ``ari.config.RQGMUtilityEvolutionConfig`` pydantic defaults — parity is
+  # pinned by ``ari-core/tests/test_rqgm_utility_evolution.py``.  Meaningful
+  # only when ``ari.mode: ari_rqgm`` and ``rqgm.enabled: true`` agree.
+  #
+  # Numeric/vocabulary knobs ONLY: the legality rules (closed value spaces,
+  # axis-weight bounds) are frozen code in
+  # ``ari.rqgm.kernel_rules.UTILITY_POLICY_RULES``, inside
+  # ``constitution_hash`` — a tunable weight bound is a tunable constitution.
+  # Candidate caps ride ``prompt_evolution.max_candidates_*`` and adoption
+  # caps ride ``transition.max_adoptions_per_role_per_boundary`` (one schema
+  # home each).
+  utility_evolution:
+    # false => the pre-Task-14 SCORE behavior exactly: no candidate is minted,
+    # nothing supersedes, so ``utility_policy_hash`` is a CONSTANT across the
+    # run.  That constant-score run IS an ablation rung, so this flag must stay
+    # settable to false: ``scripts/rqgm_eval/ablation_matrix.yaml`` rung B8 pins
+    # it false (the whole run scores under one policy) and rung B9 is B8 with it
+    # true, which makes the B9-vs-B8 contrast the only measurement of the claim
+    # that the score itself is rewritten at epoch boundaries.  It does NOT undo
+    # the founding governed-object set: the ``utility_policy_v1`` / ``policy_mutator_v1``
+    # components and their prompts are still registered at founding, so
+    # ``capture_utility_policy`` returns the founding policy (== the cfg
+    # policy) every epoch. That founding-set membership is Task 14 §8.3's
+    # DECLARED epoch_000 identity change, orthogonal to this flag.
+    enabled: true
+    # All four defaults are deterministic (no LLM); freeform is opt-in.
+    mutation_kinds: [axis_reweighting, composite_swap, frontier_score_swap,
+                     exploration_tuning]
+    min_epochs_between_rewrites: 1
+  # Clean-room regeneration posture (docs/reference/configuration.md,
+  # "`rqgm.clean_room` — clean-room regeneration posture").
+  # Mirrors the typed ``ari.config.RQGMCleanRoomConfig`` pydantic defaults —
+  # parity is pinned by ``ari-core/tests/test_rqgm_clean_room.py``.  The
+  # per-epoch generation budget rides
+  # ``prompt_evolution.max_clean_room_generations_per_epoch`` above.
+  # ``one_shot`` is the only v1 backend (plan 08 §5.4 D1: a tool-bearing
+  # loop could read retired prompt text); the screen policy is code — only
+  # the numeric knobs live here.
+  clean_room:
+    generation_backend: one_shot
+    contamination_screen:
+      shingle_k: 8
+      fail_on_any_hit: true
+    generator_prompt_key: "rqgm/clean_room_generator"
+  # FrontierRepairEngine / selective erasure (docs/reference/configuration.md,
+  # "`rqgm.frontier_repair` — selective erasure / frontier rebuild").
+  # Mirrors the typed ``ari.config.RQGMFrontierRepairConfig`` pydantic
+  # defaults — parity is pinned by
+  # ``ari-core/tests/test_rqgm_frontier_repair.py``.  All defaults inert:
+  # meaningful only when ``ari.mode: ari_rqgm`` and ``rqgm.enabled: true``
+  # agree AND a committed EpochTransition carries retirements.
+  frontier_repair:
+    enabled: true
+    max_trace_depth: 8             # BFS cap; past it => conservative invalidate
+    recompute_utilities: true      # false => invalidate instead of recompute
+    abandon_stale_pending: true
+  # Meta-tier evolution budgets/switches (docs/reference/configuration.md,
+  # "`rqgm.meta_evolution` — meta-tier budgets and switches").
+  # Mirrors the typed ``ari.config.RQGMMetaEvolutionConfig``
+  # pydantic defaults — parity is pinned by
+  # ``ari-core/tests/test_rqgm_meta_evolution.py``.  The authority matrix
+  # itself is frozen code (``ari/rqgm/meta_rules.py``), never config.
+  # Meaningful only when ``ari.mode: ari_rqgm`` and ``rqgm.enabled: true``
+  # agree.  Naming note: the plan's ``replay_case_selector`` is registered
+  # as ``replay_selector`` (Task 02 vocabulary).
+  meta_evolution:
+    enabled: true
+    evolving_roles: [prompt_mutator, clean_room_generator, replay_selector,
+                     failure_summary_compressor, policy_mutator]
+    max_meta_candidates_per_epoch: 1
+    sandbox:
+      max_cases: 6
+      use_cached_results: true
+    shadow:
+      min_epochs_before_probation: 2
+    metric_spec_weight_cap: true   # §5.8; ignored under simple_bfts
+  # Per-epoch governance SPEND caps (docs/reference/configuration.md,
+  # "`rqgm.budgets` — per-epoch governance spend caps").
+  # Mirrors the typed ``ari.config.RQGMSpendBudgetConfig`` pydantic defaults
+  # — parity is pinned by ``ari-core/tests/test_rqgm_cost_budget.py``.
+  # 0 = unlimited (attribution only); exhaustion degrades governance, never
+  # node execution — the L0 fixed layer is exempt by construction.
+  budgets:
+    max_governance_cost_usd_per_epoch: 0    # USD; 0 = unlimited
+    max_governance_tokens_per_epoch: 0      # tokens; 0 = unlimited
+    on_exhausted: degrade                   # degrade | skip (never crash)
+  # Evaluation-harness posture (docs/reference/configuration.md,
+  # "`rqgm.eval` — evaluation-harness posture").  Mirrors the
+  # typed ``ari.config.RQGMEvalConfig`` pydantic defaults — parity is pinned
+  # by ``ari-core/tests/test_rqgm_eval_conditions.py``.  ALL defaults off:
+  # scripted eval doubles are refused and injections never applied unless the
+  # rqgm_eval harness enables them on a run it launches itself.
+  eval:
+    enabled: false
+    scripted_components: {}       # role -> eval-double name (harness-only)
+    injection_specs: []           # active eval_* injection ids (harness-only)
+    # RQGM-paper-aligned P0-P4 selector. Empty is the production default;
+    # the selector is ignored unless eval.enabled is true.
+    paper_ablation: {condition_id: ""}
+    # Task-20 comparison identity. This metadata never grants authority or
+    # changes production selection/binding/resolution decisions.
+    kca_conditions:
+      b: ""
+      h: ""
+      k: ""
+      reporting_alias: null
+      verification_tiers: []
+      legacy_comparison_only: false
+      publishable: true
+  # Paper-archive co-evolution (docs/reference/configuration.md,
+  # "`rqgm.paper` — paper-archive co-evolution").
+  # Mirrors the typed ``ari.config.RQGMPaperConfig`` pydantic defaults —
+  # parity is pinned by ``ari-core/tests/test_paper_mode.py``.  Inert unless
+  # the effective PAPER mode is ``rqgm_archive`` (paper.mode: rqgm_archive AND
+  # rqgm.paper.enabled: true agree); orthogonal to ``ari.mode``.  DISTINCT
+  # from the exploration ``rqgm.*`` knobs above — never shadows them.
+  paper:
+    enabled: false                # redundant interlock, mirrors rqgm.enabled
+    archive:
+      width: 4                    # K seed drafts at depth 1 (root branch factor)
+      refine_rounds: 2            # refine children per draft (draft branch factor)
+      max_expansions: 12          # PER-EPOCH node budget -> BFTS max_total_nodes
+      depth: 3                    # draft-tree depth -> BFTS max_depth (a real tree)
+      compile_threshold: 0.0      # min best-belief score to lazily compile the winner
+    epoch:
+      # ONE round = ONE paper epoch. NOTE (ari_rqgm_paper/05 wave 3c, work
+      # order D "default rounds"): a full paper_reviewer adoption is a
+      # candidate->validated->shadow->probationary_active climb that needs a
+      # role OPENING first, so it takes ~5 boundaries; at rounds=2 a default
+      # run EXERCISES the loop + adversary + impeachment but does not witness
+      # a changed active reviewer hash. This is the deliberate cheap default;
+      # a run that must complete a reviewer adoption raises rounds (the
+      # co-evolution PROOF test drives 8). See plan 05 §5.5 / 04 default-rounds.
+      rounds: 2                   # archive rounds per paper phase
+    anchor:
+      enabled: false
+      corpus_path: ""             # APReS-equivalent accept/reject corpus
+      sample_size: 8              # held-out agreement sample
+      max_bootstrap_label_fraction: 0.5   # §5.3 cap on gate_bootstrap labels
+                                          # (corpus AND held-out); breach =>
+                                          # corpus refused => on-ramp, never raises
+    self_preference:              # ari_rqgm_paper/05 §5.3 — self-preference adversary
+      enabled: true               # meaningful only under PAPER_RQGM_ARCHIVE
+      corpus_path: ""             # "" = reuse the anchor corpus + its authorship labels
+      sample_size: 8              # held-out papers scored per epoch (mirrors anchor)
+      accept_threshold: 0.6       # reviewer "accepted" cutoff (= CANDIDATE_PASS_THRESHOLD)
+      margin: 0.1                 # AI-vs-human mean-score gap that fires the pre-signal
+    prompt_evolution:
+      enabled: true               # false = best-of-N reviewed drafts, no co-evolution
+    reviewer:                     # ari_rqgm_paper/03 §5.8 — governed paper_reviewer scoring
+      agent_as_judge:
+        enabled: false            # true => a real LLMClient scores drafts over the venue
+                                  # rubric axes weighted by the ACTIVE reviewer prompt's
+                                  # emphasis (the ONLY path that reads novelty/significance
+                                  # and breaks the 1.0 discrimination ceiling). false =>
+                                  # deterministic rubric (P2, no LLM). Fail-open to the
+                                  # rubric on any LLM/parse failure — never a fabricated
+                                  # score. env: ARI_PAPER_AGENT_AS_JUDGE
+        max_tokens: 1024          # judge reply cap (cost control)
+
+# ProposalRouter defaults (docs/reference/configuration.md,
+# "`proposal_router` — proposal generation routing").  Mirrors the
+# typed ``ari.config.ProposalRouterConfig`` pydantic defaults — parity is
+# pinned by ``ari-core/tests/test_rqgm_proposals.py``.  Consumed ONLY when
+# ``ari.mode: ari_rqgm`` — EXCEPT ``record_only``, honored in ``simple_bfts``
+# (record-only dual-write, ablation B1).  ``generators.virsci.enabled`` is
+# deliberately NOT read in ``simple_bfts``: the existing VirSci levers
+# (``bfts_pipeline.generate_idea.enabled`` / ``ARI_IDEA_VIRSCI_REAL``) stay
+# authoritative there.
+proposal_router:
+  record_only: false
+  summary_budget_chars: 6000
+  generators:
+    cheap:         { enabled: true,  max_calls_per_epoch: 0 }
+    mutation:      { enabled: true,  max_calls_per_epoch: 2 }
+    attack_driven: { enabled: false, max_calls_per_epoch: 0 }   # requires Task 06
+    prior_art:     { enabled: true,  max_calls_per_epoch: 1 }
+    virsci:
+      enabled: false
+      mode: event_triggered
+      max_calls_per_epoch: 2
+      trigger_on: [initial_exploration, frontier_stagnation, major_pivot, paper_candidate]

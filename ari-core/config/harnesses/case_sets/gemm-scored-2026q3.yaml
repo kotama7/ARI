@@ -1,0 +1,26 @@
+# WHICH PROBLEMS a performance harness measures on.
+#
+# The size is DATA, not a request parameter, because the registration evidence is
+# established at a size and does not transfer: measured on an aarch64 compute
+# node, the same harness reproduced to 0.095% at 1000^3 and to 100x spread at
+# 256^3, where a single 20 ms stall dominates a 0.2 ms kernel. A run that could
+# choose its own size would carry an attestation saying "verified" about a
+# problem the manifest never named.
+#
+# So a case set is a PINNED ASSET: the manifest names this file in
+# dataset.revision and pins its bytes in dataset.sha256. Changing a size changes
+# this file, which changes the manifest digest, which is a re-registration. That
+# is the intended cost — it is what makes "verified at this size" mean something.
+#
+# A research theme that needs other sizes adds a case set beside this one and
+# registers a harness against it. It does not edit this one.
+schema_version: ari.harness-case-set/v1
+revision: native-perf-gemm-cases/v1@scored-2026q3
+kind: gemm
+description: The scored GEMM shapes. Large enough that the timed kernel dominates.
+# (n, p, m) with C[n,m] = A[n,p] * B[p,m]. Fixed: a shape a candidate could
+# choose is a shape a candidate could choose to be easy.
+cases:
+  - [1000, 1000, 1000]
+  - [2000, 500, 500]
+  - [1500, 600, 1500]

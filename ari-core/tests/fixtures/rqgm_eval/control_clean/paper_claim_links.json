@@ -1,0 +1,30 @@
+{
+  "figure_refs": [],
+  "numeric_mentions": [
+    {
+      "line": 8,
+      "requires_assertion": true,
+      "section": "results",
+      "type": "result_claim",
+      "unit": "",
+      "value": 200.0
+    }
+  ],
+  "paper_claim_links": [
+    {
+      "anchor": "CLAIM:C_CTL:NC_CTL",
+      "claim_id": "C_CTL",
+      "figures": [],
+      "line_range": [
+        8,
+        8
+      ],
+      "numeric_id": "NC_CTL",
+      "resolved": true,
+      "section": "results",
+      "span_hash": "h"
+    }
+  ],
+  "uncovered_numeric_candidates": [],
+  "unresolved_anchors": []
+}

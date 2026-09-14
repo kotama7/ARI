@@ -39,6 +39,34 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
 
 ---
 
+## 新功能 —— Constitutional ARI-RQGM（未发布）
+
+本分支在保持既有执行路径为默认值的同时，加入可选启用的治理与协同进化层。
+
+- **Constitutional `ari_rqgm` 模式** —— 纪元内冻结的提示词、组件和效用
+  策略，只能经由确定性内核与 T1–T21 注册表生命周期进化。`simple_bfts`
+  仍为默认模式，且不会构造 RQGM 状态。政策与声明执行基底使用独立指纹；
+  提供者或环境修订不可得时记录为未解析。
+- **来源绑定的问责** —— 研究生成者是已注册创始组件，节点只写一次生成
+  组件、提示词和纪元来源。旧节点或含糊节点保持无目标，不把责任转给后继。
+- **受治理的论文存档** —— 正交的 `paper.mode: rqgm_archive` 路径使用受治理
+  的 writer／reviewer 角色搜索草稿树，再把胜出稿交给既有的编译与
+  claim-evidence 门控。
+- **Dashboard v2** —— 新增运行作用域的 Overview、Projects、Ideas、Tree、
+  Results、Governance、Configuration Studio、日志、实时失效、token 认证，
+  以及规范的 `/api/v1` 读写接口。
+- **完整性与失败可见性** —— 新增 rubric 审计、节点溯源审计、汇总
+  `run_integrity.json`、基于已有工作的根创意生成，以及对原先被吞掉的
+  产物／论文阶段错误进行 fail-loud 处理。
+
+当前安全边界是可信主机上的应用级引用监控；不声称 OS 隔离、数字签名、
+外部回滚锚定或不可逆外部操作的故障关闭闸门。
+
+建议从[执行模式](docs/zh/guides/execution_modes.md)、
+[RQGM 架构](docs/zh/concepts/rqgm_architecture.md)和
+[Dashboard 指南](docs/zh/guides/dashboard.md)开始；完整分支记录见
+[CHANGELOG.md](CHANGELOG.md)。
+
 ## v0.9.0 新功能（2026-06-12）
 
 **论断的端到端验证。** 本版本主题：只有当论文的全部论断都能对照 run 自身的
@@ -89,12 +117,11 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
   `scripts/sc_paper_dogfood.py --with-rollout / --with-reproduction`
   在自测中驱动。
 - **`container_image` 端到端贯通** — 同一个字段从向导 → API worker →
-  MCP 工具 → 沙盒运行器一路传递；`pb-env` / `pb-reproducer` 短别名
-  通过 `scripts/build_pb_images.sh` 解析为对应的 `image:latest` 标签。
-- **失败时立即报错的前置检查** — 沙盒 / GPU 不匹配的四处原本静默
-  降级到主机 CPU 的位置，现在默认抛出可操作的 `RuntimeError`；
-  兼容回退路径通过 `ARI_PHASE1_ALLOW_FALLBACK=1` 与
-  `ARI_SLURM_ALLOW_NO_GRES=1` 显式启用。
+  MCP 工具 → 沙盒运行器一路传递。v1.0 仅接受不可变的本地 SIF、完整
+  Docker `sha256:<image-id>` 或按摘要固定的 registry URI；可变的
+  `pb-env` / `pb-reproducer` 别名已删除。
+- **失败时立即报错的前置检查** — 沙盒 / GPU 不匹配会直接报错。旧的
+  host-local 再现回退已在 v1.0 删除，GPU 请求也不能静默降级。
 - **PaperBench env-truth 护栏** — Stage 1 提示加入
   「先 probe 再 scaffold」「对抗语言选择的 Python 偏置」
   「按主机实测注入 `ADDITIONAL NOTES`（二进制 / GPU / 网络 / 第二阶段隔离）」
@@ -163,6 +190,8 @@ experiment.md  ──►  ARI Core  ──►  结果 + 论文 + 可复现性报
 2. **在假设空间上的 BFTS。** 最佳优先树搜索（BFTS）引导探索 — 由证据驱动，而非穷举。
 3. **确定性工具，推理 LLM。** MCP 技能是纯函数。LLM 进行推理；技能执行操作。
 4. **从论文到证明。** ARI 撰写论文，*并且* 对自己的主张进行双重验证：一个确定性的主张-证据/指标正确性门控会从记录的结果中重新推导每一个报告的数值，并阻断客观上错误或未经验证的指标，*并且* 一个独立的可复现性检查会重新运行实验。
+
+> **执行模式。**上述一切都是默认的 `simple_bfts` 模式。可选启用的 `ari_rqgm` 模式（仅通过配置：`ari.mode: ari_rqgm` + `rqgm.enabled: true`）在同一 BFTS 引擎之上叠加宪法式纪元治理与提示词/组件协同进化；关闭时，检查点与之前的发布版本保持逐字节一致。论文阶段拥有自己正交的开关 `paper.mode: linear | rqgm_archive`（配合 `rqgm.paper.enabled` 联锁）：`rqgm_archive` 会搜索论文草稿的最佳优先树，由受治理的 `paper_reviewer` 角色评分，其过度接受可被对手弹劾；而 `linear`（默认）使当前论文流水线保持逐字节一致。参见 [docs/guides/execution_modes.md](docs/guides/execution_modes.md)。
 
 ---
 
@@ -349,7 +378,7 @@ gmx mdrun -v -deffnm simulation -ntmpi 32
 
 ### 技能（MCP 插件服务器）
 
-共 13 个技能。其中 12 个在 `workflow.yaml` 中默认注册；另外 1 个（orchestrator）可以通过添加到配置中启用。
+共 17 个技能。其中 13 个在 `workflow.yaml` 中默认注册。federated tool registry 在自身 manifest 中声明 `enabled_by_default: true`，因此只要配置省略 `skills:` 段，它就会被 manifest 自动发现拾取 —— 随附的 `workflow.yaml` 显式列举了那 13 个，所以要与它们一同注册需在其中添加。orchestrator 默认关闭，可显式启用。启用 tool registry 技能不会启用任何 leaf —— 只有所选 catalog 中的 source 才能执行，而签入的 `ari-skill-tool-registry/CATALOG.lock` 按设计为空。
 
 v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill-plot`（单个技能同时负责 matplotlib 绘图和 SVG 架构示意图，两者共用同一套 VLM 审阅回路）；`ari-skill-review`（反驳撰写）被删除 — 基于评审规范的审稿得分已是最终质量信号，对自己论文的反驳不会带来新的信息。
 
@@ -367,7 +396,11 @@ v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill
 | `ari-skill-benchmark` | CSV/JSON 分析、绘图、统计检验 | ✗ | ✓ |
 | `ari-skill-vlm` | 视觉-语言模型图表/表格审阅 | ✓ | ✓ |
 | `ari-skill-coding` | 代码生成 + 执行 + 文件读取 + bash | ✗ | ✓ |
+| `ari-skill-replicate` | 兼容 PaperBench 的评分规范生成与审计 | ✓ | ✓ |
 | `ari-skill-orchestrator` | 将 ARI 作为 MCP 服务器暴露、递归子实验、stdio+HTTP 双传输 | ✗ | — |
+| `ari-skill-harness` | 对 Harness catalog / requirement / Attestation 的只读查询，以及非权威的辅助请求 | ✗ | — |
+| `ari-skill-knowledge` | 对内容寻址的过程性知识的只读查询与非权威请求面 | ✗ | — |
+| `ari-skill-tool-registry` | 面向大型 MCP 集合的不可变联邦、科学 admission 与重放 | ✗ | 仅自动发现 |
 
 ✗ = 不使用 LLM，△ = 仅部分工具使用 LLM，✓ = 主要工具使用 LLM。
 

@@ -1,0 +1,72 @@
+schema_version: 1
+name: tool-registry-skill
+package: ari-skill-tool-registry
+version: 0.3.0
+display_name: Federate scientific tools
+description: Provider-neutral discovery, admission, immutable invocation, and replay for large MCP collections.
+enabled_by_default: true
+environment_policy: complete
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env:
+  - ARI_CHECKPOINT_DIR
+  - ARI_HPC_LEDGER_PATH
+  - ARI_CUDA_BUNDLE
+  - ARI_CUDA_NVCC
+  - ARI_CUDA_SITE_CONFIG
+  - ARI_CUDA_WORKER_PYTHON
+  - ARI_CUDA_WORK_ROOT
+  - ARI_SCHEDULER_PATH
+  - ARI_TOOL_REGISTRY_CASSETTES
+  - ARI_TOOL_REGISTRY_INDEX
+  - ARI_TOOL_REGISTRY_LOCK
+  - LANG
+  - LC_ALL
+  - PATH
+  - SSL_CERT_DIR
+  - SSL_CERT_FILE
+  - SLURM_CLUSTER_NAME
+  - SLURM_CONF
+credential_scopes:
+  - id: quantum.ibm-runtime
+    optional_env: [QISKIT_IBM_TOKEN]
+tool_defaults:
+  phases: [bfts, evaluation, reproduce]
+  side_effects: read-only
+  determinism: conditional
+  timeout_class: bounded
+  permissions: [workspace-read]
+  result_schema: ari.result-envelope/v1
+tools:
+  - name: discover
+    capability_ref: ari.registry.catalog.discover
+  - name: describe
+    capability_ref: ari.registry.catalog.describe
+  - name: invoke
+    capability_ref: ari.registry.tool.invoke
+    side_effects: stateful
+    permissions: [workspace-read, workspace-write, process, network]
+    context_requirement: run
+    timeout_class: slow
+  - name: invoke_scheduled
+    capability_ref: ari.registry.tool.invoke-scheduled
+    side_effects: stateful
+    # The same dispatch operation, carrying scheduler authority. It is a second
+    # surface rather than a wider permission on the first because a Provider's
+    # side-effect class is derived from its permissions: putting `scheduler` on
+    # the shared `invoke` raised the composite envelope of every leaf behind it
+    # to scheduler-submit, and the workspace-write contracts -- openroad,
+    # qiskit, literature.search -- then no longer matched their own capability.
+    # Only leaves the reviewed table routes here are dispatched through it.
+    permissions: [workspace-read, workspace-write, process, network, scheduler]
+    context_requirement: run
+    timeout_class: slow
+  - name: get_status
+    capability_ref: ari.registry.tool.status
+    context_requirement: run
+  - name: get_result
+    capability_ref: ari.registry.tool.result
+    context_requirement: run

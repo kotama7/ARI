@@ -29,7 +29,6 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import json
-import os
 import re
 import sys
 import types
@@ -215,8 +214,9 @@ def build_model_configs(model: str, api_base: str | None, config_name: str = "ar
 class _Specter2Embedder:
     """Lazy local SPECTER2 embedder for discussion-time queries (CLS pooling)."""
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, revision: str) -> None:
         self.model_name = model_name
+        self.revision = revision
         self._tok = None
         self._model = None
 
@@ -227,8 +227,12 @@ class _Specter2Embedder:
             import torch  # noqa: F401
             from transformers import AutoModel, AutoTokenizer
 
-            self._tok = AutoTokenizer.from_pretrained(self.model_name)
-            self._model = AutoModel.from_pretrained(self.model_name)
+            self._tok = AutoTokenizer.from_pretrained(
+                self.model_name, revision=self.revision
+            )
+            self._model = AutoModel.from_pretrained(
+                self.model_name, revision=self.revision
+            )
             self._model.eval()
             return True
         except Exception:
@@ -275,6 +279,7 @@ def make_live_platform_cls():
             log_dir: str = "virsci_logs",
             info_dir: str = "virsci_team_info",
             specter2_model: str = "allenai/specter2_base",
+            specter2_revision: str = "3447645e1def9117997203454fa4495937bfbd83",
             ancestor_block: str = "",
         ) -> None:
             self.snapshot = snapshot
@@ -354,7 +359,9 @@ def make_live_platform_cls():
             self._faiss_index = snapshot.build_faiss_index()
             self._corpus = snapshot.corpus
             self.paper_dicts = snapshot.paper_dicts
-            self._embedder = _Specter2Embedder(specter2_model)
+            self._embedder = _Specter2Embedder(
+                specter2_model, specter2_revision
+            )
 
             self._Team = Team
 
@@ -489,6 +496,7 @@ def run_virsci_live(
     ancestor_block: str = "",
     log_dir: str = "virsci_logs",
     specter2_model: str = "allenai/specter2_base",
+    specter2_revision: str = "3447645e1def9117997203454fa4495937bfbd83",
 ) -> dict:
     """Run VirSci's real select_coauthors + generate_idea on the snapshot.
 
@@ -524,6 +532,7 @@ def run_virsci_live(
                 log_dir=log_dir,
                 info_dir=str(Path(log_dir) / "team_info"),
                 specter2_model=specter2_model,
+                specter2_revision=specter2_revision,
                 ancestor_block=ancestor_block,
             )
             # freshness: real team formation over the co-author graph

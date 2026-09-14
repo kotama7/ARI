@@ -4,7 +4,7 @@ sources:
     role: prompt
   - path: ari-skill-paper-re/src/_replicator_agent.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-08-08
 ---
 
 # 计算节点安全约定 (L1–L7)
@@ -13,9 +13,16 @@ last_verified: 2026-05-25
 而不是代理生成它的登录节点。以下约定 (L1–L7) 确保脚本能在计算节点
 真正跑完。
 
-PaperBench 复现代理通过 `ari-skill-paper-re/src/prompts/replicator.md`
-中的 `COMPUTE-NODE EXECUTION CONVENTIONS` 区块被指示这些约定 (这里
-也复述一份,以便你手动审查生成的 reproduce.sh)。
+PaperBench 复现代理通过 `_format_hpc_appendix`
+(`ari-skill-paper-re/src/_replicator_agent.py`) 追加到 vendored PaperBench
+instruction 之后的 ARI 侧 appendix 中的 `COMPUTE-NODE EXECUTION CONVENTIONS`
+区块被指示这些约定。该区块与 appendix 中其余 HPC 相关区块
+(`EXECUTION PROFILE`, `CLUSTER SHAPE`, `CONVENTIONS`) 一样,仅在 rubric 的
+`reproduce_contract.execution_profile` 非空时才输出,因此非 HPC 论文的代理
+根本看不到它;若只有 `expected_artifacts`,appendix 退化为仅
+`EXPECTED_ARTIFACTS` 区块。`ari-skill-paper-re/src/prompts/replicator.md` 保存着同一区块
+更完整的 mirror,但运行时没有任何代码读取它 (这里也复述一份,以便你手动
+审查生成的 reproduce.sh)。
 
 ## L1 — 共享文件系统
 
@@ -24,8 +31,12 @@ PaperBench 复现代理通过 `ari-skill-paper-re/src/prompts/replicator.md`
 - ✅ `$HOME`, `/work/...`, `/scratch/...`, `/lustre/...`, `/nfs/...`
 - ❌ `/tmp`, `/var/tmp`, `/local`, 仅容器本地挂载的路径
 
-ARI 在 checkpoint 位于节点本地 FS 时警告,但不会拒绝运行 — 多节点时
-rank 1+ 看不到 rank 0 的文件会导致静默失败。
+ARI 不会探测文件系统：checkpoint 位于节点本地 FS 时既不会被检测到，也不会
+有任何告警 — 多节点时 rank 1+ 看不到 rank 0 的文件会导致静默失败。是否共享
+是一项*声明*而非观测：`SLURM_MODE=remote` 读取 `SLURM_SHARED_FILESYSTEM`
+（默认 `true`），local 模式则无条件视为 `true`
+（`ari-skill-hpc/ari_skill_hpc/slurm.py`）。若声明为 `false`，调度器是*拒绝*
+而非告警 —— typed outputs 与 fixed-wrapper terminal evidence 都会 raise。
 
 ## L2 — MPI 调用: `mpirun` 之上优先 `srun`
 
@@ -41,20 +52,14 @@ pip install --user mpi4py
 python -c "from mpi4py import MPI; ..."
 ```
 
-先用 `which srun mpirun` 测试。代理 prompt 指示复现器发出此检查。
+先用 `which mpirun` 测试。代理 prompt 指示复现器不要假设 `mpirun` 在
+PATH 上,使用前先检查。
 
-## L3 — GRES 探测
+## L3 — GPU resource验证
 
-当 rubric 的 `execution_profile.gpu_type` 设置时,ARI 在向 `sbatch`
-添加 `--gres=gpu:<type>:N` 前检查 `sinfo -o '%G'`。如果未配置 GRES
-(`(null)`),标志会被剥离,记录警告 — `--gpus-per-task` 存留。
-
-交互式验证:
-
-```python
-from ari_skill_paper_re.server import _slurm_has_gres
-_slurm_has_gres()    # True / False
-```
+ARI把GPU count/type编译为一个typed scheduler request且绝不删除。
+launch前检查`sinfo -o '%P %G'`；partition无法满足时提交失败，应修复集群配置
+或选择兼容partition。
 
 ## L4 — Conda / virtualenv 激活
 
@@ -104,7 +109,7 @@ srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS ./my_program
 ```
 
 没有这个,脚本只用 1 个节点,即使 `sbatch --nodes=4` 成功。代理 prompt
-有专门的 "MULTI-NODE FAN-OUT" 区块提醒复现器。
+有专门的 "Multi-node fan-out" 区块提醒复现器。
 
 ## L7 — Timeout 包装
 

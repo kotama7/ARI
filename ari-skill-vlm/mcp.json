@@ -1,8 +1,15 @@
 {
-  "name": "vlm-review-skill",
-  "version": "0.1.0",
-  "description": "VLM-based figure and table review for papers",
-  "tools": [],
+  "description": "Artifact-bound criteria-versioned visual review of scientific figures and tables.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "vlm-skill",
+  "package": "ari-skill-vlm",
   "runtime": "python",
-  "entrypoint": "src/server.py"
+  "schema_version": 1,
+  "tools": [
+    "review_figure",
+    "review_figures_all",
+    "review_table"
+  ],
+  "version": "0.2.0"
 }

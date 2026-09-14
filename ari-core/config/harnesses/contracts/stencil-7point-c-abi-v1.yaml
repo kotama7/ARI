@@ -1,0 +1,19 @@
+schema_version: ari.harness-target-interface/v1
+id: stencil-7point-c-abi/v1
+target_kind: shared-library
+symbols:
+  - ari_stencil_f32
+  - ari_stencil_f64
+return_contract: zero on success; nonzero means interface/input rejection
+arguments:
+  - nx,ny,nz: positive domain dimensions
+  - iterations: nonnegative Jacobi step count
+  - periodic: zero for fixed edge values; one for periodic boundaries
+  - in_place: accepted storage-mode request; mathematical result remains Jacobi
+  - input,output: row-major x-fastest volume buffers
+  - thread_count: requested positive thread count
+semantics: repeated 7-point average of center plus available six neighbours
+dtype_suffixes:
+  f32: IEEE-754 binary32
+  f64: IEEE-754 binary64
+authority: interface-only

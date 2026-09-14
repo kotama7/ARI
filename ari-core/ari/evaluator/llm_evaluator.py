@@ -14,6 +14,7 @@ Scoring model (multi-axis + weighted harmonic mean):
   penalizes any single weak axis and naturally spreads scores away from
   the centre — directly countering the single-scalar collapse problem.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,6 +25,11 @@ from dataclasses import dataclass, field
 import litellm
 
 from ari._factory import BaseRegistry
+from ari.execution import (
+    MeasurementDocumentError,
+    measurement_document_format,
+    parse_measurement_document,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +225,9 @@ class MetricSpec:
     expected_metrics: list[str] = field(default_factory=list)
     expected_params: list[str] = field(default_factory=list)
     scoring_guide: str = ""
-    artifact_extractor: object = field(default=None)  # callable(artifacts_text: str) -> dict
+    artifact_extractor: object = field(
+        default=None
+    )  # callable(artifacts_text: str) -> dict
     # Optional per-axis weights for the harmonic-mean composite. When None,
     # the evaluator falls back to constructor-supplied weights and then to
     # the hardcoded equal-weight default. Keys must be a subset of AXIS_NAMES.
@@ -240,9 +248,13 @@ class MetricSpec:
     def to_prompt_section(self) -> str:
         lines = [f"Experiment type: {self.name}"]
         if self.expected_params:
-            lines.append(f"Expected params (inputs, NOT measurements): {', '.join(self.expected_params)}")
+            lines.append(
+                f"Expected params (inputs, NOT measurements): {', '.join(self.expected_params)}"
+            )
         if self.expected_metrics:
-            lines.append(f"Expected metrics (measurements): {', '.join(self.expected_metrics)}")
+            lines.append(
+                f"Expected metrics (measurements): {', '.join(self.expected_metrics)}"
+            )
         if self.scoring_guide:
             lines.append(f"Domain-specific scoring guide:\n{self.scoring_guide}")
         return "\n".join(lines)
@@ -263,6 +275,7 @@ class LLMEvaluator:
     @staticmethod
     def _load_base_system() -> str:
         from ari.prompts import FilesystemPromptLoader
+
         text = FilesystemPromptLoader().load("evaluator/extract_metrics")
         # The Python constant did not have a trailing newline; the file
         # storage layer may add one — strip a single trailing ``\n`` so
@@ -278,6 +291,7 @@ class LLMEvaluator:
         # ``load_versioned`` / the snapshot test compute. Never renders or
         # calls an LLM.
         from ari.prompts import FilesystemPromptLoader
+
         return FilesystemPromptLoader().load_versioned("evaluator/extract_metrics")[1]
 
     BASE_SYSTEM = _load_base_system.__func__()  # type: ignore[func-returns-value]
@@ -331,10 +345,9 @@ class LLMEvaluator:
             # ``_refresh_axes_if_needed`` hook in evaluate() picks up plan
             # axes once the root node has produced idea.json.
             from ari.evaluator.dynamic_axes import build_axes_for_run
+
             self._dynamic_axes = list(
-                build_axes_for_run(
-                    rubric=rubric, idea_data=self._read_idea_data()
-                )
+                build_axes_for_run(rubric=rubric, idea_data=self._read_idea_data())
             )
             self._axis_names = tuple(a.name for a in self._dynamic_axes)
             self._axes_idea_mtime = self._idea_json_signature()
@@ -348,6 +361,7 @@ class LLMEvaluator:
 
     def _idea_json_path(self):
         from pathlib import Path as _Path
+
         if not self._checkpoint_dir:
             return None
         return _Path(self._checkpoint_dir) / "idea.json"
@@ -366,6 +380,7 @@ class LLMEvaluator:
             return None
         try:
             import hashlib
+
             data = p.read_bytes()
             mt = p.stat().st_mtime
             h = hashlib.md5(data).hexdigest()[:16]
@@ -399,8 +414,11 @@ class LLMEvaluator:
             return  # cached (signature unchanged)
         try:
             from ari.evaluator.dynamic_axes import build_axes_for_run
+
             self._dynamic_axes = list(
-                build_axes_for_run(rubric=self._rubric, idea_data=self._read_idea_data())
+                build_axes_for_run(
+                    rubric=self._rubric, idea_data=self._read_idea_data()
+                )
             )
             self._axis_names = tuple(a.name for a in self._dynamic_axes)
             self._axes_idea_mtime = cur_sig
@@ -436,6 +454,7 @@ class LLMEvaluator:
             # is no longer duplicated between code and the prompt file.
             from ari.evaluator.dynamic_axes import axes_to_prompt_section
             from ari.prompts import FilesystemPromptLoader as _PL_pr
+
             _pr_text, _pr_hash = _PL_pr().load_versioned("evaluator/peer_review")
             base = _pr_text.format(
                 axes_block=axes_to_prompt_section(self._dynamic_axes),
@@ -458,8 +477,11 @@ class LLMEvaluator:
             else:
                 system = head + f"\n\nDomain context:\n{spec_section}"
             _record_prompt_use(
-                "evaluator/peer_review", _pr_hash, rendered_text=system,
-                model=self.model, phase="evaluation",
+                "evaluator/peer_review",
+                _pr_hash,
+                rendered_text=system,
+                model=self.model,
+                phase="evaluation",
             )
             return system
 
@@ -477,8 +499,11 @@ class LLMEvaluator:
                 + f"\n\nDomain context:\n{spec_section}"
             )
         _record_prompt_use(
-            "evaluator/extract_metrics", self.BASE_SYSTEM_HASH, rendered_text=system,
-            model=self.model, phase="evaluation",
+            "evaluator/extract_metrics",
+            self.BASE_SYSTEM_HASH,
+            rendered_text=system,
+            model=self.model,
+            phase="evaluation",
         )
         return system
 
@@ -516,13 +541,17 @@ class LLMEvaluator:
         )
         return "\n".join(lines) + "\n\n"
 
-    def _record_score(self, node_id: str | None, score: float, label: str | None) -> None:
+    def _record_score(
+        self, node_id: str | None, score: float, label: str | None
+    ) -> None:
         """Record a freshly assigned score so future evaluations can calibrate."""
         if not node_id or score is None:
             return
         try:
             entry = {
-                "node_id": (str(node_id)[-8:] if len(str(node_id)) > 8 else str(node_id)),
+                "node_id": (
+                    str(node_id)[-8:] if len(str(node_id)) > 8 else str(node_id)
+                ),
                 "score": float(score),
                 "label": str(label or ""),
             }
@@ -546,6 +575,7 @@ class LLMEvaluator:
         import asyncio
         import concurrent.futures
         import logging
+
         _log = logging.getLogger(__name__)
 
         def _run_in_thread():
@@ -554,8 +584,9 @@ class LLMEvaluator:
             asyncio.set_event_loop(loop)
             try:
                 return loop.run_until_complete(
-                    self.evaluate(goal, artifacts, summary,
-                                  node_id=node_id, node_label=node_label)
+                    self.evaluate(
+                        goal, artifacts, summary, node_id=node_id, node_label=node_label
+                    )
                 )
             finally:
                 loop.close()
@@ -572,17 +603,25 @@ class LLMEvaluator:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                     future = pool.submit(_run_in_thread)
                     result = future.result(timeout=120)
-                    _log.info("evaluate_sync (thread): metrics=%s", result.get("metrics", {}))
+                    _log.info(
+                        "evaluate_sync (thread): metrics=%s", result.get("metrics", {})
+                    )
                     return result
             else:
                 return asyncio.run(
-                    self.evaluate(goal, artifacts, summary,
-                                  node_id=node_id, node_label=node_label)
+                    self.evaluate(
+                        goal, artifacts, summary, node_id=node_id, node_label=node_label
+                    )
                 )
         except Exception as e:
             _log.warning("evaluate_sync failed: %s", e)
-            return {"score": None, "reason": f"sync error: {e}",
-                    "has_real_data": False, "has_paper_section": False, "metrics": {}}
+            return {
+                "score": None,
+                "reason": f"sync error: {e}",
+                "has_real_data": False,
+                "has_paper_section": False,
+                "metrics": {},
+            }
 
     async def evaluate(
         self,
@@ -651,7 +690,9 @@ class LLMEvaluator:
             # Supplement with raw artifact text via MetricSpec artifact_extractor
             # (domain-specific fallback when LLM misses some metrics)
             artifacts_text = " ".join(
-                (a.get("stdout", "") or a.get("content", "") or str(a)) if isinstance(a, dict) else str(a)
+                (a.get("stdout", "") or a.get("content", "") or str(a))
+                if isinstance(a, dict)
+                else str(a)
                 for a in (artifacts if isinstance(artifacts, list) else [])
             )
             extra_metrics = self.metric_spec.extract_from_artifacts(artifacts_text)
@@ -689,17 +730,25 @@ class LLMEvaluator:
                 from ari.migrations.v05_to_v07.legacy_axes import (
                     legacy_uniform_axis_scores,
                 )
+
                 axis_scores = legacy_uniform_axis_scores(data, iter_names)
 
             weights = self._resolve_axis_weights()
-            composite = self._compose_fn(
-                axis_scores, weights, axis_names=iter_names
-            )
+            composite = self._compose_fn(axis_scores, weights, axis_names=iter_names)
 
             comparison_found = bool(data.get("comparison_found", False))
             if composite > 0:
                 extracted_metrics["_scientific_score"] = composite
             extracted_metrics["_axis_scores"] = axis_scores
+            # Ride the SAME channel as the scores. `axis_rationales` was a
+            # sibling of `metrics` in this result, and the agent loop keeps
+            # only `metrics` (`node.metrics = eval_result["metrics"]`), so
+            # the rationales were dropped on every node — leaving
+            # node_report `self_assessment.concerns` and
+            # `next_steps_hints` structurally empty on every run.
+            extracted_metrics["_axis_rationales"] = (
+                data.get("axis_rationales", {}) or {}
+            )
             if comparison_found:
                 extracted_metrics["_comparison_found"] = 1.0
             # AUTHORITATIVE measurements: the node's results.json is the ground
@@ -714,19 +763,34 @@ class LLMEvaluator:
             try:
                 import os as _os_rj
                 from pathlib import Path as _Path_rj
+
                 _wd = _os_rj.environ.get("ARI_WORK_DIR", "")
                 if _wd:
                     _rj_path = _Path_rj(_wd) / "results.json"
                     if _rj_path.is_file():
-                        _rj_meas = (json.loads(_rj_path.read_text()) or {}).get("measurements")
-                        if isinstance(_rj_meas, dict):
-                            for _k, _v in _rj_meas.items():
-                                if isinstance(_k, str) and isinstance(_v, (int, float)) and not isinstance(_v, bool):
-                                    extracted_metrics[_k] = float(_v)
-                                    measurements_dict[_k] = float(_v)
-                                    _rj_has_real = True
-            except Exception:
-                pass
+                        _rj_document = json.loads(_rj_path.read_text()) or {}
+                        _rj_set = parse_measurement_document(_rj_document)
+                        for _record in _rj_set.measurements:
+                            extracted_metrics[_record.metric_id] = float(_record.value)
+                            measurements_dict[_record.metric_id] = float(_record.value)
+                            _rj_has_real = True
+                        extracted_metrics["_measurement_schema"] = (
+                            _rj_set.schema_version
+                        )
+                        extracted_metrics["_measurement_compatibility"] = (
+                            measurement_document_format(_rj_document)
+                        )
+                        extracted_metrics["_measurement_admissible"] = bool(
+                            _rj_set.measurements
+                        ) and all(
+                            record.unit_status == "declared"
+                            and record.execution_status == "completed"
+                            and record.exit_code == 0
+                            and bool(record.artifact_digests)
+                            for record in _rj_set.measurements
+                        )
+            except (MeasurementDocumentError, OSError, ValueError) as exc:
+                logger.warning("Ignoring invalid results.json: %s", exc)
 
             # Typed views — present iff the LLM honoured the new contract.
             # Stored under reserved underscore keys so they don't collide
@@ -753,10 +817,59 @@ class LLMEvaluator:
             }
         except Exception as e:
             logger.warning("LLMEvaluator failed: %s", e)
+            # results.json is the AUTHORITATIVE measured ground truth and is
+            # independent of the LLM extraction — an empty/garbage LLM reply
+            # (e.g. json.loads on "" → "Expecting value") must NOT discard it.
+            # Before this, the merge lived inside the try above, so an LLM
+            # failure orphaned a node's real measurements as has_real=False even
+            # though results.json held them (observed in the e2e run's root node).
+            rj_meas = self._results_json_measurements()
+            if rj_meas:
+                logger.warning(
+                    "LLMEvaluator: recovered %d measurement(s) from results.json "
+                    "despite the LLM failure", len(rj_meas))
             return {
                 "score": None,
                 "reason": f"eval error: {e}",
-                "has_real_data": False,
+                "has_real_data": bool(rj_meas),
                 "has_paper_section": False,
-                "metrics": {},
+                "metrics": dict(rj_meas),
             }
+
+    @staticmethod
+    def _results_json_measurements() -> dict:
+        """The node's ``{ARI_WORK_DIR}/results.json`` numeric ``measurements``,
+        as a flat ``{name: float}`` dict (empty when absent/unreadable).
+
+        This is the experiment's structured ground truth; it is read on BOTH the
+        LLM-success and LLM-failure paths so real data survives an LLM outage.
+        """
+        import os as _os_rj
+        from pathlib import Path as _Path_rj
+
+        out: dict[str, float] = {}
+        wd = _os_rj.environ.get("ARI_WORK_DIR", "")
+        if not wd:
+            return out
+        p = _Path_rj(wd) / "results.json"
+        # ABSENT is legitimately silent (many nodes emit no results.json). A file
+        # that EXISTS but cannot be decoded is a lost measurement, and swallowing
+        # it made a truncated file (writer is non-atomic) indistinguishable from
+        # the no-file case — has_real_data=False, and the "recovered N
+        # measurement(s)" breadcrumb absent exactly when data was lost.
+        if not p.is_file():
+            return out
+        try:
+            document = json.loads(p.read_text()) or {}
+            measurement_set = parse_measurement_document(document)
+        except (MeasurementDocumentError, OSError, ValueError) as exc:
+            logger.warning("results.json at %s exists but is unreadable (%s); its "
+                           "measurements are LOST, not absent", p, exc)
+            try:
+                (p.parent / "results.json.unreadable").write_text(str(exc))
+            except Exception:
+                pass
+            return out
+        for record in measurement_set.measurements:
+            out[record.metric_id] = float(record.value)
+        return out

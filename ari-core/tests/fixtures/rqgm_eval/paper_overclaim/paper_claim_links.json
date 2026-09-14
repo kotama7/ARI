@@ -1,0 +1,17 @@
+{
+  "figure_refs": [],
+  "numeric_mentions": [
+    {
+      "line": 2,
+      "requires_assertion": true,
+      "section": "results",
+      "type": "result_claim",
+      "unit": "x",
+      "value": 5.2
+    }
+  ],
+  "paper_claim_links": [],
+  "uncovered_numeric_candidates": [],
+  "unresolved_anchors": [],
+  "writer_assertions": []
+}

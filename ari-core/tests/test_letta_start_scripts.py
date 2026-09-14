@@ -70,6 +70,27 @@ def test_pip_start_skips_comments_and_blanks():
     assert "^[[:space:]]*$" in src, "must skip blank lines"
 
 
+def test_pip_start_uses_the_server_version_supported_by_memory_adapter():
+    src = _read(LETTA_DIR / "start_pip.sh")
+    assert '"letta==0.9.1"' in src
+    assert '"letta-client==0.1.324"' in src
+    assert "patch_091_missing_greenlet.py" in src
+    assert "/v1/health" in src
+
+
+def test_pip_restart_validates_the_actual_port_owner_and_new_pid():
+    """A stale PID file must not make an old listener look newly healthy."""
+    src = _read(LETTA_DIR / "start_pip.sh")
+    assert 'lsof -t -iTCP:"${LETTA_PORT}" -sTCP:LISTEN' in src
+    assert '"${previous_cmd}" != *"letta server"*' in src
+    assert '"${previous_cmd}" != *"--port ${LETTA_PORT}"*' in src
+    # Health alone is insufficient: the old listener could answer while the
+    # just-started process is still failing its bind.
+    health_idx = src.find('"http://${LETTA_HOST}:${LETTA_PORT}/v1/health"')
+    post_health_pid_idx = src.find('kill -0 "${letta_pid}"', health_idx)
+    assert health_idx >= 0 and post_health_pid_idx > health_idx
+
+
 # ─ singularity (HPC path) ──────────────────────────────────────────────
 
 def test_singularity_start_passes_env_file():

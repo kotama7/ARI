@@ -1,17 +1,19 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { resolve } from "path";
+import { resolve } from "node:path";
+
+const frontendDir = import.meta.dirname;
 
 export default defineConfig({
   plugins: [react()],
   base: "/static/dist/",
   build: {
-    outDir: resolve(__dirname, "../static/dist"),
+    outDir: resolve(frontendDir, "../static/dist"),
     emptyOutDir: true,
   },
   resolve: {
     alias: {
-      "@": resolve(__dirname, "src"),
+      "@": resolve(frontendDir, "src"),
     },
   },
   server: {

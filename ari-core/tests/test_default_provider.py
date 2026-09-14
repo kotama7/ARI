@@ -132,17 +132,23 @@ class TestDefaultProviderConstant:
             f"DEFAULT_PROVIDER '{m.group(1) if m else '?'}' not in provider options {options}"
 
     def test_default_provider_has_models(self):
-        """DEFAULT_PROVIDER must have a non-empty entry in PROVIDER_MODELS."""
+        """DEFAULT_PROVIDER must be a provider the served catalog has models for.
+
+        Every screen falls back to this provider's models for one the catalog
+        does not describe, so a DEFAULT_PROVIDER the server serves nothing for
+        turns that fallback into an empty dropdown.
+        """
+        from ari.viz.checkpoint_api import _api_models
+
         src = _settings_page()
         m = re.search(r"const\s+DEFAULT_PROVIDER\s*=\s*['\"](\w+)['\"]", src)
         assert m
         prov = m.group(1)
-        # Find PROVIDER_MODELS block
-        pm_idx = src.find("PROVIDER_MODELS")
-        assert pm_idx >= 0
-        pm_block = src[pm_idx:src.find("};", pm_idx) + 2]
-        assert f"{prov}:" in pm_block or f"'{prov}':" in pm_block, \
-            f"PROVIDER_MODELS missing entry for DEFAULT_PROVIDER '{prov}'"
+        served = {p["id"]: p["models"] for p in _api_models()["providers"]}
+        assert prov in served, \
+            f"served catalog has no entry for DEFAULT_PROVIDER {prov!r}"
+        assert served[prov], \
+            f"served catalog lists no models for DEFAULT_PROVIDER {prov!r}"
 
 
 class TestNoEmptyProviderFallback:
@@ -182,8 +188,15 @@ class TestDefaultProviderUsedEverywhere:
         fn_idx = src.find("handleProviderChange")
         assert fn_idx >= 0
         body = src[fn_idx:fn_idx + 300]
-        assert "DEFAULT_PROVIDER" in body, \
-            "handleProviderChange must fall back to DEFAULT_PROVIDER"
+        # The fallback moved into modelsWithFallback when the local table was
+        # replaced by the served catalog; assert the helper is used *and* that
+        # it is the thing that falls back, so neither half can quietly go away.
+        assert "modelsWithFallback" in body, \
+            "handleProviderChange must resolve models through modelsWithFallback"
+        helper_idx = src.find("function modelsWithFallback")
+        assert helper_idx >= 0, "modelsWithFallback must be defined"
+        assert "DEFAULT_PROVIDER" in src[helper_idx:helper_idx + 300], \
+            "modelsWithFallback must fall back to DEFAULT_PROVIDER"
 
     def test_step_resources_prefill_uses_default(self):
         """StepResources settings fetch must default to a provider."""
@@ -223,17 +236,25 @@ class TestProviderOptions:
             "Wizard llm state must default to 'openai'"
 
     def test_provider_options_match_provider_models(self):
-        """All provider options must have PROVIDER_MODELS entries."""
+        """Every provider the page offers must be one the catalog serves.
+
+        A provider in the select that the served catalog does not describe
+        renders an empty model dropdown -- which is what switching the page to
+        the catalog would have done to `claude_code`, offered by both frontends
+        and absent from the server list until it was added.
+        """
+        from ari.viz.checkpoint_api import _api_models
+
         src = _settings_page()
-        pm_idx = src.find("PROVIDER_MODELS")
-        assert pm_idx >= 0
-        pm_block = src[pm_idx:src.find("};", pm_idx) + 2]
-        # Options in the provider select
-        options = re.findall(r'<option\s+value="(\w+)"', src)
-        providers = set(o for o in options if o in ("openai", "anthropic", "gemini", "ollama"))
-        for prov in providers:
-            assert f"{prov}:" in pm_block or f"'{prov}':" in pm_block, \
-                f"Provider option '{prov}' has no PROVIDER_MODELS entry"
+        served = {p["id"] for p in _api_models()["providers"]}
+        options = re.findall(r'<option\s+value="([\w-]+)"', src)
+        providers = set(o for o in options
+                        if o in ("openai", "anthropic", "claude_code", "gemini",
+                                 "ollama", "cli-shim"))
+        assert providers, "no provider options found on the Settings page"
+        for prov in sorted(providers):
+            assert prov in served, \
+                f"provider option {prov!r} is not in the served catalog {sorted(served)}"
 
 
 # ══════════════════════════════════════════════════════════════════════════

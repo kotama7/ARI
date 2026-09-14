@@ -1,6 +1,6 @@
 """Unit + smoke + determinism tests for ``scripts/check_dead_code.py`` (055).
 
-Covers ``docs/refactoring/subtasks/055_add_dead_code_candidate_checker.md`` §12:
+Covers subtask 055 (add dead-code candidate checker, since retired) §12:
 
   (a) precedence -- a PUBLIC_CONTRACT node (route / MCP tool) with no static
       importer stays PUBLIC_CONTRACT; a dynamic-seam file stays DYNAMIC;

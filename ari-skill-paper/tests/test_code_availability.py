@@ -6,11 +6,11 @@ Covers:
   any prior injected block is stripped on re-run)
 - LaTeX safety: macros and section header land before \end{document}
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from src.server import (  # type: ignore
     inject_code_availability,
@@ -19,14 +19,12 @@ from src.server import (  # type: ignore
 )
 
 
-_BASIC_TEX = (
-    r"""\documentclass{article}
+_BASIC_TEX = r"""\documentclass{article}
 \begin{document}
 \section{Hello}
 World.
 \end{document}
 """
-)
 
 
 def _write_tex(tmp_path: Path, body: str = _BASIC_TEX) -> Path:
@@ -121,7 +119,65 @@ def test_inject_doi_and_license(tmp_path: Path):
     assert "MIT" in content
 
 
+def test_inject_escapes_file_ref_for_latex(tmp_path: Path):
+    tex = _write_tex(tmp_path)
+    ref = "file:///tmp/run_with_under/bundle.tar.gz?x=one&y=50%"
+
+    inject_code_availability(tex_path=str(tex), ref=ref, sha256="e" * 64)
+
+    content = tex.read_text(encoding="utf-8")
+    assert r"run\_with\_under" in content
+    assert r"x=one\&y=50\%" in content
+    assert "%\n" not in content.split(r"\coderef{", 1)[1].split("}", 1)[0]
+
+
 def test_inject_missing_tex_returns_error(tmp_path: Path):
-    res = inject_code_availability(str(tmp_path / "nope.tex"), ref="ari://x", sha256="0" * 64)
+    res = inject_code_availability(
+        str(tmp_path / "nope.tex"), ref="ari://x", sha256="0" * 64
+    )
     assert res["injected"] is False
     assert "not found" in res.get("error", "")
+
+
+def test_corrupt_manifest_is_flagged_not_silently_treated_as_unpublished(tmp_path: Path):
+    """L1: a manifest.lock / publish_record that EXISTS but is unparseable must
+    surface a load error, not be swallowed. Otherwise the run omits the Code
+    Availability section (no integrity digest) byte-identically to a genuinely
+    unpublished paper — the reader cannot tell the digest was lost."""
+    tex = _write_tex(tmp_path)
+    ckpt = tmp_path / "ckpt"
+    (ckpt / "ear_published").mkdir(parents=True)
+    (ckpt / "ear_published" / "manifest.lock").write_text(
+        "{ not valid json", encoding="utf-8")
+    (ckpt / "publish_record.json").write_text(
+        "also not json {", encoding="utf-8")
+
+    res = inject_code_availability(str(tex), checkpoint_dir=str(ckpt))
+    # No usable ref/sha could be recovered, so the section is omitted...
+    assert res["injected"] is False
+    # ...but the corruption is reported rather than looking like "unpublished".
+    errs = res.get("load_errors") or []
+    assert any("manifest.lock" in e for e in errs), errs
+    assert any("publish_record.json" in e for e in errs), errs
+
+
+def test_valid_manifest_recovers_digest_without_load_errors(tmp_path: Path):
+    """A well-formed manifest.lock feeds the digest through and reports no
+    load errors — the happy path stays clean."""
+    import json as _json
+    tex = _write_tex(tmp_path)
+    ckpt = tmp_path / "ckpt"
+    (ckpt / "ear_published").mkdir(parents=True)
+    (ckpt / "ear_published" / "manifest.lock").write_text(
+        _json.dumps({"bundle_sha256": "a" * 64,
+                     "publish": {"license": "MIT"}}), encoding="utf-8")
+    (ckpt / "publish_record.json").write_text(
+        _json.dumps({"ref": "ari://good", "extra": {"doi": "10.5281/zenodo.9"}}),
+        encoding="utf-8")
+
+    res = inject_code_availability(str(tex), checkpoint_dir=str(ckpt))
+    assert res["injected"] is True
+    assert "load_errors" not in res
+    content = tex.read_text(encoding="utf-8")
+    assert "a" * 64 in content
+    assert "ari://good" in content

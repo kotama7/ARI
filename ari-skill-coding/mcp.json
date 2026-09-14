@@ -1,8 +1,19 @@
 {
+  "description": "Workspace-scoped code authoring, process execution, and result emission.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
   "name": "coding-skill",
-  "version": "0.1.0",
-  "description": "Code writing and execution for ARI research agents",
-  "tools": [],
+  "package": "ari-skill-coding",
   "runtime": "python",
-  "entrypoint": "src/server.py"
+  "schema_version": 1,
+  "tools": [
+    "emit_results",
+    "read_file",
+    "run_bash",
+    "run_code",
+    "write_code",
+    "edit_code",
+    "describe_environment"
+  ],
+  "version": "0.2.0"
 }

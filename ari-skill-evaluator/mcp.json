@@ -1,7 +1,16 @@
 {
+  "description": "Metric contracts, deterministic claim gates, and evidence-grounded semantic review.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "evaluator-skill",
+  "package": "ari-skill-evaluator",
+  "runtime": "python",
+  "schema_version": 1,
   "tools": [
-    "make_metric_spec",
     "claim_evidence_hard_gate",
-    "evidence_grounded_semantic_review"
-  ]
+    "evidence_grounded_semantic_review",
+    "make_metric_spec",
+    "propose_metric_contract"
+  ],
+  "version": "1.1.0"
 }

@@ -287,6 +287,11 @@ def check_contract(science_data: dict) -> list[dict]:
 
     key = mc.get("key")
     formula = mc.get("formula")
+    formula_operands = (
+        mc.get("formula_operands")
+        if isinstance(mc.get("formula_operands"), dict)
+        else {}
+    )
     ceiling_select = mc.get("ceiling_select")
     invs = [e for e in (mc.get("invariants") or []) if isinstance(e, str)]
     correctness = mc.get("correctness") if isinstance(mc.get("correctness"), dict) else None
@@ -296,6 +301,10 @@ def check_contract(science_data: dict) -> list[dict]:
     for cid, cfg in _iter_configs(science_data):
         vars_: dict[str, Any] = _flatten_metrics(cfg)
         prov = _provenance(cfg)
+        for role, metric_name in formula_operands.items():
+            if isinstance(role, str) and isinstance(metric_name, str):
+                if metric_name in vars_:
+                    vars_[role] = vars_[metric_name]
 
         # C: declared regime — evaluate the conditional to bind the selected
         # ceiling. The harness only EVALUATES the declared conditional; it never
@@ -327,8 +336,18 @@ def check_contract(science_data: dict) -> list[dict]:
         # D/E: declared invariants (boolean exprs). False => violation; None
         # (unevaluable, e.g. missing operand) => skipped (not a false positive).
         for expr in invs:
-            r = formula_eval.safe_eval(expr, vars_)
-            if r is False:
+            r, unevaluable = formula_eval.eval_declared(expr, vars_)
+            if unevaluable:
+                # NOT the same as "the invariant held". A declared invariant the
+                # evaluator cannot parse was indistinguishable from a passing one
+                # because every caller tested only `is False`.
+                findings.append({
+                    "type": "contract_expr_unevaluable", "config_id": cid,
+                    "expr": expr, "kind": "declared_invariant",
+                    "message": (f"declared invariant '{expr}' could not be evaluated "
+                                f"({unevaluable}) for config '{cid}' — it is NOT verified"),
+                })
+            elif r is False:
                 findings.append({
                     "type": "invariant_violation", "config_id": cid, "expr": expr,
                     "kind": "declared",
@@ -349,8 +368,23 @@ def check_contract(science_data: dict) -> list[dict]:
                 })
             else:
                 expr = correctness.get("expr")
-                r = formula_eval.safe_eval(expr, vars_) if isinstance(expr, str) else None
-                if r is False:
+                r, unevaluable = (
+                    formula_eval.eval_declared(expr, vars_)
+                    if isinstance(expr, str) else (None, "correctness.expr is not a string")
+                )
+                if unevaluable:
+                    # The kernel's numerical-correctness check did not run. The
+                    # gate used to publish contract_violation_count: 0 for this,
+                    # i.e. "correctness verified", on an LLM-authored expression
+                    # with no stated grammar.
+                    findings.append({
+                        "type": "contract_expr_unevaluable", "config_id": cid,
+                        "expr": expr, "kind": "correctness",
+                        "message": (f"correctness check '{expr}' could not be evaluated "
+                                    f"({unevaluable}) for config '{cid}' — the kernel's "
+                                    f"numerical correctness is NOT verified"),
+                    })
+                elif r is False:
                     findings.append({
                         "type": "correctness_failed", "config_id": cid, "expr": expr,
                         "message": f"correctness check '{expr}' failed for config '{cid}'",

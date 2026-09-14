@@ -101,13 +101,21 @@ class TestI18NKeyConsistency:
 
 
 class TestI18NIndexImports:
-    """i18n/index.ts must import all three languages and provide useI18n hook."""
+    """i18n/index.ts must wire all three languages and provide useI18n hook.
+
+    Since gui_refresh Wave 4d (task 09 main-chunk reduction) the dictionaries
+    are code-split: index.ts references them via dynamic ``import('./xx')``
+    loaders (loaded at startup by I18nProvider for the active locale + the
+    `en` fallback) instead of static top-level imports. The invariant guarded
+    here is unchanged — every locale must be reachable from the barrel — so
+    the assertions accept either import form.
+    """
 
     def test_index_imports_all_languages(self):
         src = (I18N_DIR / "index.ts").read_text()
-        assert "import en from" in src, "index.ts must import en"
-        assert "import ja from" in src, "index.ts must import ja"
-        assert "import zh from" in src, "index.ts must import zh"
+        for lang in ("en", "ja", "zh"):
+            assert f"import {lang} from" in src or f"import('./{lang}')" in src, \
+                f"index.ts must import {lang} (statically or via dynamic loader)"
 
     def test_index_exports_useI18n(self):
         src = (I18N_DIR / "index.ts").read_text()
@@ -116,7 +124,7 @@ class TestI18NIndexImports:
     def test_index_has_fallback_to_en(self):
         """useI18n must fall back to en when key not found in current language."""
         src = (I18N_DIR / "index.ts").read_text()
-        assert "translations.en" in src or "'en'" in src, \
+        assert "translations.en" in src or "loadedDicts.en" in src or "'en'" in src, \
             "useI18n must fall back to English translations"
 
 

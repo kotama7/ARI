@@ -160,6 +160,7 @@ def test_format_ancestor_block_excludes_self_entries(lineage_tree):
     # Ancestor titles MUST appear.
     assert "ParentSelected" in block
     assert "GrandparentIdea" in block
+    assert "legacy artifact (contract unverified)" in block
     # Treat-as-context guidance present so VirSci agents understand the role.
     assert "context" in block.lower()
 

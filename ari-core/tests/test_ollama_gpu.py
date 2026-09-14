@@ -183,11 +183,19 @@ class TestOllamaProxy:
 
         handler.send_response.assert_called_with(502)
 
-    def test_proxy_default_host_localhost(self):
-        """When ollama_host not in settings, default to localhost:11434."""
+    def test_proxy_default_host_localhost(self, monkeypatch):
+        """No ollama_host configured: the localhost:11434 default only applies
+        when the effective llm backend is ollama (MN-5, RR-P0-7).
+
+        Pre-MN-5 the implicit localhost default applied unconditionally; the
+        non-ollama-backend refusal is covered in
+        ``test_gui_path_proxy_hardening.py``.
+        """
         from ari.viz.api_ollama import _ollama_proxy
 
-        _st._settings_path.write_text(json.dumps({}))
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+        monkeypatch.delenv("ARI_BACKEND", raising=False)
+        _st._settings_path.write_text(json.dumps({"llm_provider": "ollama"}))
 
         mock_resp = mock.MagicMock()
         mock_resp.status = 200

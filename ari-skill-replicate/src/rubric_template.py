@@ -66,8 +66,8 @@ class TopLevelAxis:
 
 @dataclass
 class PromptOverrides:
-    system_hint: str = ""           # injected into skeleton/subtree prompts
-    leaf_style: str = ""            # injected into subtree prompt only
+    system_hint: str = ""  # injected into skeleton/subtree prompts
+    leaf_style: str = ""  # injected into subtree prompt only
 
 
 @dataclass
@@ -86,11 +86,7 @@ _VALID_MODES = {"agent_benchmark", "paper_audit"}
 
 
 def _candidate_paths(rubric_id: str) -> list[Path]:
-    return [
-        d / f"{rubric_id}.yaml"
-        for d in DEFAULT_DIRS
-        if d is not None
-    ]
+    return [d / f"{rubric_id}.yaml" for d in DEFAULT_DIRS if d is not None]
 
 
 def load_paperbench_rubric(rubric_id: str) -> PaperBenchRubricTemplate:
@@ -200,7 +196,7 @@ def build_skeleton_venue_hint(template: PaperBenchRubricTemplate) -> str:
     # paper_audit mode — enforce fixed axes.
     axes_list = "\n".join(
         f"  {i + 1}. id={a.id!r}  weight={a.weight}  "
-        f"requirements=\"{a.description.strip()}\""
+        f'requirements="{a.description.strip()}"'
         for i, a in enumerate(template.top_level_axes)
     )
     leaf_style = (template.prompt_overrides.leaf_style or "").strip()

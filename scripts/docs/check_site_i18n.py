@@ -16,10 +16,20 @@ the three checks that close the homepage i18n debt (see docs/README.md,
   (c) en→ja/zh co-change    — keys added to a surface's en dict since the merge
                               base must also exist in ja/zh (best-effort; needs
                               a git base — subsumed by (a) at the final state).
-  (d) version single source — docs/version.json parses, matches report/en
-                              ``\\date{vX.Y.Z, ...}``, and index.html carries no
-                              hard-coded ``vX.Y.Z`` footer literal (version.js
-                              injects it into #ari-version at runtime).
+  (d) public version pin    — the *published* pin is one register: docs/version.json
+                              is the single source, and the three README badges
+                              and each report ``\\date{vX.Y.Z, ...}`` must repeat
+                              it.  That pin is NOT required to equal the packaged
+                              version in ``ari-core/pyproject.toml``: a
+                              package-only bump (a contract-preserving release
+                              with nothing user-visible to announce) leaves the
+                              public pin untouched by design, so the pin may LAG
+                              the package.  It must never LEAD it — that would
+                              advertise a version that was never packaged.  See
+                              docs/about/release_policy.md, "Release checklist"
+                              step 2.  index.html must still carry no hard-coded
+                              ``vX.Y.Z`` footer literal (version.js injects it
+                              into #ari-version at runtime).
 
 Pure stdlib (git via subprocess, optional). Exit 1 on any hard finding.
 ``--json`` for machine-readable output.
@@ -47,6 +57,67 @@ SURFACE_HTML = {"landing": "index.html"}
 TID_RE = re.compile(r'id="t-([^"]+)"')
 VERSION_FOOTER_RE = re.compile(r"v\d+\.\d+\.\d+\s*[·•]")  # "v0.8.0 · ..." literal
 DATE_VERSION_RE = re.compile(r"\\date\{\s*(v\d+\.\d+\.\d+)")
+BADGE_VERSION_RE = re.compile(r"badge/version-(v\d+\.\d+\.\d+)")  # shields.io badge
+PYPROJECT_VERSION_RE = re.compile(r'(?m)^version\s*=\s*"([^"]+)"')
+SEMVER_RE = re.compile(r"v?(\d+)\.(\d+)\.(\d+)$")
+#: The PACKAGE version may carry a pre-release suffix that the PIN never does.
+#: `docs/about/release_policy.md` says ARI follows SemVer 2.0, and PEP 440 lets
+#: setuptools read `0.10.0rc1` / `0.10.0.dev0` -- so requiring a bare X.Y.Z from
+#: pyproject.toml would fail this gate on any release candidate. Match the
+#: release triple and keep whatever follows, so the ordering rule can still be
+#: evaluated: a pre-release sorts BEFORE its own final release.
+RELEASE_RE = re.compile(r"v?(\d+)\.(\d+)\.(\d+)(?P<rest>.*)$")
+
+# Public-pin restatements: files that must repeat docs/version.json verbatim.
+REPORT_LANGS = ("en", "ja", "zh")
+README_FILES = ("README.md", "README.ja.md", "README.zh.md")
+
+
+def packaged_version() -> str | None:
+    """``[project].version`` from ``ari-core/pyproject.toml`` — the PACKAGE version.
+
+    The same single source ``scripts/snapshot_contracts.py`` derives from; read
+    here rather than imported so this gate stays stdlib-only and never imports
+    ``ari``.  Returns None when the file is absent/unreadable (nothing to check).
+    """
+    pyproject = REPO_ROOT / "ari-core" / "pyproject.toml"
+    if not pyproject.exists():
+        return None
+    text = pyproject.read_text(encoding="utf-8")
+    try:
+        import tomllib
+
+        return tomllib.loads(text)["project"]["version"]
+    except Exception:
+        m = PYPROJECT_VERSION_RE.search(text)
+        return m.group(1) if m else None
+
+
+def semver(value: str) -> tuple[int, int, int] | None:
+    """``v0.9.1``/``0.9.1`` -> ``(0, 9, 1)``; None when it is not an X.Y.Z.
+
+    Strict on purpose, and used for the PIN only: the badge and ``\\date``
+    regexes already require a bare ``vX.Y.Z``, so a pin that does not parse here
+    could not have matched them either.
+    """
+    m = SEMVER_RE.match(value.strip())
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+
+
+def release_order(value: str) -> tuple[int, int, int, int] | None:
+    """A comparable key that tolerates a pre-release suffix; None if unparseable.
+
+    The fourth element is the pre-release flag, and it is what makes the
+    comparison right rather than merely permissive: ``0.10.0rc1`` -> ``(0, 10,
+    0, 0)`` sorts BEFORE ``v0.10.0`` -> ``(0, 10, 0, 1)``. A pin of ``v0.10.0``
+    against a packaged ``0.10.0rc1`` therefore still reads as the pin LEADING
+    the package, which it does -- the final release has not been packaged yet.
+    """
+    m = RELEASE_RE.match(value.strip())
+    if m is None:
+        return None
+    rest = m.group("rest").strip()
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3)), 0 if rest else 1)
 
 
 def tids_of(html: Path) -> set[str]:
@@ -79,6 +150,84 @@ def git_keys_at_base(rel_path: str) -> set[str] | None:
         if m:
             out.add(m.group(1))
     return out
+
+
+def check_version_pin(errors: list[str], warnings: list[str]) -> None:
+    """The public version pin, and its relationship to the packaged version.
+
+    Split out of :func:`check` so it can be exercised directly against a
+    scratch tree -- see ``scripts/tests/test_check_site_i18n_version.py``.
+    Appends to the caller's lists rather than returning, matching how the
+    rest of :func:`check` accumulates.
+    """
+    vjson = DOCS / "version.json"
+    declared = None
+    if not vjson.exists():
+        errors.append("[version] docs/version.json missing")
+    else:
+        try:
+            declared = json.loads(vjson.read_text(encoding="utf-8")).get("version")
+        except (ValueError, OSError) as exc:
+            errors.append(f"[version] docs/version.json unparseable: {exc}")
+        if not declared:
+            errors.append("[version] docs/version.json has no 'version' field")
+
+    # every public restatement of the pin must repeat docs/version.json.
+    for lang in REPORT_LANGS:
+        report_tex = REPO_ROOT / "report" / lang / "main.tex"
+        if declared and report_tex.exists():
+            m = DATE_VERSION_RE.search(report_tex.read_text(encoding="utf-8"))
+            if m is None:
+                errors.append(
+                    f"[version] report/{lang}/main.tex carries no "
+                    f"\\date{{vX.Y.Z, ...}} to compare with version.json"
+                )
+            elif m.group(1) != declared:
+                errors.append(
+                    f"[version] version.json {declared!r} != report/{lang} "
+                    f"\\date {m.group(1)!r}"
+                )
+
+    for readme in README_FILES:
+        path = REPO_ROOT / readme
+        if declared and path.exists():
+            m = BADGE_VERSION_RE.search(path.read_text(encoding="utf-8"))
+            if m is None:
+                errors.append(
+                    f"[version] {readme} carries no shields.io "
+                    f"version-vX.Y.Z badge to compare with version.json"
+                )
+            elif m.group(1) != declared:
+                errors.append(
+                    f"[version] version.json {declared!r} != {readme} badge "
+                    f"{m.group(1)!r}"
+                )
+
+    # The published pin and the packaged version are two registers, and the rule
+    # between them is ordering, not equality: the pin MAY lag the package (a
+    # package-only bump ships no public-surface change) but must never lead it.
+    packaged = packaged_version()
+    if declared and packaged:
+        pin, pkg = release_order(declared), release_order(packaged)
+        if semver(declared) is None:
+            errors.append(
+                f"[version] docs/version.json {declared!r} is not a vX.Y.Z version"
+            )
+        elif pkg is None:
+            # The package version is not this gate's to police -- setuptools is
+            # the authority on what it accepts, and a shape we cannot parse means
+            # the ordering rule cannot be EVALUATED, not that it was violated.
+            warnings.append(
+                f"[version] ari-core/pyproject.toml version {packaged!r} is not "
+                f"an X.Y.Z(suffix) version; pin ordering not checked"
+            )
+        elif pin is not None and pin > pkg:
+            errors.append(
+                f"[version] public pin {declared!r} leads ari-core/pyproject.toml "
+                f"{packaged!r}; the site would advertise a version that was never "
+                f"packaged (the pin may lag a package-only bump, never lead it)"
+            )
+
 
 
 def check(strict_cochange: bool) -> tuple[list[str], list[str]]:
@@ -124,27 +273,7 @@ def check(strict_cochange: bool) -> tuple[list[str], list[str]]:
                 )
                 (errors if strict_cochange else warnings).append(msg)
 
-    # (d) version single source
-    vjson = DOCS / "version.json"
-    declared = None
-    if not vjson.exists():
-        errors.append("[version] docs/version.json missing")
-    else:
-        try:
-            declared = json.loads(vjson.read_text(encoding="utf-8")).get("version")
-        except (ValueError, OSError) as exc:
-            errors.append(f"[version] docs/version.json unparseable: {exc}")
-        if not declared:
-            errors.append("[version] docs/version.json has no 'version' field")
-
-    report_tex = REPO_ROOT / "report" / "en" / "main.tex"
-    if declared and report_tex.exists():
-        m = DATE_VERSION_RE.search(report_tex.read_text(encoding="utf-8"))
-        if m and m.group(1) != declared:
-            errors.append(
-                f"[version] version.json {declared!r} != report \\date "
-                f"{m.group(1)!r}"
-            )
+    check_version_pin(errors, warnings)
 
     # report PDF copies (P6) must stay byte-identical to the report/ source.
     report_dst = DOCS / "assets" / "report"
@@ -196,7 +325,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ERROR {e}")
         if not errors and not warnings:
             print("[check_site_i18n] OK — surface parity, no orphan t-ids, "
-                  "version single-sourced")
+                  "public version pin agrees across docs/version.json, the "
+                  "README badges and report/{en,ja,zh} \\date, and does not "
+                  "lead ari-core/pyproject.toml")
         else:
             print(f"\n{len(errors)} error(s), {len(warnings)} warning(s)")
     return 1 if errors else 0

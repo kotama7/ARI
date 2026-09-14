@@ -1,0 +1,135 @@
+{
+  "$defs": {
+    "NativeCaseResultV1": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "max_abs_error": {
+          "minimum": 0,
+          "title": "Max Abs Error",
+          "type": "number"
+        },
+        "max_rel_error": {
+          "minimum": 0,
+          "title": "Max Rel Error",
+          "type": "number"
+        },
+        "verdict": {
+          "enum": [
+            "pass",
+            "fail",
+            "inconclusive"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "category",
+        "verdict",
+        "detail",
+        "max_abs_error",
+        "max_rel_error"
+      ],
+      "title": "NativeCaseResultV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/native-hpc-verification-report-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "case_results": {
+      "items": {
+        "$ref": "#/$defs/NativeCaseResultV1"
+      },
+      "title": "Case Results",
+      "type": "array"
+    },
+    "categories_covered": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Categories Covered",
+      "type": "array"
+    },
+    "deterministic": {
+      "title": "Deterministic",
+      "type": "boolean"
+    },
+    "error_model": {
+      "title": "Error Model",
+      "type": "string"
+    },
+    "kind": {
+      "title": "Kind",
+      "type": "string"
+    },
+    "negative_control": {
+      "title": "Negative Control",
+      "type": "boolean"
+    },
+    "oracle": {
+      "title": "Oracle",
+      "type": "string"
+    },
+    "report_digest": {
+      "title": "Report Digest",
+      "type": "string"
+    },
+    "sandbox": {
+      "additionalProperties": true,
+      "title": "Sandbox",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "ari.native-hpc-verification-report/v1",
+      "default": "ari.native-hpc-verification-report/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tier": {
+      "enum": [
+        "screen",
+        "validate",
+        "certify"
+      ],
+      "title": "Tier",
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "inconclusive"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "tier",
+    "verdict",
+    "case_results",
+    "categories_covered",
+    "deterministic",
+    "oracle",
+    "error_model",
+    "negative_control",
+    "report_digest"
+  ],
+  "title": "ARI Native HPC Verification Report v1",
+  "type": "object"
+}

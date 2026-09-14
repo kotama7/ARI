@@ -1,6 +1,6 @@
 """BFTS tree-view adapter — single source of truth for the dashboard tree payload.
 
-Subtask 024 (Phase 4, ``docs/refactoring/subtasks/024_refactor_bfts_tree_visualization_adapter.md``).
+Subtask 024 (Phase 4, refactor BFTS tree-visualization adapter).
 This module is the ONE place the viz backend converts a checkpoint's on-disk
 BFTS node tree into the tree-view payload consumed by:
 

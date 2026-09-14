@@ -4,7 +4,13 @@ sources:
     role: doc
   - path: CHANGELOG.md
     role: doc
-last_verified: 2026-06-10
+  - path: LICENSE
+    role: doc
+  - path: SECURITY.md
+    role: doc
+  - path: ari-skill-transform/src/server.py
+    role: implementation
+last_verified: 2026-08-17
 ---
 
 # 关于 ARI
@@ -23,11 +29,15 @@ last_verified: 2026-06-10
 
 ## 许可
 
-ARI 不附带单一的仓库级许可证文件；许可是**按已发布制品**进行的。当你发布一个实验制品仓库
+仓库自身附带一个根目录的 [`LICENSE`](../../../LICENSE) —— MIT
+License，"Copyright (c) 2026 ARI contributors"。
+
+已发布的制品则是**按制品单独**授权的。当你发布一个实验制品仓库
 （EAR）时，其 `ear/publish.yaml` 会声明一个 SPDX `license`（MIT / Apache-2.0 /
-BSD-3-Clause / GPL-3.0 / CC-BY-4.0），并由 `generate_ear` 将匹配的
-`LICENSE` 文件写入 bundle。参见
-[配置 → EAR 策展](../reference/configuration.md#ear-curation-earpublishyaml--v070)。
+BSD-3-Clause / GPL-3.0，包含 `-only` / `-or-later` 两种写法 / CC-BY-4.0），并由
+`generate_ear` 将匹配的 `LICENSE` 文件写入 bundle —— 但仅当 bundle 中还没有
+`LICENSE` 时才写；而该集合之外的 SPDX 标识符则根本不会产生 `LICENSE` 文件。参见
+[配置 → EAR 策展](../reference/configuration.md#ear-精选-ear-publish-yaml-—-v0-7-0)。
 
 ---
 

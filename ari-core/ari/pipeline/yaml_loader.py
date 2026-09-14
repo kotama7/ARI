@@ -61,6 +61,51 @@ def load_disabled_stage_names(config_yaml: str | Path) -> set[str]:
     }
 
 
+def derive_workflow_with_disabled(
+    src: str | Path, dst: str | Path, disable_stages,
+) -> "Path | None":
+    """Copy the workflow at ``src`` to ``dst`` with ``disable_stages`` marked
+    ``enabled: false``; return ``dst``, or ``None`` if it could not be derived.
+
+    A pure, caller-driven transform: it reads no config and knows nothing about
+    WHY a stage is being turned off, so it introduces no mode conditional into
+    the pipeline. The whole document is copied verbatim (``paper_context``,
+    ``skills``, every stage's args) and ONLY the named stages' ``enabled`` flags
+    flip — so the derived file is a faithful stand-in that
+    :func:`load_pipeline` (which drops ``enabled: false``) and
+    :func:`load_disabled_stage_names` (which reports the complement, so
+    ``depends_on`` on a disabled stage resolves instead of cascade-skipping)
+    both read consistently.
+
+    Returns ``None`` on any failure so the caller can fail open to the original
+    workflow rather than lose the paper phase to a config-derivation error.
+    """
+    want = {str(s) for s in (disable_stages or ())}
+    if not want:
+        return None
+    try:
+        src_p, dst_p = Path(src).expanduser(), Path(dst).expanduser()
+        data = yaml.safe_load(src_p.read_text()) or {}
+        found: set[str] = set()
+        for s in (data.get("pipeline") or []):
+            if s.get("stage") in want:
+                s["enabled"] = False
+                found.add(s.get("stage"))
+        missing = want - found
+        if missing:
+            # Not fatal: a workflow legitimately need not declare every stage.
+            log.debug("derive_workflow_with_disabled: %s not present in %s",
+                      sorted(missing), src_p)
+        dst_p.parent.mkdir(parents=True, exist_ok=True)
+        dst_p.write_text(yaml.safe_dump(data, sort_keys=False,
+                                        allow_unicode=True))
+        return dst_p
+    except Exception:
+        log.warning("failed to derive a workflow with %s disabled from %s",
+                    sorted(want), src, exc_info=True)
+        return None
+
+
 def load_workflow(config_dir: str | Path) -> dict:
     """Load workflow.yaml if present, else fall back to pipeline.yaml.
 

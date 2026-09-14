@@ -2,19 +2,37 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-import signal
-import subprocess
+import re
+import secrets
+import socket
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
+from ari.public.execution import (
+    ContainerIdentityV1,
+    ExecutionLimitsV1,
+    ExecutionPolicyError,
+    ExecutionRequestV1,
+    ExecutionResultV1,
+    MeasurementRecordV1,
+    MeasurementSetV1,
+    WorkspaceRefV1,
+    execute_local,
+)
+
 
 _STDOUT_LIMIT = 4000
-_STDERR_LIMIT = 2000
 _READ_FILE_LIMIT = 8000
+_MAX_EXECUTION_RECEIPTS = 1024
+_EXECUTION_RECEIPTS: OrderedDict[str, dict] = OrderedDict()
+_EXECUTION_RECEIPTS_LOCK = threading.Lock()
 
 # ── Fail-safe: process sandbox ──────────────────────────
 # Prevent fork bombs and ensure cleanup of all child processes on timeout.
@@ -25,87 +43,148 @@ _READ_FILE_LIMIT = 8000
 # exit 254 on a workstation that has VSCode / multiple shells running.
 # Opt in via ARI_MAX_CHILD_PROCS instead; default is no extra cap.
 _MAX_CHILD_PROCS_ENV = os.environ.get("ARI_MAX_CHILD_PROCS", "").strip()
-_MAX_CHILD_PROCS: int | None = int(_MAX_CHILD_PROCS_ENV) if _MAX_CHILD_PROCS_ENV else None
+try:
+    _MAX_CHILD_PROCS = int(_MAX_CHILD_PROCS_ENV) if _MAX_CHILD_PROCS_ENV else None
+except ValueError:
+    _MAX_CHILD_PROCS = None
 
 
-def _sandbox_preexec() -> None:
-    """Pre-exec hook: new process group (and optional RLIMIT_NPROC cap)."""
-    os.setsid()
-    if _MAX_CHILD_PROCS is None:
-        return
-    try:
-        import resource
-        _soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)
-        cap = min(hard, _MAX_CHILD_PROCS)
-        resource.setrlimit(resource.RLIMIT_NPROC, (cap, hard))
-    except Exception:
-        pass
+# ── Container path model ─────────────────────────────────────────────
+# Each node's real work_dir is presented to the agent as a fixed virtual
+# container root. The agent — and every saved artifact / handoff log built from
+# tool I/O — therefore only ever sees ``/workspace/...``, never the absolute
+# host path (which carries the username / partition / cluster layout). The real
+# work_dir is authoritative and always supplied by the loop (see
+# ari.agent.tool_manager: it pins the per-node work_dir on every filesystem
+# call), so the mapping below is exact per call and never relies on the
+# fork-time ARI_WORK_DIR snapshot.
+_CONTAINER_ROOT = "/workspace"
+# Filesystem tools that take a ``work_dir`` and operate under the container root.
+_WORKDIR_TOOLS = frozenset(
+    {"write_code", "edit_code", "run_code", "run_bash", "read_file", "emit_results"}
+)
+# ``/workspace`` followed by a path boundary (``/``, whitespace, quote, end) —
+# so ``/workspace_backup`` is left untouched.
+_VROOT_RE = re.compile(re.escape(_CONTAINER_ROOT) + r"(?=/|\s|['\"]|$)")
 
 
-def _run_sandboxed(
-    cmd: str | list[str],
-    *,
-    shell: bool = False,
-    timeout: int = 60,
-    cwd: str | None = None,
-) -> subprocess.CompletedProcess:
-    """Run a subprocess inside a process-group sandbox.
+def _devirtualize(s: str, real: str) -> str:
+    """Map the virtual container root in an agent-supplied path or shell command
+    back to the real work_dir before execution."""
+    if not s or _CONTAINER_ROOT not in s:
+        return s
+    return _VROOT_RE.sub(real.rstrip("/"), s)
 
-    * Creates a new session (``setsid``) so all descendants share a PGID.
-    * Applies ``RLIMIT_NPROC`` to cap runaway process creation.
-    * On timeout, sends ``SIGTERM`` then ``SIGKILL`` to the **entire**
-      process group — not just the direct child.
-    """
-    proc = subprocess.Popen(
-        cmd,
-        shell=shell,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        cwd=cwd,
-        preexec_fn=_sandbox_preexec,
+
+# Host identity captured once at process start — used to scrub tool output so a
+# node reads like a self-contained container, not a host account.
+_HOST_NAMES = tuple(
+    sorted(
+        {h for h in (socket.gethostname(), socket.gethostname().split(".")[0]) if len(h) >= 3},
+        key=len,
+        reverse=True,
     )
-    try:
-        stdout, stderr = proc.communicate(timeout=timeout)
-        return subprocess.CompletedProcess(cmd, proc.returncode, stdout or "", stderr or "")
-    except subprocess.TimeoutExpired:
-        # Graceful shutdown: SIGTERM the group, wait briefly, then SIGKILL.
+)
+
+
+def _or_error(success: dict) -> dict:
+    """Admit the tool's result, its error shape, or a payload that is both.
+
+    Every tool here reports failure as ``{"error": "<message>"}`` -- a plain
+    string, unlike the structured envelope the HPC provider uses. Declaring only
+    the success shape would make the library reject the failure as an output
+    validation error and discard the message that says what went wrong. The
+    union must be inclusive: a timed-out execution is a complete result that
+    also carries an error string.
+    """
+
+    # anyOf, not oneOf: oneOf demands exactly one arm matches, and these
+    # shapes are not exclusive. A timed-out execution is a complete result
+    # that also carries an error string, so it satisfies both arms and
+    # oneOf rejects it -- destroying the very payload that says what
+    # happened, after the work was already done.
+    return {
+        "anyOf": [
+            success,
+            {
+                "type": "object",
+                "properties": {
+                    "error": {"type": "string"},
+                    "exit_code": {"type": "integer"},
+                },
+                "required": ["error"],
+            },
+        ]
+    }
+
+
+_EXECUTION_RESULT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "schema_version": {"type": "string"},
+        "stdout": {"type": "string"},
+        "stderr": {"type": "string"},
+        "stdout_truncated": {"type": "boolean"},
+        "stderr_truncated": {"type": "boolean"},
+        "truncated": {"type": "boolean"},
+        "exit_code": {"type": "integer"},
+        "status": {"type": "string"},
+        "execution_identity": {"type": ["string", "null"]},
+        "execution_status": {"type": ["string", "null"]},
+        "attempt_id": {"type": ["string", "null"]},
+    },
+    "required": ["exit_code", "stdout", "stderr"],
+}
+
+
+def _virtualize(s: str, real: str) -> str:
+    """Scrub host identity from tool OUTPUT so the node looks like a
+    self-contained container. Removes, in order: the real work_dir (raw and
+    symlink-resolved) -> ``/workspace``; the user's ``$HOME`` -> ``~``; the bare
+    username (``ls -l`` owner/group columns, ``whoami``) -> ``user``; and the
+    hostname (``hostname``, ``uname -a``) -> ``host``. No absolute host path,
+    username, or node name reaches the agent or the saved/handoff log."""
+    if not s:
+        return s
+    # 1) work_dir (raw + symlink-resolved), longest first -> /workspace
+    if real:
+        roots = {real.rstrip("/")}
         try:
-            os.killpg(proc.pid, signal.SIGTERM)
+            roots.add(os.path.realpath(real).rstrip("/"))
         except OSError:
             pass
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except OSError:
-                proc.kill()
-            proc.wait()
-        raise
+        for r in sorted((x for x in roots if x), key=len, reverse=True):
+            s = s.replace(r, _CONTAINER_ROOT)
+    # 2) home dir -> ~ (paths outside work_dir, e.g. ~/miniconda in a tool error)
+    home = (os.environ.get("HOME") or "").rstrip("/")
+    if home and home != "/":
+        s = s.replace(home, "~")
+    # 3) bare username -> user (word-boundary; owner/group columns, whoami)
+    user = os.environ.get("USER") or ""
+    if len(user) >= 3:
+        s = re.sub(r"\b" + re.escape(user) + r"\b", "user", s)
+    # 4) hostname -> host
+    for h in _HOST_NAMES:
+        s = re.sub(r"\b" + re.escape(h) + r"\b", "host", s)
+    return s
 
 
 def _resolve_work_dir(explicit: str | None) -> str:
-    """Return the effective work directory: explicit arg > ARI_WORK_DIR env > /tmp/ari_work."""
-    wd = explicit or os.environ.get("ARI_WORK_DIR") or "/tmp/ari_work"
-    Path(wd).mkdir(parents=True, exist_ok=True)
-    return wd
+    """Resolve caller subdirectories beneath the core-owned workspace root."""
 
-
-def _truncate(text: str, limit: int) -> tuple[str, bool]:
-    """Truncate keeping head and tail with a visible marker. Returns (preview, truncated)."""
-    if not text:
-        return "", False
-    if len(text) <= limit:
-        return text, False
-    half = limit // 2
-    omitted = len(text) - limit
-    marker = (
-        f"\n\n... [{omitted} chars truncated — "
-        f"redirect output to a file via run_bash (e.g. `<your command> > out.log 2>&1`) "
-        f"and use read_file to retrieve the full content] ...\n\n"
-    )
-    return text[:half] + marker + text[-half:], True
+    configured = Path(os.environ.get("ARI_WORK_DIR") or "/tmp/ari_work")
+    if not configured.is_absolute():
+        raise ExecutionPolicyError("ARI_WORK_DIR must be absolute")
+    workspace = WorkspaceRefV1(root=str(configured))
+    root = workspace.root
+    if not explicit:
+        return root
+    candidate = Path(explicit)
+    if not candidate.is_absolute():
+        candidate = Path(root) / candidate
+    if candidate == Path(root):
+        return root
+    return str(workspace.ensure_directory(str(candidate)))
 
 
 server = Server("coding-skill")
@@ -140,11 +219,67 @@ async def list_tools() -> list[Tool]:
                     },
                     "work_dir": {
                         "type": "string",
-                        "description": "Working directory",
-                        "default": "/tmp/ari_work",
+                        "description": "Container root (leave unset — auto-pinned to /workspace).",
+                        "default": "/workspace",
                     },
                 },
                 "required": ["filename", "code"],
+            },
+            outputSchema=_or_error(
+                {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "digest": {"type": "string"},
+                        "lines": {"type": "integer"},
+                        "status": {"type": "string"},
+                    },
+                    "required": ["path", "digest", "status"],
+                }
+            ),
+        ),
+        Tool(
+            name="edit_code",
+            description=(
+                "Replace an exact snippet inside an existing file, leaving the "
+                "rest untouched. Prefer this over write_code when the file "
+                "already exists: 92.2% of writes in the previous campaign "
+                "rewrote a file that was already there, and re-emitting a whole "
+                "kernel to change a few lines both costs tokens and risks "
+                "dropping code that was working. `old_string` must appear "
+                "EXACTLY ONCE unless replace_all is set, so an ambiguous edit "
+                "fails instead of silently changing the wrong place."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "File to edit; it must already exist.",
+                    },
+                    "old_string": {
+                        "type": "string",
+                        "description": (
+                            "Exact text to replace, including indentation. Give "
+                            "enough surrounding context to make it unique."
+                        ),
+                    },
+                    "new_string": {
+                        "type": "string",
+                        "description": "Replacement text.",
+                    },
+                    "replace_all": {
+                        "type": "boolean",
+                        "description": "Replace every occurrence instead of requiring exactly one.",
+                        "default": False,
+                    },
+                    "work_dir": {
+                        "type": "string",
+                        "description": "Container root (leave unset — auto-pinned to /workspace).",
+                        "default": "/workspace",
+                    },
+                },
+                "required": ["filename", "old_string", "new_string"],
             },
         ),
         Tool(
@@ -156,10 +291,8 @@ async def list_tools() -> list[Tool]:
                 "For compiled languages (C/C++/Fortran/Rust/Go/...) or any "
                 "custom build step, use run_bash to invoke the compiler and "
                 "then run the resulting binary — run_code does NOT compile. "
-                "Output is truncated if large; check the 'truncated' flag and "
-                "re-run via run_bash with shell redirection (e.g. "
-                "`<your command> > out.log 2>&1`) then use read_file to fetch "
-                "the full output."
+                "Inline output is bounded; complete stdout/stderr are returned "
+                "as content-addressed artifacts with SHA-256 digests."
             ),
             inputSchema={
                 "type": "object",
@@ -170,25 +303,25 @@ async def list_tools() -> list[Tool]:
                     },
                     "work_dir": {
                         "type": "string",
-                        "description": "Working directory",
-                        "default": "/tmp/ari_work",
+                        "description": "Container root (leave unset — auto-pinned to /workspace).",
+                        "default": "/workspace",
                     },
                     "timeout": {
                         "type": "integer",
-                        "description": "Timeout in seconds",
-                        "default": 60,
+                        "description": "Timeout in seconds (default 600). The scored build and self-test of an HPC kernel routinely exceed a minute; at 60 s the agent got a timeout instead of a result and spent further steps re-running it.",
+                        "default": 600,
                     },
                 },
                 "required": ["filename"],
             },
+            outputSchema=_or_error(_EXECUTION_RESULT_SCHEMA),
         ),
         Tool(
             name="run_bash",
             description=(
-                "Execute a bash command and return stdout/stderr/exit_code. "
-                "Output is truncated if large; check the 'truncated' flag and "
-                "redirect to a file (e.g. `cmd > out.log 2>&1`) then use "
-                "read_file to fetch the full output."
+                "Execute an explicitly shell-enabled bash command in the scoped "
+                "workspace. Full stdout/stderr are content-addressed artifacts; "
+                "the inline previews are bounded."
             ),
             inputSchema={
                 "type": "object",
@@ -199,28 +332,28 @@ async def list_tools() -> list[Tool]:
                     },
                     "work_dir": {
                         "type": "string",
-                        "description": "Working directory",
-                        "default": "/tmp/ari_work",
+                        "description": "Container root (leave unset — auto-pinned to /workspace).",
+                        "default": "/workspace",
                     },
                     "timeout": {
                         "type": "integer",
-                        "description": "Timeout in seconds",
-                        "default": 60,
+                        "description": "Timeout in seconds (default 600). The scored build and self-test of an HPC kernel routinely exceed a minute; at 60 s the agent got a timeout instead of a result and spent further steps re-running it.",
+                        "default": 600,
                     },
                 },
                 "required": ["command"],
             },
+            outputSchema=_or_error(_EXECUTION_RESULT_SCHEMA),
         ),
         Tool(
             name="emit_results",
             description=(
                 "Write a typed results.json file separating input parameters "
                 "from measurements. Use this at the END of an experiment run "
-                "after collecting numeric outputs — it lets downstream stages "
-                "(transform → science_data, paper writing, summary stats) "
-                "tell apart 'what we measured' from 'what we ran on', so a "
-                "best-of reduction never accidentally picks an input size "
-                "(e.g. nnz, M, K, threads) over a real metric (e.g. GFlops/s). "
+                "after collecting numeric outputs — separating 'what we measured' "
+                "from 'what we ran on' so a best-of reduction never accidentally "
+                "picks an input size (e.g. nnz, M, K, threads) over a real metric "
+                "(e.g. GFlops/s). "
                 "All four dicts may be empty; fields are best-effort. The file "
                 "is overwritten when called repeatedly; pass a different "
                 "'file' name to keep multiple result variants."
@@ -246,7 +379,24 @@ async def list_tools() -> list[Tool]:
                             "reviewer would treat as the experiment's result. "
                             "Examples: GFlops_per_s, GB_per_s, latency_s, "
                             "accuracy. These ARE candidates for the best-of "
-                            "primary metric."
+                            "primary metric. For a SINGLE case, put them here; "
+                            "if you measured MULTIPLE cases, use 'cases' below "
+                            "(this stays a representative/aggregate)."
+                        ),
+                        "additionalProperties": True,
+                    },
+                    "cases": {
+                        "type": "object",
+                        "description": (
+                            "OPTIONAL per-case results when you tested MORE THAN "
+                            "ONE problem size / shape / input. Keyed by a case "
+                            "name you choose (e.g. \"512x512x512\", \"n20000_k64\", "
+                            "\"tall\"), each value an object like "
+                            "{\"params\": {...}, \"measurements\": {...}}. Report "
+                            "EVERY case you measured here — do NOT collapse a "
+                            "multi-shape run into one number. (Report the cases "
+                            "YOU chose to test; the evaluator measures its own "
+                            "independent set and never reads this file.)"
                         ),
                         "additionalProperties": True,
                     },
@@ -273,15 +423,63 @@ async def list_tools() -> list[Tool]:
                         "type": "object",
                         "description": (
                             "Optional {operand_name: source} tags recording HOW a "
-                            "value was obtained, written verbatim as the '_provenance' "
-                            "key for the verification gate. Use \"microbench\" or "
-                            "\"benchmark\" for an empirically MEASURED ceiling/peak "
+                            "value was obtained, stored on the corresponding canonical "
+                            'measurement record for the verification gate. Use "microbench" or '
+                            '"benchmark" for an empirically MEASURED ceiling/peak '
                             "(so a normalized metric is not flagged as resting on a "
-                            "placeholder), and \"correctness\" (or \"reference\") for a "
+                            'placeholder), and "correctness" (or "reference") for a '
                             "residual computed against an INDEPENDENT reference (so the "
                             "output is not flagged as unverified). Best-effort/optional."
                         ),
                         "additionalProperties": True,
+                    },
+                    "units": {
+                        "type": "object",
+                        "description": (
+                            "Optional {measurement_name: unit} declarations. "
+                            "Missing units are recorded explicitly and prevent "
+                            "scientific admission; units are never inferred."
+                        ),
+                        "additionalProperties": {"type": "string"},
+                    },
+                    "execution": {
+                        "type": "object",
+                        "description": (
+                            "Optional exact execution context copied from a prior "
+                            "run_code/run_bash response: execution identity/attempt, "
+                            "status, exit code, artifact digests, and server receipt. "
+                            "Without it the measurements are explicitly marked "
+                            "unreported and are not scientifically admissible."
+                        ),
+                        "properties": {
+                            "execution_identity": {"type": "string"},
+                            "execution_attempt_id": {"type": "string"},
+                            "execution_status": {
+                                "type": "string",
+                                "enum": [
+                                    "completed",
+                                    "failed",
+                                    "timed_out",
+                                    "cancelled",
+                                ],
+                            },
+                            "exit_code": {"type": ["integer", "null"]},
+                            "artifact_digests": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "uniqueItems": True,
+                            },
+                            "receipt": {"type": "string"},
+                        },
+                        "required": [
+                            "execution_identity",
+                            "execution_attempt_id",
+                            "execution_status",
+                            "exit_code",
+                            "artifact_digests",
+                            "receipt",
+                        ],
+                        "additionalProperties": False,
                     },
                     "file": {
                         "type": "string",
@@ -290,12 +488,23 @@ async def list_tools() -> list[Tool]:
                     },
                     "work_dir": {
                         "type": "string",
-                        "description": "Working directory",
-                        "default": "/tmp/ari_work",
+                        "description": "Container root (leave unset — auto-pinned to /workspace).",
+                        "default": "/workspace",
                     },
                 },
                 "required": [],
             },
+            outputSchema=_or_error(
+                {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "digest": {"type": "string"},
+                        "status": {"type": "string"},
+                    },
+                    "required": ["status"],
+                }
+            ),
         ),
         Tool(
             name="read_file",
@@ -309,12 +518,15 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "File path (absolute, or relative to work_dir)",
+                        "description": (
+                            "File path relative to work_dir, or an absolute path "
+                            "that resolves inside the same work_dir"
+                        ),
                     },
                     "work_dir": {
                         "type": "string",
-                        "description": "Working directory",
-                        "default": "/tmp/ari_work",
+                        "description": "Container root (leave unset — auto-pinned to /workspace).",
+                        "default": "/workspace",
                     },
                     "offset": {
                         "type": "integer",
@@ -329,34 +541,122 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["path"],
             },
+            outputSchema=_or_error(
+                {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "content": {"type": "string"},
+                        "offset": {"type": "integer"},
+                        "returned_chars": {"type": "integer"},
+                        "total_chars": {"type": "integer"},
+                        "truncated": {"type": "boolean"},
+                        "next_offset": {"type": ["integer", "null"]},
+                    },
+                    "required": ["path", "content", "offset", "total_chars"],
+                }
+            ),
+        ),
+        Tool(
+            name="describe_environment",
+            description=(
+                "Return this cluster's environment catalog so you don't have to "
+                "discover the toolchain by trial-and-error. PER NODE it lists: "
+                "arch, CPU, GPUs, compilers on PATH, the raw `module avail` "
+                "catalog, and the NAMES of set toolchain env vars (echo the ones "
+                "you need to read their values). On a LOGIN node it reports the "
+                "login node itself (a real build target) plus one entry per "
+                "configured compute partition, if any. On a COMPUTE node it "
+                "reports only this node. Call it FIRST to see which compilers / "
+                "modules / GPUs / MPI you can use before you write or build "
+                "code. No arguments."
+            ),
+            # Deliberately permissive: no ``additionalProperties: False``. This
+            # tool is called while the agent is still ignorant of the toolchain,
+            # so a weaker model sometimes invents an argument (e.g. a partition
+            # name it cannot know — the names are not readable from the env, this
+            # tool IS their only source). The dispatch ignores ``arguments``, so a
+            # stray key is silently discarded and the full catalog still comes
+            # back. Rejecting it instead would turn a hallucinated arg into a
+            # retry, re-paying the probe. Pinned by
+            # test_describe_environment_ignores_unknown_args.
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
         ),
     ]
 
 
+def _describe_environment() -> dict:
+    """Node-aware environment catalog (ari.agent.run_env.build_env_catalog).
+
+    login   -> srun-probe each ARI_PROBE_PARTITIONS partition (heterogeneous
+               cluster); compute/local -> this node only. Cluster-agnostic:
+               dumps raw `module avail` / compilers / GPUs and only the NAMES of
+               set toolchain env vars (never values -> no key/username leak).
+    """
+    from ari.public.run_env import build_env_catalog
+    ckpt = os.environ.get("ARI_CHECKPOINT_DIR") or None
+    try:
+        return build_env_catalog(checkpoint_dir=ckpt)
+    except Exception as e:  # never crash the tool call
+        return {"error": f"describe_environment failed: {e}"}
+
+
 @server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    if name == "write_code":
-        result = _write_code(
+async def call_tool(
+    name: str, arguments: dict
+) -> tuple[list[TextContent], dict]:
+    # Resolve the real work_dir ONCE per call. Filesystem tools present a virtual
+    # ``/workspace`` root to the agent: agent-supplied paths/commands are mapped
+    # back to the real dir before execution (``_devirtualize``) and the real dir
+    # is scrubbed out of every result (``_virtualize`` on the serialized output).
+    wd = _resolve_work_dir(arguments.get("work_dir")) if name in _WORKDIR_TOOLS else None
+    if name == "edit_code":
+        result = _edit_code(
             filename=arguments["filename"],
+            old_string=arguments["old_string"],
+            new_string=arguments["new_string"],
+            replace_all=bool(arguments.get("replace_all", False)),
+            work_dir=arguments.get("work_dir", "/workspace"),
+        )
+        edited = json.dumps(result)
+        # Through the same scrub as every other tool. This path happens not to
+        # embed a real path today -- _edit_code is handed the agent's virtual
+        # work_dir, not the resolved one -- but it is in _WORKDIR_TOOLS and the
+        # invariant asserted below is that the structured half always comes from
+        # scrubbed text. An exception message that started carrying a real path
+        # would otherwise reach the agent through the one return that opted out.
+        if wd:
+            edited = _virtualize(edited, wd)
+        return [TextContent(type="text", text=edited)], json.loads(edited)
+    if name == "write_code":
+        # NB: ``code`` is written verbatim — never devirtualized — so the saved
+        # artifact stays host-agnostic (the agent is told to use relative or
+        # /workspace paths in source).
+        result = _write_code(
+            filename=_devirtualize(arguments["filename"], wd),
             code=arguments["code"],
-            work_dir=_resolve_work_dir(arguments.get("work_dir")),
+            work_dir=wd,
         )
     elif name == "run_code":
         result = _run_code(
-            filename=arguments["filename"],
-            work_dir=_resolve_work_dir(arguments.get("work_dir")),
-            timeout=arguments.get("timeout", 60),
+            filename=_devirtualize(arguments["filename"], wd),
+            work_dir=wd,
+            timeout=arguments.get("timeout", 600),
         )
     elif name == "run_bash":
         result = _run_bash(
-            command=arguments["command"],
-            work_dir=_resolve_work_dir(arguments.get("work_dir")),
-            timeout=arguments.get("timeout", 60),
+            command=_devirtualize(arguments["command"], wd),
+            work_dir=wd,
+            timeout=arguments.get("timeout", 600),
         )
     elif name == "read_file":
         result = _read_file(
-            path=arguments["path"],
-            work_dir=_resolve_work_dir(arguments.get("work_dir")),
+            path=_devirtualize(arguments["path"], wd),
+            work_dir=wd,
             offset=arguments.get("offset", 0),
             limit=arguments.get("limit", _READ_FILE_LIMIT),
         )
@@ -367,23 +667,74 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             predictions=arguments.get("predictions") or {},
             scores=arguments.get("scores") or {},
             provenance=arguments.get("provenance") or {},
+            units=arguments.get("units") or {},
+            execution=arguments.get("execution"),
             file=arguments.get("file") or "results.json",
-            work_dir=_resolve_work_dir(arguments.get("work_dir")),
+            work_dir=wd,
         )
+    elif name == "describe_environment":
+        # Blocking (srun queue-wait per partition) -> off the event loop.
+        import asyncio as _aio
+        result = await _aio.to_thread(_describe_environment)
     else:
         result = {"error": f"Unknown tool: {name}"}
 
-    return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    text = json.dumps(result, ensure_ascii=False)
+    if wd:
+        text = _virtualize(text, wd)
+    # The structured copy is parsed back from the SCRUBBED text, never from
+    # ``result``. A declared outputSchema makes this half reach the agent too,
+    # and handing over the unvirtualized dict would push the real work_dir,
+    # $HOME, username and hostname straight through the boundary that
+    # _virtualize exists to hold -- the text would be clean and the structured
+    # twin would carry everything it removed.
+    return [TextContent(type="text", text=text)], json.loads(text)
+
+
+def _edit_code(filename: str, old_string: str, new_string: str,
+               replace_all: bool, work_dir: str) -> dict:
+    """Exact-match replacement inside an existing file.
+
+    Refuses on 0 or on multiple matches (unless replace_all): an edit that
+    silently lands in the wrong place is worse than one that fails, because the
+    agent then reports success on a kernel it did not actually change.
+    """
+    file_path = Path(work_dir) / filename
+    if not file_path.is_file():
+        return {"status": "error",
+                "error": f"no such file: {filename} (use write_code to create it)"}
+    try:
+        body = file_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {"status": "error", "error": f"cannot read {filename}: {exc}"}
+    n = body.count(old_string)
+    if n == 0:
+        return {"status": "error",
+                "error": ("old_string not found; it must match the file exactly, "
+                          "including indentation")}
+    if n > 1 and not replace_all:
+        return {"status": "error",
+                "error": (f"old_string appears {n} times; add surrounding context "
+                          f"to make it unique, or set replace_all")}
+    updated = (body.replace(old_string, new_string) if replace_all
+               else body.replace(old_string, new_string, 1))
+    try:
+        file_path.write_text(updated, encoding="utf-8")
+    except OSError as exc:
+        return {"status": "error", "error": f"cannot write {filename}: {exc}"}
+    return {"path": str(file_path), "replacements": n if replace_all else 1,
+            "lines": len(updated.splitlines()), "status": "edited"}
 
 
 def _write_code(filename: str, code: str, work_dir: str) -> dict:
-    work_path = Path(work_dir)
-    work_path.mkdir(parents=True, exist_ok=True)
-    file_path = work_path / filename
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text(code, encoding="utf-8")
+    try:
+        workspace = WorkspaceRefV1(root=work_dir)
+        file_path = workspace.atomic_write_text(filename, code)
+    except (ExecutionPolicyError, OSError, ValueError) as exc:
+        return {"error": f"write_code rejected: {exc}"}
     return {
         "path": str(file_path),
+        "digest": "sha256:" + hashlib.sha256(code.encode("utf-8")).hexdigest(),
         "lines": len(code.splitlines()),
         "status": "written",
     }
@@ -394,31 +745,21 @@ def _write_code(filename: str, code: str, work_dir: str) -> dict:
 # (transform-skill, llm_evaluator) should accept any v1.* layout silently
 # and warn on unknown majors.
 _RESULTS_SCHEMA_VERSION = "1.0"
+_TYPED_RESULTS_SCHEMA_VERSION = "ari.measurement-set/v1"
 
 
-def _coerce_jsonable_dict(d: dict) -> dict:
-    """Best-effort: drop values that can't survive a JSON round-trip.
+def _strict_json_dict(value: dict, *, field: str) -> dict:
+    """Return a finite JSON object without changing keys or values."""
 
-    The contract is "structured numeric/string data, no objects". Anything
-    that isn't directly JSON-serialisable (e.g. numpy scalars, pathlib
-    paths) is coerced via str() so the file is always readable downstream.
-    Failures are silent — emit_results is a write-only tool and crashing
-    on a stray non-serialisable value would defeat its purpose as a
-    last-step reporter.
-    """
-    out: dict = {}
-    if not isinstance(d, dict):
-        return out
-    for k, v in d.items():
-        try:
-            json.dumps(v)
-            out[str(k)] = v
-        except (TypeError, ValueError):
-            try:
-                out[str(k)] = str(v)
-            except Exception:
-                continue
-    return out
+    if not isinstance(value, dict):
+        raise ValueError(f"{field} must be an object")
+    if any(not isinstance(key, str) or not key for key in value):
+        raise ValueError(f"{field} keys must be non-empty strings")
+    try:
+        json.dumps(value, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field} must contain finite JSON values") from exc
+    return dict(value)
 
 
 def _emit_results(
@@ -429,6 +770,8 @@ def _emit_results(
     file: str,
     work_dir: str,
     provenance: dict | None = None,
+    units: dict | None = None,
+    execution: dict | None = None,
 ) -> dict:
     """Write a typed results.json separating params from measurements.
 
@@ -436,43 +779,160 @@ def _emit_results(
     overwritten if it exists; callers that want to preserve prior runs
     must pass a distinct ``file`` name (e.g. ``results_seed42.json``).
     """
-    work_path = Path(work_dir)
-    work_path.mkdir(parents=True, exist_ok=True)
-    # Refuse to escape work_dir; emit_results is a node-local reporter.
-    safe_name = Path(file).name or "results.json"
-    out_path = work_path / safe_name
+    try:
+        parameters = _strict_json_dict(params, field="params")
+        measured = _strict_json_dict(measurements, field="measurements")
+        predicted = _strict_json_dict(predictions, field="predictions")
+        scored = _strict_json_dict(scores, field="scores")
+        declared_units = _strict_json_dict(units or {}, field="units")
+        declared_provenance = _strict_json_dict(
+            provenance or {}, field="provenance"
+        )
+    except ValueError as exc:
+        return {"error": f"emit_results schema validation failed: {exc}"}
+    execution_identity = None
+    execution_attempt_id = None
+    execution_status = "unreported"
+    exit_code = None
+    artifact_digests: list[str] = []
+    execution_verified = False
+    try:
+        workspace = WorkspaceRefV1(root=work_dir)
+    except (ExecutionPolicyError, OSError, ValueError) as exc:
+        return {"error": f"emit_results workspace rejected: {exc}"}
+    if execution is not None:
+        if not isinstance(execution, dict):
+            return {"error": "emit_results execution context must be an object"}
+        allowed_execution = {
+            "execution_identity",
+            "execution_attempt_id",
+            "execution_status",
+            "exit_code",
+            "artifact_digests",
+            "receipt",
+        }
+        if set(execution) != allowed_execution:
+            return {
+                "error": "emit_results execution context has missing or unknown fields",
+                "expected_fields": sorted(allowed_execution),
+            }
+        execution_identity = execution.get("execution_identity")
+        execution_attempt_id = execution.get("execution_attempt_id")
+        execution_status = execution.get("execution_status")
+        exit_code = execution.get("exit_code")
+        artifact_digests = execution.get("artifact_digests")
+        if not isinstance(artifact_digests, list):
+            return {"error": "emit_results artifact_digests must be an array"}
+        receipt = execution.get("receipt")
+        if not isinstance(receipt, str):
+            return {"error": "emit_results execution receipt must be text"}
+        with _EXECUTION_RECEIPTS_LOCK:
+            issued = _EXECUTION_RECEIPTS.get(receipt)
+        supplied = {
+            "work_dir": workspace.root,
+            "execution_identity": execution_identity,
+            "execution_attempt_id": execution_attempt_id,
+            "execution_status": execution_status,
+            "exit_code": exit_code,
+            "artifact_digests": tuple(artifact_digests),
+        }
+        if issued is None or any(
+            supplied[key] != issued[key]
+            for key in supplied
+        ):
+            return {"error": "emit_results execution receipt is invalid or mismatched"}
+        try:
+            for artifact in issued["artifacts"]:
+                if workspace.file_digest(artifact["relative_path"]) != artifact["digest"]:
+                    raise ValueError("artifact digest changed")
+                path = workspace.resolve(artifact["relative_path"], require_file=True)
+                if path.stat().st_size != artifact["size_bytes"]:
+                    raise ValueError("artifact size changed")
+        except (ExecutionPolicyError, FileNotFoundError, OSError, ValueError) as exc:
+            return {"error": f"emit_results execution artifact verification failed: {exc}"}
+        execution_verified = True
+    unknown_units = sorted(set(declared_units) - set(measured))
+    unknown_provenance = sorted(set(declared_provenance) - set(measured))
+    if unknown_units or unknown_provenance:
+        return {
+            "error": "emit_results metadata refers to unknown measurements",
+            "unknown_units": unknown_units,
+            "unknown_provenance": unknown_provenance,
+        }
+    records: list[MeasurementRecordV1] = []
+    try:
+        for metric_id, value in sorted(measured.items()):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"measurement {metric_id!r} must be numeric")
+            unit_value = declared_units.get(metric_id)
+            if unit_value is not None and not isinstance(unit_value, str):
+                raise ValueError(f"measurement unit for {metric_id!r} must be text")
+            provenance_value = declared_provenance.get(metric_id)
+            if provenance_value is not None and not isinstance(provenance_value, str):
+                raise ValueError(
+                    f"measurement provenance for {metric_id!r} must be text"
+                )
+            records.append(
+                MeasurementRecordV1(
+                    metric_id=metric_id,
+                    value=value,
+                    unit=unit_value,
+                    unit_status="declared" if unit_value is not None else "missing",
+                    provenance=provenance_value,
+                    parameters=parameters,
+                    artifact_digests=artifact_digests,
+                    execution_identity=execution_identity,
+                    execution_attempt_id=execution_attempt_id,
+                    execution_status=execution_status,
+                    exit_code=exit_code,
+                )
+            )
+        typed = MeasurementSetV1(
+            parameters=parameters,
+            measurements=records,
+            predictions=predicted,
+            scores=scored,
+            artifact_digests=artifact_digests,
+        )
+    except (TypeError, ValueError) as exc:
+        return {"error": f"emit_results schema validation failed: {exc}"}
 
     payload = {
         "schema_version": _RESULTS_SCHEMA_VERSION,
-        "params":       _coerce_jsonable_dict(params),
-        "measurements": _coerce_jsonable_dict(measurements),
-        "predictions":  _coerce_jsonable_dict(predictions),
-        "scores":       _coerce_jsonable_dict(scores),
+        "typed_schema_version": _TYPED_RESULTS_SCHEMA_VERSION,
+        "measurement_set": typed.model_dump(mode="json"),
     }
-    # _provenance carries {operand: source} tags (microbench/benchmark for a measured
-    # ceiling, correctness/reference for a verification residual). Written verbatim
-    # so transform -> science_data -> the hard gate can confirm a measured ceiling /
-    # a correctness check was actually run. Best-effort; omitted when empty.
-    _prov = _coerce_jsonable_dict(provenance or {})
-    if _prov:
-        payload["_provenance"] = _prov
+    serialized = json.dumps(payload, ensure_ascii=False, indent=2)
     try:
-        out_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-    except OSError as e:
+        out_path = workspace.atomic_write_text(file, serialized)
+    except (ExecutionPolicyError, OSError, ValueError) as e:
         return {
             "error": f"emit_results: write failed: {e}",
-            "path": str(out_path),
+            "path": file,
         }
     result = {
         "path": str(out_path),
         "schema_version": _RESULTS_SCHEMA_VERSION,
-        "params_keys":       list(payload["params"].keys()),
-        "measurements_keys": list(payload["measurements"].keys()),
-        "predictions_keys":  list(payload["predictions"].keys()),
-        "scores_keys":       list(payload["scores"].keys()),
+        "typed_schema_version": _TYPED_RESULTS_SCHEMA_VERSION,
+        "digest": "sha256:" + hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
+        "params_keys": list(typed.parameters),
+        "measurements_keys": [item.metric_id for item in typed.measurements],
+        "predictions_keys": list(typed.predictions),
+        "scores_keys": list(typed.scores),
+        "missing_unit_measurements": [
+            item.metric_id
+            for item in typed.measurements
+            if item.unit_status == "missing"
+        ],
+        "scientifically_admissible": bool(typed.measurements)
+        and execution_verified
+        and all(
+            item.unit_status == "declared"
+            and item.execution_status == "completed"
+            and item.exit_code == 0
+            and bool(item.artifact_digests)
+            for item in typed.measurements
+        ),
         "status": "written",
     }
     # Point-of-emission contract feedback: mirror the FINAL gate's presence checks
@@ -484,14 +944,25 @@ def _emit_results(
     # happened and is never altered; absent contract / absent ari-core => silent.
     try:
         import os as _os_ce
+
         _ck_ce = _os_ce.environ.get("ARI_CHECKPOINT_DIR", "").strip()
         _mc_p = Path(_ck_ce) / "metric_contract.json" if _ck_ce else None
         if _mc_p is not None and _mc_p.is_file():
             _mc = json.loads(_mc_p.read_text())
             if isinstance(_mc, dict) and _mc:
                 from ari.public.claim_gate import check_emission as _check_emission
-                _warns = _check_emission(_mc, payload["measurements"],
-                                         payload.get("_provenance") or {})
+
+                _measurement_values = {
+                    item.metric_id: item.value for item in typed.measurements
+                }
+                _measurement_provenance = {
+                    item.metric_id: item.provenance
+                    for item in typed.measurements
+                    if item.provenance is not None
+                }
+                _warns = _check_emission(
+                    _mc, _measurement_values, _measurement_provenance
+                )
                 if _warns:
                     result["contract_warnings"] = _warns
     except Exception:
@@ -499,18 +970,120 @@ def _emit_results(
     return result
 
 
-def _format_run_result(stdout: str, stderr: str, returncode: int) -> dict:
-    stdout_text, stdout_truncated = _truncate(stdout or "", _STDOUT_LIMIT)
-    stderr_text, stderr_truncated = _truncate(stderr or "", _STDERR_LIMIT)
-    return {
-        "stdout": stdout_text,
-        "stderr": stderr_text,
-        "stdout_truncated": stdout_truncated,
-        "stderr_truncated": stderr_truncated,
-        "truncated": stdout_truncated or stderr_truncated,
-        "exit_code": returncode,
-        "status": "success" if returncode == 0 else "failed",
+def _execution_limits() -> ExecutionLimitsV1:
+    return ExecutionLimitsV1(max_processes=_MAX_CHILD_PROCS)
+
+
+def _issue_execution_receipt(
+    result: ExecutionResultV1, workspace: WorkspaceRefV1
+) -> str:
+    artifact_digests = tuple(item.digest for item in result.artifacts)
+    receipt = secrets.token_hex(32)
+    issued = {
+        "work_dir": workspace.root,
+        "execution_identity": result.execution_identity,
+        "execution_attempt_id": result.attempt_id,
+        "execution_status": result.status,
+        "exit_code": result.exit_code,
+        "artifact_digests": artifact_digests,
+        "artifacts": tuple(
+            {
+                "relative_path": item.relative_path,
+                "digest": item.digest,
+                "size_bytes": item.size_bytes,
+            }
+            for item in result.artifacts
+        ),
     }
+    with _EXECUTION_RECEIPTS_LOCK:
+        _EXECUTION_RECEIPTS[receipt] = issued
+        _EXECUTION_RECEIPTS.move_to_end(receipt)
+        while len(_EXECUTION_RECEIPTS) > _MAX_EXECUTION_RECEIPTS:
+            _EXECUTION_RECEIPTS.popitem(last=False)
+    return receipt
+
+
+def _execution_payload(
+    result: ExecutionResultV1, workspace: WorkspaceRefV1
+) -> dict:
+    artifact_digests = [item.digest for item in result.artifacts]
+    receipt = _issue_execution_receipt(result, workspace)
+    payload = {
+        "schema_version": result.schema_version,
+        "stdout": result.stdout_preview,
+        "stderr": result.stderr_preview,
+        "stdout_truncated": result.stdout_truncated,
+        "stderr_truncated": result.stderr_truncated,
+        "truncated": result.stdout_truncated or result.stderr_truncated,
+        "exit_code": result.exit_code if result.exit_code is not None else -1,
+        "status": (
+            "success"
+            if result.status == "completed"
+            else "failed"
+            if result.status == "failed"
+            else result.status
+        ),
+        "execution_identity": result.execution_identity,
+        "execution_status": result.status,
+        "attempt_id": result.attempt_id,
+        "environment_names": result.environment_names,
+        "network_policy": result.network,
+        "network_enforcement": result.network_report,
+        "limits": result.limits.model_dump(mode="json"),
+        "limit_report": result.limit_report.model_dump(mode="json"),
+        "input_digests": result.input_digests,
+        "input_bindings": result.input_bindings,
+        "container": (
+            result.container.model_dump(mode="json")
+            if result.container is not None
+            else None
+        ),
+        "artifacts": [item.model_dump(mode="json") for item in result.artifacts],
+        "measurement_execution": {
+            "execution_identity": result.execution_identity,
+            "execution_attempt_id": result.attempt_id,
+            "execution_status": result.status,
+            "exit_code": result.exit_code,
+            "artifact_digests": artifact_digests,
+            "receipt": receipt,
+        },
+    }
+    if result.status == "timed_out":
+        payload["error"] = "execution timed out; process group was terminated"
+    return payload
+
+
+def _file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return "sha256:" + digest.hexdigest()
+
+
+def _container_identity(config) -> ContainerIdentityV1:
+    reference = str(config.image)
+    runtime = str(config.mode)
+    if runtime == "auto":
+        from ari.public.container import detect_runtime
+
+        runtime = detect_runtime()
+    if runtime not in {"docker", "singularity", "apptainer"}:
+        runtime = "unknown"
+    digest: str | None = None
+    path = Path(reference)
+    if path.is_file() and not path.is_symlink():
+        digest = _file_digest(path)
+    else:
+        match = re.search(r"@sha256:([0-9a-f]{64})$", reference)
+        if match:
+            digest = "sha256:" + match.group(1)
+    return ContainerIdentityV1(
+        runtime=runtime,
+        reference=reference,
+        digest=digest,
+        resolution_status="resolved" if digest is not None else "unresolved",
+    )
 
 
 _INTERPRETERS: dict[str, list[str]] = {
@@ -523,10 +1096,87 @@ _INTERPRETERS: dict[str, list[str]] = {
 }
 
 
+# ── Environment Modules passthrough ─────────────────────────────────────────
+# `describe_environment` reports the site's whole module tree, but the executor
+# builds a scrubbed environment from scratch (`build_minimal_environment`) and
+# runs `/bin/bash --noprofile --norc -c`. That combination made the catalogue a
+# lie: MODULEPATH was dropped, the profile that defines the `module` SHELL
+# FUNCTION was never sourced, so `module load` failed with "command not found"
+# and any toolchain reachable only through the module system could not be used
+# or compared at all.
+#
+# Only these names are restored, and only their values — no wildcard inherit.
+# They are pure location pointers into the module tree; the executor still
+# rejects anything matching its secret-name policy, and PATH / LD_LIBRARY_PATH
+# stay scrubbed so a module must be loaded explicitly to take effect.
+# No module, compiler or site name appears here: ARI carries no cluster
+# knowledge, it just stops discarding the pointers the site already exported.
+_MODULE_ENV_NAMES = (
+    "MODULESHOME",      # Tcl Environment Modules + Lmod: init/ lives under it
+    "MODULEPATH",       # the search path itself; without it the tree is empty
+    "MODULERCFILE",
+    "LOADEDMODULES",    # what the launching shell had loaded
+    "LMOD_CMD",         # Lmod-only; absent on Tcl Modules
+    "LMOD_PKG",
+)
+
+# Sourced before the agent's command so `module` exists as a function. Guarded:
+# on a node with no module system MODULESHOME is unset and this is a no-op, and
+# a failure to source must never turn into a failure of the agent's command.
+_MODULE_INIT_SNIPPET = (
+    'if [ -n "${MODULESHOME:-}" ] && [ -r "$MODULESHOME/init/bash" ]; then'
+    ' . "$MODULESHOME/init/bash" >/dev/null 2>&1 || true; fi\n'
+)
+
+
+def _module_environment() -> dict[str, str]:
+    """Module-system pointers to hand through to a node's execution."""
+    return {
+        name: os.environ[name]
+        for name in _MODULE_ENV_NAMES
+        if os.environ.get(name)
+    }
+
+
+# Written by the executing shell itself, because nothing outside it can know
+# what the command actually ran under: `module load` changes only that process,
+# and `_run_env.json` records the compilers ARI sees, which is the pre-module
+# view. Without this a report could not say WHICH modules produced a
+# measurement — and comparing two module configurations is the point of being
+# able to load them at all.
+#
+# Deliberately records no tool names: LOADEDMODULES answers "which modules",
+# and PATH is the complete resolution order, so any toolchain question can be
+# answered afterwards without ARI knowing a single compiler name.
+#
+# An EXIT trap, so the agent's exit status is preserved and the record is
+# written even when the command fails — a failed measurement's environment is
+# exactly as interesting as a successful one's. Every step is guarded: this
+# must never turn a working command into a failing one. Relative path: the
+# shell already runs with cwd=work_dir, so the host path never enters the
+# command text.
+_EXEC_ENV_FILENAME = "_exec_env.json"
+_EXEC_ENV_SNIPPET = (
+    '__ari_esc() { printf %s "$1" | sed \'s/\\\\/\\\\\\\\/g; s/"/\\\\"/g\'; }\n'
+    '__ari_record_exec_env() {\n'
+    '  {\n'
+    '    printf \'{"recorded_at":"%s"\' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)"\n'
+    '    printf \',"loaded_modules":"%s"\' "$(__ari_esc "${LOADEDMODULES:-}")"\n'
+    '    printf \',"module_path":"%s"\' "$(__ari_esc "${MODULEPATH:-}")"\n'
+    '    printf \',"path":"%s"}\\n\' "$(__ari_esc "${PATH:-}")"\n'
+    f'  }} > {_EXEC_ENV_FILENAME}.tmp 2>/dev/null'
+    f' && mv -f {_EXEC_ENV_FILENAME}.tmp {_EXEC_ENV_FILENAME} 2>/dev/null || true\n'
+    '}\n'
+    'trap __ari_record_exec_env EXIT\n'
+)
+
+
 def _run_code(filename: str, work_dir: str, timeout: int) -> dict:
-    file_path = Path(work_dir) / filename
-    if not file_path.exists():
-        return {"error": f"File not found: {file_path}", "exit_code": -1}
+    try:
+        workspace = WorkspaceRefV1(root=work_dir)
+        file_path = workspace.resolve(filename, require_file=True)
+    except (ExecutionPolicyError, FileNotFoundError, OSError, ValueError) as exc:
+        return {"error": f"run_code rejected: {exc}", "exit_code": -1}
 
     interp = _INTERPRETERS.get(file_path.suffix.lower())
     if interp is None:
@@ -542,34 +1192,29 @@ def _run_code(filename: str, work_dir: str, timeout: int) -> dict:
         }
 
     try:
-        result = _run_sandboxed(
-            interp + [str(file_path)],
-            timeout=timeout,
-            cwd=work_dir,
+        relative_path = file_path.relative_to(workspace.root).as_posix()
+        request = ExecutionRequestV1(
+            workspace=workspace,
+            argv=interp + [relative_path],
+            timeout_seconds=timeout,
+            # No init snippet here: this is argv, not a shell. The pointers are
+            # still passed so a script that shells out can source the init and
+            # reach the same tree run_bash does.
+            environment=_module_environment(),
+            limits=_execution_limits(),
+            input_digests={relative_path: workspace.file_digest(relative_path)},
         )
-        return _format_run_result(result.stdout, result.stderr, result.returncode)
-    except subprocess.TimeoutExpired:
-        return {"error": f"Timeout after {timeout}s (process group killed)", "exit_code": -1}
-    except Exception as e:
-        return {"error": str(e), "exit_code": -1}
+        return _execution_payload(execute_local(request), workspace)
+    except (ExecutionPolicyError, OSError, ValueError) as exc:
+        return {"error": f"run_code failed: {exc}", "exit_code": -1}
 
 
 def _run_bash(command: str, work_dir: str, timeout: int) -> dict:
-    Path(work_dir).mkdir(parents=True, exist_ok=True)
     try:
-        # When ARI_CONTAINER_IMAGE is set, wrap the command so it executes
-        # inside the configured container. Falls back to sandboxed subprocess
-        # when no container is configured or the ari.container import is
-        # unavailable.
-        _ct_cfg = None
-        try:
-            try:
-                from ari.public.container import config_from_env, run_shell_in_container
-            except ImportError:
-                from ari.container import config_from_env, run_shell_in_container
-            _ct_cfg = config_from_env()
-        except Exception:
-            _ct_cfg = None
+        workspace = WorkspaceRefV1(root=work_dir)
+        from ari.public.container import config_from_env, container_shell_argv
+
+        _ct_cfg = config_from_env()
         # Capture local execution env (hostname, cpu_info, …) once per
         # work_dir so the node_report builder can later record where this
         # experiment ran. Skip when running in container — host metadata
@@ -577,43 +1222,65 @@ def _run_bash(command: str, work_dir: str, timeout: int) -> dict:
         # container-isolation contract.
         if _ct_cfg is None:
             try:
-                try:
-                    from ari.public.run_env import capture_env
-                except ImportError:
-                    from ari.agent.run_env import capture_env
+                from ari.public.run_env import capture_env
+
                 capture_env(work_dir, executor="local")
             except Exception:
                 pass
         if _ct_cfg is not None:
-            result = run_shell_in_container(
-                _ct_cfg, command, cwd=work_dir, timeout=timeout,
-            )
-        else:
-            result = _run_sandboxed(
+            runtime_environment = {
+                name: os.environ[name]
+                for name in ("APPTAINER_CACHEDIR", "SINGULARITY_CACHEDIR")
+                if os.environ.get(name)
+            }
+            container_argv = container_shell_argv(
+                _ct_cfg,
                 command,
-                shell=True,
-                timeout=timeout,
                 cwd=work_dir,
+                network="inherit",
             )
-        return _format_run_result(result.stdout, result.stderr, result.returncode)
-    except subprocess.TimeoutExpired:
-        return {"error": f"Timeout after {timeout}s (process group killed)", "exit_code": -1}
-    except Exception as e:
-        return {"error": str(e), "exit_code": -1}
+            if container_argv is None:
+                raise ExecutionPolicyError(
+                    "configured container resolved to host execution"
+                )
+            request = ExecutionRequestV1(
+                workspace=workspace,
+                argv=container_argv,
+                timeout_seconds=timeout,
+                environment=runtime_environment,
+                limits=_execution_limits(),
+                container=_container_identity(_ct_cfg),
+            )
+            normalized = execute_local(request)
+        else:
+            # Host execution: make `module` usable. In the container branch
+            # above this is deliberately NOT done — the host's module tree does
+            # not exist inside the container, so passing its paths would only
+            # produce dangling references and break the isolation contract.
+            request = ExecutionRequestV1(
+                workspace=workspace,
+                shell_command=(
+                    _MODULE_INIT_SNIPPET + _EXEC_ENV_SNIPPET + command
+                ),
+                timeout_seconds=timeout,
+                environment=_module_environment(),
+                limits=_execution_limits(),
+            )
+            normalized = execute_local(request)
+        return _execution_payload(normalized, workspace)
+    except (ExecutionPolicyError, OSError, ValueError) as exc:
+        return {"error": f"run_bash failed: {exc}", "exit_code": -1}
 
 
 def _read_file(path: str, work_dir: str, offset: int, limit: int) -> dict:
-    p = Path(path)
-    if not p.is_absolute():
-        p = Path(work_dir) / path
-    if not p.exists():
-        return {"error": f"File not found: {p}"}
-    if not p.is_file():
-        return {"error": f"Not a file: {p}"}
     try:
-        text = p.read_text(encoding="utf-8", errors="replace")
-    except Exception as e:
-        return {"error": f"Read failed: {e}"}
+        workspace = WorkspaceRefV1(root=work_dir)
+        p = workspace.resolve(path, require_file=True)
+        text = workspace.read_bytes(path, max_bytes=64 * 1024 * 1024).decode(
+            "utf-8", errors="replace"
+        )
+    except (ExecutionPolicyError, FileNotFoundError, OSError, ValueError) as exc:
+        return {"error": f"Read rejected: {exc}"}
     total = len(text)
     if offset < 0:
         offset = 0

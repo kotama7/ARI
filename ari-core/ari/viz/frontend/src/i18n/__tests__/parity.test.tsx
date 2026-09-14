@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { en, ja, zh } from '../index';
+// Import the dictionary modules DIRECTLY (not via ../index): since gui_refresh
+// Wave 4d the barrel lazy-loads the dicts (dynamic import behind the
+// I18nProvider ready-gate) and no longer re-exports them statically — a static
+// re-export there would pull all three back into the main chunk. The dict
+// files themselves keep their plain static default exports, which is exactly
+// what this parity test needs.
+import en from '../en';
+import ja from '../ja';
+import zh from '../zh';
 
 /**
  * Tier-1 i18n key-set parity (subtask 073 §7.4). The TS-native mirror of the

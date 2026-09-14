@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Build the vendor PaperBench Docker images (pb-env + pb-reproducer)
-# that the bridge.rollout_submission / reproduce_submission paths can
-# consume via container_image="pb-env" / "pb-reproducer" alias
-# resolution. Mirrors:
+# that the bridge rollout / reproduction paths can consume by immutable
+# image identity or after conversion to a local SIF. Mirrors:
 #   ari-skill-paper-re/vendor/paperbench/project/paperbench/paperbench/scripts/build-docker-images.sh
 # but runs from the ARI repo root so the relative paths resolve.
 #
@@ -18,9 +17,8 @@
 # Usage:
 #   bash scripts/build_pb_images.sh
 #
-# To use after building:
-#   bridge.rollout_submission(container_image="pb-env", sandbox_kind="docker"...)
-#   bridge.reproduce_submission(container_image="pb-reproducer", ...)
+# Stage 2 Docker accepts the full ``sha256:<image-id>`` printed below. Mutable
+# local tags are build handles only and are not accepted by reproduction.
 #
 # Apptainer / Singularity hosts:
 #   apptainer pull pb-env.sif docker-daemon://pb-env:latest
@@ -60,13 +58,20 @@ docker build --platform=linux/amd64 -t pb-env -f paperbench/Dockerfile.base .
 echo "[pb-images] building pb-reproducer (Stage 2 reproduce.sh image) ..."
 docker build --platform=linux/amd64 -f paperbench/reproducer.Dockerfile -t pb-reproducer .
 
+PB_ENV_ID="$(docker image inspect --format '{{.Id}}' pb-env:latest)"
+PB_REPRODUCER_ID="$(docker image inspect --format '{{.Id}}' pb-reproducer:latest)"
+
 echo ""
-echo "[pb-images] ok. Tags:"
+echo "[pb-images] ok. Mutable build tags:"
 docker image ls --format 'table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}' \
   | grep -E '^(pb-env|pb-reproducer):' || true
 echo ""
-echo "[pb-images] To use via the bridge:"
+echo "[pb-images] Immutable image IDs:"
+echo "  pb-env:        ${PB_ENV_ID}"
+echo "  pb-reproducer: ${PB_REPRODUCER_ID}"
+echo ""
+echo "[pb-images] Stage 2 Docker example:"
 echo "  python scripts/sc_paper_dogfood.py ... \\"
-echo "    --rollout-sandbox docker --rollout-container-image pb-env \\"
 echo "    --with-reproduction --reproduce-sandbox docker \\"
-echo "    --reproduce-container-image pb-reproducer"
+echo "    --reproduce-container-image ${PB_REPRODUCER_ID}"
+echo "[pb-images] For Stage 1 Apptainer, convert pb-env:latest to a local SIF."

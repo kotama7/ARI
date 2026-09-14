@@ -1,6 +1,6 @@
 # check_complexity.allow.yaml -- frozen size/complexity baseline (subtask 025).
 # Regenerate: python scripts/check_complexity.py --update-baseline
-# Frozen against subtask 001: docs/refactoring/reports/001_complexity_baseline.md
+# Frozen against the subtask 001 complexity baseline (report since retired).
 # scope=census(core-prod + ari-skill-*/src + frontend); max_complexity=15
 # LOC keyed by path (regression = new path OR escalation to a higher tier);
 # complexity keyed by path::function (regression = a net-new over-complex function).
@@ -8,149 +8,335 @@
 version: 1
 loc:
 - path: ari-core/ari/agent/loop.py
-  loc: 1630
-  tier: split-required
-- path: ari-core/ari/viz/frontend/src/components/Results/resultSections.tsx
-  loc: 1590
-  tier: split-required
-- path: ari-skill-paper-re/src/_paperbench_bridge.py
-  loc: 2376
-  tier: split-required
-- path: ari-skill-paper-re/src/server.py
-  loc: 1395
-  tier: split-required
-- path: ari-skill-paper/src/server.py
-  loc: 2956
-  tier: split-required
-- path: ari-skill-transform/src/server.py
-  loc: 2465
+  loc: 2025
   tier: split-required
 - path: ari-core/ari/cli/bfts_loop.py
-  loc: 911
-  tier: review
+  loc: 1317
+  tier: split-required
+- path: ari-core/ari/config/__init__.py
+  loc: 2178
+  tier: split-required
+- path: ari-core/ari/execution.py
+  loc: 1238
+  tier: split-required
 - path: ari-core/ari/llm/cli_server.py
-  loc: 919
+  loc: 1397
+  tier: split-required
+- path: ari-core/ari/rqgm/adversarial/engine.py
+  loc: 1250
+  tier: split-required
+- path: ari-core/ari/rqgm/clean_room.py
+  loc: 1230
+  tier: split-required
+- path: ari-core/ari/rqgm/evaluation/metrics.py
+  loc: 1213
+  tier: split-required
+- path: ari-core/ari/rqgm/kernel.py
+  loc: 1791
+  tier: split-required
+- path: ari-core/ari/rqgm/meta_evolution.py
+  loc: 1311
+  tier: split-required
+- path: ari-core/ari/rqgm/paper_runtime.py
+  loc: 2355
+  tier: split-required
+- path: ari-core/ari/rqgm/prompt_evolution.py
+  loc: 1219
+  tier: split-required
+- path: ari-core/ari/rqgm/runtime.py
+  loc: 3330
+  tier: split-required
+- path: ari-core/ari/rqgm/transition_engine.py
+  loc: 1819
+  tier: split-required
+- path: ari-core/ari/viz/frontend/src/services/api/v1types.gen.ts
+  loc: 5254
+  tier: split-required
+- path: ari-core/ari/viz/routes.py
+  loc: 1206
+  tier: split-required
+- path: ari-core/ari/viz/v1/dto.py
+  loc: 1365
+  tier: split-required
+- path: ari-core/ari/viz/v1/rqgm.py
+  loc: 1952
+  tier: split-required
+- path: ari-skill-paper-re/src/_paperbench_bridge.py
+  loc: 2260
+  tier: split-required
+- path: ari-skill-paper-re/src/server.py
+  loc: 1775
+  tier: split-required
+- path: ari-skill-paper/src/server.py
+  loc: 3194
+  tier: split-required
+- path: ari-skill-tool-registry/src/broker.py
+  loc: 1367
+  tier: split-required
+- path: ari-skill-tool-registry/src/sources.py
+  loc: 1705
+  tier: split-required
+- path: ari-skill-transform/src/server.py
+  loc: 1963
+  tier: split-required
+- path: ari-core/ari/config/field_registry.py
+  loc: 868
   tier: review
-- path: ari-core/ari/orchestrator/bfts.py
-  loc: 845
+- path: ari-core/ari/config/resolver.py
+  loc: 882
   tier: review
-- path: ari-core/ari/pipeline/orchestrator.py
-  loc: 913
+- path: ari-core/ari/evaluator/llm_evaluator.py
+  loc: 875
+  tier: review
+- path: ari-core/ari/rqgm/adversarial/records.py
+  loc: 988
+  tier: review
+- path: ari-core/ari/rqgm/frontier_repair.py
+  loc: 1186
+  tier: review
+- path: ari-core/ari/rqgm/governance/_pipeline.py
+  loc: 834
+  tier: review
+- path: ari-core/ari/rqgm/prompt_spec.py
+  loc: 838
+  tier: review
+- path: ari-core/ari/rqgm/utility_evolution.py
+  loc: 902
   tier: review
 - path: ari-core/ari/viz/api_experiment.py
-  loc: 929
+  loc: 944
   tier: review
 - path: ari-core/ari/viz/api_paperbench.py
-  loc: 813
+  loc: 944
   tier: review
-- path: ari-core/ari/viz/frontend/src/components/Settings/SettingsPage.tsx
-  loc: 1049
+- path: ari-core/ari/viz/frontend/src/components/Governance/__tests__/GovernancePage.test.tsx
+  loc: 996
+  tier: review
+- path: ari-core/ari/viz/frontend/src/components/Results/sections/OrsChainSection.tsx
+  loc: 925
   tier: review
 - path: ari-core/ari/viz/frontend/src/components/Wizard/StepResources.tsx
-  loc: 1160
+  loc: 1165
   tier: review
 - path: ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx
-  loc: 964
+  loc: 1108
   tier: review
-- path: ari-core/ari/viz/frontend/src/services/api.ts
-  loc: 863
+- path: ari-core/ari/viz/frontend/src/i18n/en.ts
+  loc: 1019
   tier: review
-- path: ari-core/ari/viz/routes.py
-  loc: 1197
+- path: ari-core/ari/viz/frontend/src/i18n/ja.ts
+  loc: 1017
+  tier: review
+- path: ari-core/ari/viz/frontend/src/i18n/zh.ts
+  loc: 1007
+  tier: review
+- path: ari-skill-benchmark/src/server.py
+  loc: 932
+  tier: review
+- path: ari-skill-coding/src/server.py
+  loc: 883
   tier: review
 - path: ari-skill-evaluator/src/server.py
-  loc: 983
+  loc: 825
   tier: review
-- path: ari-skill-orchestrator/src/server.py
-  loc: 1043
+- path: ari-skill-idea/src/server.py
+  loc: 1021
   tier: review
-- path: ari-skill-plot/src/server.py
-  loc: 802
+- path: ari-skill-paper-re/src/sandbox.py
+  loc: 1007
   tier: review
-- path: ari-core/ari/cli/run.py
-  loc: 575
+- path: ari-skill-replicate/src/generator.py
+  loc: 1057
+  tier: review
+- path: ari-skill-web/src/server.py
+  loc: 857
+  tier: review
+- path: ari-core/ari/analysis.py
+  loc: 509
   tier: warn
-- path: ari-core/ari/config/__init__.py
-  loc: 628
+- path: ari-core/ari/checkpoint.py
+  loc: 530
+  tier: warn
+- path: ari-core/ari/claim_gate_contract.py
+  loc: 626
+  tier: warn
+- path: ari-core/ari/cli/run.py
+  loc: 671
+  tier: warn
+- path: ari-core/ari/container.py
+  loc: 590
+  tier: warn
+- path: ari-core/ari/cost_tracker.py
+  loc: 522
   tier: warn
 - path: ari-core/ari/evaluator/dynamic_axes.py
-  loc: 516
+  loc: 575
   tier: warn
-- path: ari-core/ari/evaluator/llm_evaluator.py
-  loc: 723
+- path: ari-core/ari/mcp/client.py
+  loc: 749
+  tier: warn
+- path: ari-core/ari/memory_cli.py
+  loc: 783
+  tier: warn
+- path: ari-core/ari/orchestrator/bfts.py
+  loc: 716
   tier: warn
 - path: ari-core/ari/orchestrator/lineage_decision.py
-  loc: 593
+  loc: 616
   tier: warn
 - path: ari-core/ari/orchestrator/node_report/builder.py
-  loc: 652
+  loc: 792
+  tier: warn
+- path: ari-core/ari/paths.py
+  loc: 765
+  tier: warn
+- path: ari-core/ari/pipeline/claim_gate/gate.py
+  loc: 761
+  tier: warn
+- path: ari-core/ari/pipeline/driver.py
+  loc: 725
+  tier: warn
+- path: ari-core/ari/research_contract.py
+  loc: 725
+  tier: warn
+- path: ari-core/ari/result.py
+  loc: 501
+  tier: warn
+- path: ari-core/ari/rqgm/adversarial/pool.py
+  loc: 507
+  tier: warn
+- path: ari-core/ari/rqgm/adversarial/round.py
+  loc: 524
+  tier: warn
+- path: ari-core/ari/rqgm/budget.py
+  loc: 596
+  tier: warn
+- path: ari-core/ari/rqgm/paper_anchor.py
+  loc: 670
+  tier: warn
+- path: ari-core/ari/rqgm/paper_archive.py
+  loc: 558
+  tier: warn
+- path: ari-core/ari/rqgm/state.py
+  loc: 685
+  tier: warn
+- path: ari-core/ari/rqgm/store.py
+  loc: 706
   tier: warn
 - path: ari-core/ari/viz/api_settings.py
-  loc: 553
+  loc: 612
+  tier: warn
+- path: ari-core/ari/viz/api_workflow.py
+  loc: 596
+  tier: warn
+- path: ari-core/ari/viz/frontend/src/components/ConfigStudio/ConfigStudioPage.tsx
+  loc: 751
+  tier: warn
+- path: ari-core/ari/viz/frontend/src/components/ConfigStudio/LaunchPanel.tsx
+  loc: 620
+  tier: warn
+- path: ari-core/ari/viz/frontend/src/components/ConfigStudio/__tests__/ConfigStudioExecutionMode.test.tsx
+  loc: 541
+  tier: warn
+- path: ari-core/ari/viz/frontend/src/components/IdeasV2/IdeasV2Page.tsx
+  loc: 587
   tier: warn
 - path: ari-core/ari/viz/frontend/src/components/Monitor/MonitorPage.tsx
-  loc: 502
+  loc: 546
   tier: warn
 - path: ari-core/ari/viz/frontend/src/components/Results/PaperWorkspace.tsx
-  loc: 519
+  loc: 520
+  tier: warn
+- path: ari-core/ari/viz/frontend/src/components/ResultsV2/ResultsV2Page.tsx
+  loc: 610
+  tier: warn
+- path: ari-core/ari/viz/frontend/src/components/ResultsV2/__tests__/ResultsV2Page.test.tsx
+  loc: 547
+  tier: warn
+- path: ari-core/ari/viz/frontend/src/components/Settings/SettingsPage.tsx
+  loc: 516
   tier: warn
 - path: ari-core/ari/viz/frontend/src/components/Wizard/StepGoal.tsx
   loc: 528
   tier: warn
-- path: ari-core/ari/viz/frontend/src/components/Workflow/workflowNodes.tsx
-  loc: 770
+- path: ari-core/ari/viz/frontend/src/components/Workflow/workflowModals.tsx
+  loc: 573
   tier: warn
-- path: ari-skill-coding/src/server.py
-  loc: 644
+- path: ari-core/ari/viz/frontend/src/services/api/v1.ts
+  loc: 594
   tier: warn
-- path: ari-skill-hpc/src/slurm.py
-  loc: 527
+- path: ari-core/ari/viz/services/state_service.py
+  loc: 511
   tier: warn
-- path: ari-skill-idea/src/server.py
-  loc: 775
+- path: ari-core/ari/viz/v1/config_api.py
+  loc: 710
+  tier: warn
+- path: ari-core/ari/viz/v1/launch.py
+  loc: 638
+  tier: warn
+- path: ari-core/ari/viz/v1/router.py
+  loc: 601
+  tier: warn
+- path: ari-skill-idea/src/contracts.py
+  loc: 716
   tier: warn
 - path: ari-skill-idea/src/snapshot.py
-  loc: 549
+  loc: 660
   tier: warn
 - path: ari-skill-idea/src/virsci_runtime.py
-  loc: 592
+  loc: 601
   tier: warn
 - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
-  loc: 665
+  loc: 769
   tier: warn
 - path: ari-skill-paper-re/src/_litellm_completer.py
-  loc: 521
+  loc: 664
   tier: warn
 - path: ari-skill-paper-re/src/_replicator_agent.py
-  loc: 730
+  loc: 726
   tier: warn
-- path: ari-skill-replicate/src/generator.py
-  loc: 695
+- path: ari-skill-paper/src/finalize.py
+  loc: 518
   tier: warn
-- path: ari-skill-web/src/server.py
-  loc: 712
+- path: ari-skill-tool-registry/src/models.py
+  loc: 690
+  tier: warn
+- path: ari-skill-tool-registry/src/providers.py
+  loc: 779
+  tier: warn
+- path: ari-skill-tool-registry/src/qiskit_adapter.py
+  loc: 532
+  tier: warn
+- path: ari-skill-tool-registry/src/qiskit_remote.py
+  loc: 545
+  tier: warn
+- path: ari-skill-tool-registry/src/tooluniverse_adapter.py
+  loc: 689
+  tier: warn
+- path: ari-skill-transform/src/science_data.py
+  loc: 537
   tier: warn
 complexity:
 - path: ari-core/ari/agent/loop.py
   function: _build_safe_window
-  line: 725
+  line: 1092
   complexity: 25
 - path: ari-core/ari/agent/loop.py
   function: build_working_context_messages
-  line: 164
-  complexity: 25
+  line: 269
+  complexity: 30
 - path: ari-core/ari/agent/loop.py
   function: run
-  line: 459
+  line: 789
   complexity: 168
 - path: ari-core/ari/agent/react_driver.py
   function: _validate_paths_in_args
-  line: 146
+  line: 147
   complexity: 20
 - path: ari-core/ari/agent/react_driver.py
   function: run_react
-  line: 231
-  complexity: 23
+  line: 232
+  complexity: 25
 - path: ari-core/ari/agent/run_env.py
   function: _capture_cpu_info
   line: 112
@@ -161,52 +347,64 @@ complexity:
   complexity: 20
 - path: ari-core/ari/cli/bfts_loop.py
   function: _run_loop
-  line: 85
-  complexity: 103
+  line: 166
+  complexity: 132
 - path: ari-core/ari/cli/projects.py
   function: show_project
-  line: 285
+  line: 312
   complexity: 18
 - path: ari-core/ari/cli/run.py
   function: run
-  line: 169
-  complexity: 30
+  line: 183
+  complexity: 34
+- path: ari-core/ari/config/resolver.py
+  function: _apply_env_overlay
+  line: 279
+  complexity: 25
+- path: ari-core/ari/config/resolver.py
+  function: resolve_new_run_config
+  line: 589
+  complexity: 40
+- path: ari-core/ari/config/resolver.py
+  function: resolve_run_config
+  line: 379
+  complexity: 22
 - path: ari-core/ari/cost_tracker.py
   function: _extract_upstream_cost
-  line: 361
+  line: 423
   complexity: 17
 - path: ari-core/ari/evaluator/llm_evaluator.py
   function: evaluate
-  line: 548
-  complexity: 20
+  line: 626
+  complexity: 19
+- path: ari-core/ari/llm/client.py
+  function: complete
+  line: 147
+  complexity: 19
 - path: ari-core/ari/orchestrator/bfts.py
   function: _extract_directions_json
-  line: 145
+  line: 136
   complexity: 16
-- path: ari-core/ari/orchestrator/bfts.py
-  function: expand
-  line: 577
-  complexity: 17
 - path: ari-core/ari/pipeline/claim_gate/contract.py
   function: check_contract
   line: 275
-  complexity: 23
+  complexity: 28
 - path: ari-core/ari/pipeline/claim_gate/contract.py
   function: check_emission
   line: 188
   complexity: 17
 - path: ari-core/ari/pipeline/claim_gate/formula_eval.py
   function: _eval
-  line: 97
+  line: 99
   complexity: 28
 - path: ari-core/ari/pipeline/claim_gate/gate.py
   function: run_hard_gate
-  line: 79
-  complexity: 53
-- path: ari-core/ari/pipeline/orchestrator.py
-  function: run_pipeline
-  line: 155
-  complexity: 107
+  line: 114
+  complexity: 89
+- path: ari-core/ari/pipeline/driver.py
+  function: run
+  line: 68
+  complexity: 76
 - path: ari-core/ari/pipeline/stage_runner.py
   function: _run_react_stage
   line: 51
@@ -215,175 +413,247 @@ complexity:
   function: _run_stage_subprocess
   line: 331
   complexity: 20
+- path: ari-core/ari/pipeline/stages.py
+  function: persist
+  line: 52
+  complexity: 18
 - path: ari-core/ari/registry/app.py
   function: build_app
   line: 22
   complexity: 24
+- path: ari-core/ari/rqgm/clean_room.py
+  function: request_schema_failures
+  line: 281
+  complexity: 16
+- path: ari-core/ari/rqgm/frontier_repair.py
+  function: _repair
+  line: 618
+  complexity: 23
+- path: ari-core/ari/rqgm/governance/_pipeline.py
+  function: run_audit
+  line: 359
+  complexity: 34
+- path: ari-core/ari/rqgm/governance/_reliability.py
+  function: build_reliability_entries
+  line: 31
+  complexity: 16
+- path: ari-core/ari/rqgm/kernel.py
+  function: validate_selective_erasure
+  line: 1061
+  complexity: 21
+- path: ari-core/ari/rqgm/kernel.py
+  function: validate_transition
+  line: 749
+  complexity: 21
+- path: ari-core/ari/rqgm/kernel.py
+  function: validate_utility_policy
+  line: 599
+  complexity: 18
+- path: ari-core/ari/rqgm/runtime.py
+  function: _generate_prompt_candidates
+  line: 998
+  complexity: 16
 - path: ari-core/ari/viz/api_experiment.py
   function: _api_launch
-  line: 144
+  line: 133
   complexity: 133
 - path: ari-core/ari/viz/api_experiment.py
   function: _api_logs_sse
-  line: 808
+  line: 825
   complexity: 28
 - path: ari-core/ari/viz/api_experiment.py
   function: _api_run_stage
-  line: 18
-  complexity: 27
+  line: 17
+  complexity: 21
 - path: ari-core/ari/viz/api_orchestrator.py
   function: _api_launch_sub_experiment
   line: 98
   complexity: 24
 - path: ari-core/ari/viz/api_process.py
   function: _api_stop
-  line: 91
-  complexity: 29
+  line: 101
+  complexity: 31
 - path: ari-core/ari/viz/api_settings.py
   function: _api_get_workflow
-  line: 235
-  complexity: 35
+  line: 297
+  complexity: 29
 - path: ari-core/ari/viz/api_tools.py
   function: _api_chat_goal
   line: 15
   complexity: 23
 - path: ari-core/ari/viz/api_workflow.py
   function: workflow_yaml_to_flow
-  line: 15
+  line: 30
   complexity: 18
 - path: ari-core/ari/viz/checkpoint_api.py
   function: _api_checkpoint_summary
-  line: 195
+  line: 206
   complexity: 24
 - path: ari-core/ari/viz/checkpoint_api.py
   function: _api_checkpoints
-  line: 78
+  line: 81
   complexity: 24
 - path: ari-core/ari/viz/checkpoint_lifecycle.py
   function: _api_delete_checkpoint
   line: 39
-  complexity: 23
+  complexity: 24
 - path: ari-core/ari/viz/ear.py
   function: _synth_repro_report_from_ors
   line: 331
   complexity: 20
 - path: ari-core/ari/viz/routes.py
   function: do_GET
-  line: 144
-  complexity: 185
+  line: 451
+  complexity: 90
 - path: ari-core/ari/viz/routes.py
   function: do_POST
-  line: 1028
-  complexity: 50
+  line: 962
+  complexity: 54
+- path: ari-core/ari/viz/services/state_service.py
+  function: build_app_state
+  line: 57
+  complexity: 97
 - path: ari-core/ari/viz/ui_helpers.py
   function: _build_experiment_detail_config
   line: 64
   complexity: 20
-- path: ari-skill-evaluator/src/server.py
-  function: _tool_make_metric_spec
-  line: 546
-  complexity: 27
-- path: ari-skill-hpc/src/slurm.py
-  function: submit
-  line: 91
+- path: ari-core/ari/viz/v1/rqgm.py
+  function: _replay
+  line: 335
+  complexity: 19
+- path: ari-core/ari/viz/v1/rqgm.py
+  function: _rewrite_entries
+  line: 1114
+  complexity: 26
+- path: ari-core/ari/viz/v1/rqgm.py
+  function: get_evolution
+  line: 1635
+  complexity: 19
+- path: ari-core/ari/viz/v1/rqgm.py
+  function: get_node_lineage
+  line: 932
+  complexity: 19
+- path: ari-skill-coding/src/server.py
+  function: _emit_results
+  line: 423
   complexity: 24
+- path: ari-skill-evaluator/src/server.py
+  function: _tool_evidence_grounded_semantic_review
+  line: 542
+  complexity: 16
+- path: ari-skill-idea/src/contracts.py
+  function: preflight_candidates
+  line: 489
+  complexity: 17
 - path: ari-skill-idea/src/server.py
   function: generate_ideas
-  line: 553
-  complexity: 25
+  line: 639
+  complexity: 31
 - path: ari-skill-idea/src/virsci_runtime.py
   function: make_live_platform_cls
-  line: 257
+  line: 261
   complexity: 17
-- path: ari-skill-orchestrator/src/server.py
-  function: tool_run_experiment
-  line: 190
-  complexity: 24
 - path: ari-skill-paper-re/src/_paperbench_bridge.py
   function: rollout_submission
-  line: 1790
+  line: 1819
   complexity: 24
 - path: ari-skill-paper-re/src/server.py
-  function: _run_reproduce_slurm
-  line: 642
-  complexity: 35
+  function: _execute_reproduction_slurm
+  line: 581
+  complexity: 17
+- path: ari-skill-paper-re/src/server.py
+  function: grade_with_simplejudge
+  line: 1502
+  complexity: 21
 - path: ari-skill-paper-re/src/server.py
   function: run_reproduce
-  line: 993
-  complexity: 17
+  line: 871
+  complexity: 20
+- path: ari-skill-paper/src/finalize.py
+  function: finalize_build
+  line: 157
+  complexity: 43
 - path: ari-skill-paper/src/rubric.py
   function: _parse_rubric
   line: 155
   complexity: 16
 - path: ari-skill-paper/src/server.py
   function: _escape_text_underscores
-  line: 772
+  line: 685
   complexity: 29
 - path: ari-skill-paper/src/server.py
   function: _extract_paper_artifacts
-  line: 1960
-  complexity: 20
-- path: ari-skill-paper/src/server.py
-  function: generate_section
-  line: 255
+  line: 1893
   complexity: 18
 - path: ari-skill-paper/src/server.py
   function: link_paper_claims
-  line: 2372
-  complexity: 16
+  line: 2398
+  complexity: 18
 - path: ari-skill-paper/src/server.py
   function: paper_refine
-  line: 2446
-  complexity: 49
+  line: 2504
+  complexity: 53
 - path: ari-skill-paper/src/server.py
   function: write_paper_iterative
-  line: 1053
-  complexity: 116
-- path: ari-skill-plot/src/server.py
-  function: generate_figures
-  line: 235
-  complexity: 26
-- path: ari-skill-plot/src/server.py
-  function: generate_figures_llm
-  line: 468
-  complexity: 33
-- path: ari-skill-replicate/src/generator.py
-  function: generate_rubric_async
-  line: 513
-  complexity: 20
+  line: 1009
+  complexity: 72
+- path: ari-skill-replicate/src/auditor.py
+  function: audit_rubric_async
+  line: 277
+  complexity: 16
+- path: ari-skill-tool-registry/src/broker.py
+  function: _adapter
+  line: 255
+  complexity: 25
+- path: ari-skill-tool-registry/src/broker.py
+  function: _merge_provider_artifacts
+  line: 868
+  complexity: 18
+- path: ari-skill-tool-registry/src/broker.py
+  function: get_result
+  line: 1188
+  complexity: 16
+- path: ari-skill-tool-registry/src/broker.py
+  function: invoke
+  line: 961
+  complexity: 16
+- path: ari-skill-tool-registry/src/qiskit_contracts.py
+  function: _closed_experiment
+  line: 382
+  complexity: 16
+- path: ari-skill-transform/src/annotations.py
+  function: robust_extract_json
+  line: 41
+  complexity: 16
 - path: ari-skill-transform/src/claims.py
   function: build_science_claims
-  line: 211
-  complexity: 16
-- path: ari-skill-transform/src/server.py
-  function: _build_commands_md
-  line: 1313
+  line: 133
   complexity: 21
-- path: ari-skill-transform/src/server.py
-  function: _collect_source_files
-  line: 290
-  complexity: 21
+- path: ari-skill-transform/src/curate.py
+  function: curate
+  line: 268
+  complexity: 17
 - path: ari-skill-transform/src/server.py
   function: _render_evolution_md
-  line: 1604
+  line: 1066
   complexity: 18
 - path: ari-skill-transform/src/server.py
   function: _render_readme
-  line: 1806
-  complexity: 17
-- path: ari-skill-transform/src/server.py
-  function: _robust_extract_json
-  line: 66
+  line: 1274
   complexity: 17
 - path: ari-skill-transform/src/server.py
   function: generate_ear
-  line: 2045
+  line: 1514
   complexity: 42
 - path: ari-skill-transform/src/server.py
   function: nodes_to_science_data
-  line: 460
-  complexity: 94
+  line: 209
+  complexity: 71
+- path: ari-skill-web/src/retrieval.py
+  function: replay_snapshot
+  line: 347
+  complexity: 16
 - path: ari-skill-web/src/server.py
-  function: collect_references_iterative
-  line: 494
-  complexity: 17
+  function: walk_citations
+  line: 522
+  complexity: 16

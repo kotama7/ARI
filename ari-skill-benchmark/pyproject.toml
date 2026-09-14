@@ -1,14 +1,13 @@
 [project]
 name = "ari-skill-benchmark"
-version = "0.1.0"
-description = "Experiment result analysis, visualization and statistical testing MCP Server"
+version = "0.2.0"
+description = "Typed deterministic scientific analysis and run comparison MCP Server"
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.0",
     "numpy>=1.26",
     "scipy>=1.11",
-    "matplotlib>=3.8",
-    "pandas>=2.0",
+    "pydantic>=2.0",
 ]
 
 [project.optional-dependencies]

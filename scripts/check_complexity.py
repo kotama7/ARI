@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Source-code size & cyclomatic-complexity gate (warning-mode-first).
 
-Design: ``docs/refactoring/009_quality_scripts_plan.md`` §5.1 (checker block),
-§3 (common CLI/JSON contract), §6 (warning-mode-first rollout), §8 (placement +
+Design: refactoring plan 009 (quality scripts) §5.1 (checker block), §3 (common
+CLI/JSON contract), §6 (warning-mode-first rollout), §8 (placement +
 ``scripts/quality/`` bootstrap). Reproduces and freezes the empirical baseline
-in ``docs/refactoring/reports/001_complexity_baseline.md`` (subtask 001) and its
-sibling ``loc_census.csv``.
+measured by subtask 001 (complexity baseline report + its sibling
+``loc_census.csv``); those planning documents have been retired, so the numbers
+are kept as provenance only.
 
 Two measurement dimensions:
 
@@ -374,7 +375,7 @@ def update_baseline(cfg: dict) -> int:
     header = [
         "# check_complexity.allow.yaml -- frozen size/complexity baseline (subtask 025).",
         "# Regenerate: python scripts/check_complexity.py --update-baseline",
-        "# Frozen against subtask 001: docs/refactoring/reports/001_complexity_baseline.md",
+        "# Frozen against the subtask 001 complexity baseline (report since retired).",
         f"# scope=census(core-prod + ari-skill-*/src + frontend); max_complexity={max_complexity}",
         "# LOC keyed by path (regression = new path OR escalation to a higher tier);",
         "# complexity keyed by path::function (regression = a net-new over-complex function).",

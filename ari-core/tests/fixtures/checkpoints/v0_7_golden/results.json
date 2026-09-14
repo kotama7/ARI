@@ -1,0 +1,12 @@
+{
+  "run_id": "legacy-run-001",
+  "nodes": {
+    "root": {
+      "status": "success",
+      "metrics": {
+        "throughput_gflops": 125.0,
+        "baseline_gflops": 100.0
+      }
+    }
+  }
+}

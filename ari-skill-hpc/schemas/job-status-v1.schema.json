@@ -1,0 +1,103 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "end_time": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "End Time"
+    },
+    "exit_code": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exit Code"
+    },
+    "handle_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Handle Id"
+    },
+    "job_id": {
+      "pattern": "^[0-9]+(?:_[0-9]+)?$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    },
+    "scheduler_state": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Scheduler State",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.hpc.job-status/v1",
+      "default": "ari.hpc.job-status/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "start_time": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Start Time"
+    },
+    "state": {
+      "enum": [
+        "submitted",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "unknown"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "state",
+    "scheduler_state"
+  ],
+  "title": "JobStatusV1",
+  "type": "object"
+}

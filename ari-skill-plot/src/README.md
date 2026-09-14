@@ -1,15 +1,10 @@
-# ari-skill-plot/src
+# ari-skill-plot runtime
 
-MCP server package for the plot skill — scientific figure generation, either
-deterministically from a fixed schema (`generate_figures`, P2-safe) or by
-letting an LLM write matplotlib code (`generate_figures_llm`). No `__init__.py`;
-`server.py` is the entry point.
+- `server.py` — three MCP adapters and closed workspace validation.
+- `planning.py` — native ScienceData loading, admitted metric/unit extraction,
+  strict model-plan parsing, and feedback binding.
+- `renderer.py` — fixed six-chart matplotlib renderer and artifact materializer.
+- `prompts/figure_planner.md` — externalized spec-only planner instruction.
 
-## Contents
-
-- `README.md` — this file.
-- `server.py` — the only module; an independent MCP server with no dependency on the paper skill.
-
-## See also
-
-- The skill root `README.md` and the `server.py` module docstring for the tools & outward interface.
+There is no generated-code, SVG, subprocess, filesystem-scan, or implicit VLM
+execution path in the runtime.

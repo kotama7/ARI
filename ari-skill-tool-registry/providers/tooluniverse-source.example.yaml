@@ -1,0 +1,74 @@
+schema_version: ari.catalog-sources/v1
+sources:
+  - source_id: tooluniverse.pubmed.verified
+    kind: tooluniverse
+    provider_id: tooluniverse-pubmed
+    support_release: 1.3.1+ari.1
+    dependency_lock_path: /absolute/ARI/ari-skill-tool-registry/providers/tooluniverse/1.3.1+ari.1/runtime.uv.lock
+    wheel_path: /absolute/artifact-store/tooluniverse-1.3.1+ari.1-py3-none-any.whl
+    verified_lock_path: /absolute/ARI/ari-skill-tool-registry/providers/tooluniverse/1.3.1+ari.1/verified-lock-v1.json
+    # Replace this with the installation-specific digest printed by
+    # scripts/verify_tooluniverse.py. The portable verified lock pins artifact,
+    # adapter, schema, capability, and scope; the run lock additionally pins
+    # absolute launcher/environment identity.
+    provider_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    launcher:
+      command_kind: python
+      python_executable: /absolute/provider-env/bin/python
+      package_root: /absolute/provider-env/lib/python3.13/site-packages/tooluniverse
+      python_module: tooluniverse.smcp_server
+      python_callable: run_stdio_server
+      expected_architecture: x86_64
+      arguments: []
+      literal_env: {}
+      identity_globs:
+        - "**/*"
+        - "**/*.py"
+        - "*.lock"
+        - pyproject.toml
+        - requirements*.txt
+    include_categories: [pubmed]
+    exclude_categories: []
+    include_tool_names: [PubMed_search_articles]
+    profiles:
+      - profile_id: pubmed-literature-search-v1
+        categories: [pubmed]
+        tool_types: [PubMedRESTTool]
+        side_effects: read-only
+        determinism: live-data
+        permissions: [network-read]
+        semantics:
+          result_contract: ari.retrieval-result/v1
+        units: {}
+        limitations:
+          - PubMed is a mutable live external index; each result retains source provenance.
+          - This lock admits only PubMed_search_articles, not other ToolUniverse leaves.
+        backend_lineage: [pubmed]
+        data_lineage: [pubmed-live-api]
+        independence_group: pubmed
+        capability_projections:
+          PubMed_search_articles: ari.literature.search/v1
+        equivalence_keys:
+          PubMed_search_articles: literature-search-v1
+        result_normalizers:
+          PubMed_search_articles: tooluniverse-pubmed-retrieval/v1
+    evidence:
+      protocol_conformance: true
+      provider_pinned: true
+      launcher_verified: true
+      dependencies_pinned: true
+      replay_fixture_digest: null
+      scientific_validation_digest: null
+      limitations_documented: true
+      semantics_documented: true
+      units_documented: true
+      method_identity_documented: true
+      architecture: ARI-patched ToolUniverse compact MCP, exact verified PubMed leaf
+      notes:
+        - Provider verification is execution authority, not scientific correctness evidence.
+        - NCBI_API_KEY is optional upstream but is not admitted by this Provider identity.
+    timeout_seconds: 180
+    page_size: 250
+    info_batch_size: 20
+    max_pages: 1000
+    max_tools: 1

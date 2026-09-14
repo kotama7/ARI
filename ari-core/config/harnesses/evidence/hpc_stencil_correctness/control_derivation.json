@@ -1,0 +1,70 @@
+{
+  "clean_control_verdict": "pass",
+  "derivation_digest": "sha256:8890f8fb8fe5904b814686b439de8383ddfc222db48ea6bfb4a247cc43afc6ea",
+  "harness_id": "hpc/stencil-correctness",
+  "harness_version": "1.0.0",
+  "isolation": {
+    "basis": {
+      "container_identity_matched_the_manifest_pin": true,
+      "declared_networks": [
+        "deny"
+      ],
+      "emitted_result_schema": "ari.native-hpc-verification-report/v1",
+      "every_run_returned_a_parsed_typed_report": true,
+      "manifest_pins_that_schema_and_its_digest": true,
+      "oracle_visibility_note": "read off the manifest's hidden_test_policy; this records what the manifest declares, not an execution that tried to reach the oracle",
+      "target_digest_unchanged_by_run": {
+        "clean-certify": true,
+        "clean-certify-repeat": true,
+        "clean-screen": true,
+        "negative-screen": true
+      }
+    },
+    "network_isolation": "proved",
+    "oracle_visibility": "denied",
+    "result_schema_conformant": true,
+    "target_write_isolation": "proved"
+  },
+  "manifest_digest": "sha256:3987ed28959f805310ac6c44ba6115aad050bccad1eafb956b487c77a88e25a5",
+  "negative_control_verdict": "fail",
+  "runs": [
+    {
+      "attestation_digest": "sha256:f56f582938b6dc47c465197e7aee0abe57d5229d68e42d2926660ab665d437d7",
+      "label": "clean-screen",
+      "observed_verdict": "pass",
+      "required_verdict": "pass",
+      "retry_index": 0,
+      "role": "reference",
+      "tier": "screen"
+    },
+    {
+      "attestation_digest": "sha256:1162f4c128e5570a60f3e95d9bb881a4a6bc5bcf87fe055f00c5899bd155bd38",
+      "label": "clean-certify",
+      "observed_verdict": "pass",
+      "required_verdict": "pass",
+      "retry_index": 0,
+      "role": "reference",
+      "tier": "certify"
+    },
+    {
+      "attestation_digest": "sha256:e022787d8f5897ed323a1898f64ef8931cb9615526091b10f0270d7800a8ac34",
+      "label": "clean-certify-repeat",
+      "observed_verdict": "pass",
+      "required_verdict": "pass",
+      "retry_index": 1,
+      "role": "reference",
+      "tier": "certify"
+    },
+    {
+      "attestation_digest": "sha256:b9bb3081e2cb87c6a717705964402ec97c5b49913768eede5f24f6350394ede1",
+      "label": "negative-screen",
+      "observed_verdict": "fail",
+      "required_verdict": "fail",
+      "retry_index": 0,
+      "role": "negative-control",
+      "tier": "screen"
+    }
+  ],
+  "schema_version": "ari.harness-registration-control-derivation/v1",
+  "verdict_source": "read back off HarnessAttestationV1 artifacts minted from container executions and off the ExecutionRequest each run carried; no field in this record was asserted"
+}

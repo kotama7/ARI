@@ -1,5 +1,6 @@
-from __future__ import annotations
 """Tests for ari/viz/api_workflow.py — React Flow workflow editor."""
+
+from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -46,7 +47,7 @@ SAMPLE_YAML = {
         {
             "stage": "search_related_work",
             "skill": "web-skill",
-            "tool": "collect_references_iterative",
+            "tool": "search_papers",
             "description": "Citation collection",
             "depends_on": [],
             "enabled": True,
@@ -462,7 +463,16 @@ def test_skill_mcp_usage_stage_for_pipeline_skills():
 
 
 def test_skill_mcp_usage_active_for_memory():
-    """memory-skill is called indirectly and should have usage=active."""
+    """memory-skill is used, never merely "registered".
+
+    It is used two ways at once: its tools are called directly from ari-core
+    (consolidate_node_memory), and since audit_node_provenance it also owns a
+    pipeline stage. The classifier in api_settings.py is a 3-way EXCLUSIVE
+    precedence (stage > active > registered), so owning a stage now reports
+    "stage" and masks the core-call half — this test therefore asserts the
+    invariant that survives either classification, and
+    test_memory_skill_core_calls_are_detected below guards the masked half.
+    """
     from ari.viz.api_settings import _api_get_workflow
     r = _api_get_workflow()
     if not r.get("ok"):
@@ -470,7 +480,7 @@ def test_skill_mcp_usage_active_for_memory():
     mcp = r.get("skill_mcp", {})
     if "memory-skill" not in mcp:
         pytest.skip("memory-skill not found")
-    assert mcp["memory-skill"].get("usage") == "active"
+    assert mcp["memory-skill"].get("usage") in ("stage", "active")
 
 
 def test_skill_mcp_usage_registered_for_unused():
@@ -491,19 +501,28 @@ def test_skill_mcp_usage_registered_for_unused():
         )
 
 
-def test_skill_mcp_tools_resolved_from_server_py():
-    """Skills with empty mcp.json tools should get tools from server.py."""
+def test_skill_mcp_tools_resolved_from_canonical_manifest():
+    """Dashboard tool inventory comes from canonical manifests only."""
     from ari.viz.api_settings import _api_get_workflow
     r = _api_get_workflow()
     if not r.get("ok"):
         pytest.skip("workflow API unavailable")
     mcp = r.get("skill_mcp", {})
-    # hpc-skill has empty tools in mcp.json but server.py has Tool() defs
     if "hpc-skill" in mcp:
         tools = mcp["hpc-skill"].get("tools", [])
-        assert len(tools) > 0, "hpc-skill should have tools extracted from server.py"
+        assert len(tools) > 0, "hpc-skill should have manifest-declared tools"
         tool_names = [t if isinstance(t, str) else t.get("name") for t in tools]
-        assert "slurm_submit" in tool_names
+        assert "job_submit" in tool_names
+        assert len(mcp["hpc-skill"].get("manifest_digest", "")) == 64
+        assert (
+            mcp["hpc-skill"]["capabilities"]["job_submit"]
+            == "ari.hpc.job.submit"
+        )
+        if "slurm_submit" in tool_names:
+            assert (
+                mcp["hpc-skill"]["capabilities"]["slurm_submit"]
+                == "ari.hpc.legacy.slurm-submit"
+            )
 
 
 # ── Agent runtime tools visibility tests ──────────────
@@ -535,11 +554,34 @@ def test_memory_skill_detected_as_active():
     mcp = r.get("skill_mcp", {})
     if "memory-skill" not in mcp:
         pytest.skip("memory-skill not found")
-    assert mcp["memory-skill"].get("usage") == "active"
+    assert mcp["memory-skill"].get("usage") in ("stage", "active")
     tools = mcp["memory-skill"].get("tools", [])
     tool_names = [t if isinstance(t, str) else t.get("name") for t in tools]
     assert "add_memory" in tool_names
     assert "search_memory" in tool_names
+
+
+def test_memory_skill_core_calls_are_detected():
+    """Guard the half that the stage/active precedence masks.
+
+    Before memory-skill owned a pipeline stage, usage=="active" was what proved
+    api_settings.py's core-source scan actually finds its tool calls. Now that
+    "stage" wins, that proof is gone from the API response — so assert the scan
+    directly, or a regression in it would be invisible.
+    """
+    from pathlib import Path as _P
+
+    core = _P(__file__).parent.parent / "ari"
+    src = ""
+    for py in core.rglob("*.py"):
+        if "viz/" in str(py) or "__pycache__" in str(py):
+            continue
+        src += py.read_text(errors="ignore")
+    for tool in ("consolidate_node_memory", "add_memory", "search_memory"):
+        assert f'"{tool}"' in src or f"'{tool}'" in src, (
+            f"{tool} is no longer referenced from ari-core; memory-skill would "
+            f"fall back to usage=registered if its pipeline stage were removed"
+        )
 
 
 def test_web_skill_is_stage_assigned():
@@ -565,7 +607,6 @@ def test_active_skills_not_in_bfts_stages():
         pytest.skip("workflow API unavailable")
     mcp = r.get("skill_mcp", {})
     bfts_stage_skills = {s.get("skill") for s in r.get("bfts_pipeline", [])}
-    paper_stage_skills = {s.get("skill") for s in r.get("paper_pipeline", [])}
     for name, entry in mcp.items():
         if entry.get("usage") == "active":
             assert name not in bfts_stage_skills, (

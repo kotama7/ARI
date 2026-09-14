@@ -60,25 +60,20 @@ describe('PaperBenchWizard (PLAN_GUI §8 acceptance: Step 3 execution_profile ov
     await advance(1); // Step 1 → Step 2 (Rubric)
     await advance(1); // Step 2 → Step 3 (Reproduce)
 
-    // Step 3 — fill the execution_profile override fields
-    const nodesInput = screen.getByDisplayValue('0') as HTMLInputElement; // first 0 = nodes
+    // Step 3 — fill the execution_profile override fields (all inputs are
+    // wrapped in <label>text<input/></label>, so label queries are stable)
+    const nodesInput = screen.getByLabelText('nodes', {
+      selector: 'input',
+    }) as HTMLInputElement;
     fireEvent.change(nodesInput, { target: { value: '4' } });
 
     // Toggle exclusive
     const exclusiveCheckbox = screen.getByRole('checkbox', { name: /exclusive/i });
     fireEvent.click(exclusiveCheckbox);
 
-    // gpu_type field
-    const gpuTypeInput = screen.getByPlaceholderText(/v100/i) ?? null;
-    if (gpuTypeInput) {
-      fireEvent.change(gpuTypeInput, { target: { value: 'v100' } });
-    }
-    // Otherwise fall back to label-based lookup
-    if (!gpuTypeInput) {
-      const lbl = screen.getByText(/gpu_type/i);
-      const input = lbl.querySelector('input') as HTMLInputElement;
-      fireEvent.change(input, { target: { value: 'v100' } });
-    }
+    // gpu_type field (label text is "gpu_type (e.g. v100)")
+    const gpuTypeInput = screen.getByLabelText(/gpu_type/i) as HTMLInputElement;
+    fireEvent.change(gpuTypeInput, { target: { value: 'v100' } });
 
     // extra_sbatch_args
     const extraInput = screen.getByPlaceholderText(/account=projX/i) as HTMLInputElement;
@@ -93,7 +88,7 @@ describe('PaperBenchWizard (PLAN_GUI §8 acceptance: Step 3 execution_profile ov
     });
 
     await waitFor(() => {
-      const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
       const launchCall = calls.find(([url]) => url === '/api/paperbench/run');
       expect(launchCall).toBeTruthy();
       const body = JSON.parse(launchCall![1].body);

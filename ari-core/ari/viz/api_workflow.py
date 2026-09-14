@@ -1,8 +1,24 @@
 from __future__ import annotations
-"""ARI viz: api_workflow — React Flow workflow editor endpoints and converters."""
+"""ARI viz: api_workflow — React Flow workflow editor endpoints and converters.
+
+Write path (RR-P0-1 / ADR-10): every workflow-WRITE handler first passes
+``_workflow_write_guard`` (frozen 400 refusal without an active checkpoint)
+and then edits ONLY the per-checkpoint ``{ckpt}/workflow.yaml``. When that
+copy does not exist yet, ``_checkpoint_workflow_path`` seeds it by copying
+the bundled ``config/workflow.yaml`` (copy-on-write) before applying the
+edit — the bundled file is never written from the GUI.
+
+Revision layer (gui_refresh Wave 4d, plan 07 §Workflow Studio): GET
+/api/workflow serves an additive weak ``revision`` (sha256[:12] of the
+served bytes) and every write handler accepts an OPTIONAL ``base_revision``
+— when present and stale, ``_workflow_revision_guard`` refuses with a
+frozen 409 payload before anything (including the CoW seed) is written.
+Legacy callers that send no ``base_revision`` keep last-write-wins.
+"""
 
 import json
 import logging
+from pathlib import Path
 
 from . import state as _st
 
@@ -264,6 +280,115 @@ def flow_to_workflow_yaml(flow_data: dict) -> dict:
     return {"bfts_pipeline": bfts_stages, "pipeline": paper_stages}
 
 
+# ── Write guard (RR-P0-1 / ADR-10) ────────────────
+
+# Frozen refusal payload text for workflow writes without an active checkpoint.
+_NO_ACTIVE_CHECKPOINT_ERROR = (
+    "No active project. Select a checkpoint before editing the workflow "
+    "(the bundled default workflow.yaml is read-only from the GUI)."
+)
+
+
+def _workflow_write_guard() -> "dict | None":
+    """Refuse workflow writes when no usable checkpoint is active (ADR-10).
+
+    Shared write-path guard for every workflow-WRITE endpoint
+    (POST /api/workflow, /api/workflow/flow, /api/workflow/skills,
+    /api/workflow/disabled-tools) — and any future one — so the bundled
+    ``config/workflow.yaml`` can never be rewritten from the GUI (RR-P0-1).
+    Mirrors ``state.require_checkpoint_dir`` but returns the frozen refusal
+    payload; returns ``None`` when the per-checkpoint copy may be written.
+    """
+    ckpt = _st._checkpoint_dir
+    if ckpt is None or not Path(ckpt).exists():
+        return {"ok": False, "error": _NO_ACTIVE_CHECKPOINT_ERROR, "_status": 400}
+    return None
+
+
+# ── Weak revision (optimistic concurrency, gui_refresh Wave 4d) ──────────
+
+# Frozen refusal payload text for a stale ``base_revision`` (plan 07
+# §Workflow Studio: the 2s blind-overwrite autosave is retired; writers
+# that opt in must be revision-aware).
+_REVISION_MISMATCH_ERROR = (
+    "workflow changed on disk since you loaded it (revision mismatch); "
+    "reload before saving"
+)
+
+
+def workflow_revision(data: bytes) -> str:
+    """Weak content revision of workflow.yaml bytes: sha256 hex[:12].
+
+    Additive key on GET /api/workflow and on every successful workflow
+    write (plan 07 §Workflow Studio). Weak by design — it identifies the
+    exact bytes served/written, not a version lineage.
+    """
+    import hashlib
+
+    return hashlib.sha256(data).hexdigest()[:12]
+
+
+def _served_workflow_path() -> "Path | None":
+    """The workflow.yaml GET serves and a write would land on.
+
+    Checkpoint copy when it exists; else the bundled default (which CoW
+    seeding copies verbatim before an edit, so its hash IS the pre-write
+    content hash). ``None`` when neither file exists.
+    """
+    from ari.config.finder import package_config_root
+
+    if _st._checkpoint_dir:
+        wf = Path(_st._checkpoint_dir) / "workflow.yaml"
+        if wf.exists():
+            return wf
+    bundled = package_config_root() / "workflow.yaml"
+    return bundled if bundled.exists() else None
+
+
+def _workflow_revision_guard(base_revision: object) -> "dict | None":
+    """Optional optimistic-concurrency check for workflow writes.
+
+    ``base_revision`` absent/empty returns ``None`` — legacy callers keep
+    last-write-wins, the check is additive opt-in. When present it must
+    equal the sha256[:12] of the current on-disk bytes, or the write is
+    refused with a frozen 409 payload and nothing is written (the CoW
+    seed must not run either, so call this BEFORE
+    :func:`_checkpoint_workflow_path`). Callers must already have passed
+    :func:`_workflow_write_guard`.
+    """
+    if not base_revision:
+        return None
+    wf = _served_workflow_path()
+    if wf is None:
+        return None
+    if str(base_revision) != workflow_revision(wf.read_bytes()):
+        return {"ok": False, "error": _REVISION_MISMATCH_ERROR, "_status": 409}
+    return None
+
+
+def _checkpoint_workflow_path() -> "Path | None":
+    """Per-checkpoint ``workflow.yaml``, CoW-seeded from the bundled default.
+
+    ADR-10 residual fix (gui_refresh Wave 2b, follow-up to the Wave 2a
+    guard): callers must already have passed :func:`_workflow_write_guard`.
+    When the active checkpoint has no ``workflow.yaml`` yet, the bundled
+    ``config/workflow.yaml`` is copied into the checkpoint first
+    (copy-on-write seed) and the caller's edit lands on that copy — the
+    bundled file is never written. Returns ``None`` only when neither the
+    checkpoint copy nor the bundled default exists.
+    """
+    import shutil
+    from ari.config.finder import package_config_root
+
+    wf = Path(_st._checkpoint_dir) / "workflow.yaml"
+    if not wf.exists():
+        bundled = package_config_root() / "workflow.yaml"
+        if not bundled.exists():
+            return None
+        shutil.copyfile(bundled, wf)
+    return wf
+
+
 # ── API handlers ─────────────────────────────────
 
 
@@ -299,35 +424,38 @@ def _api_save_workflow_flow(body: bytes) -> dict:
     if not flow:
         return {"ok": False, "error": "missing flow data", "_status": 400}
 
+    guard = _workflow_write_guard()
+    if guard:
+        return guard
+    stale = _workflow_revision_guard(data.get("base_revision"))
+    if stale:
+        return stale
+
     # Convert back to YAML structure
     yaml_parts = flow_to_workflow_yaml(flow)
 
-    # Locate source workflow
-    from ari.config.finder import package_config_root
-    wf_candidates = [
-        package_config_root() / "workflow.yaml",
-    ]
-    if _st._checkpoint_dir:
-        wf_candidates.insert(0, _st._checkpoint_dir / "workflow.yaml")
-
-    for wf in wf_candidates:
-        if wf.exists():
-            try:
-                existing = yaml.safe_load(wf.read_text()) or {}
-                # Merge flow changes into existing stages, preserving fields
-                # that React Flow doesn't carry (inputs, outputs, skip_if_exists, etc.)
-                existing["bfts_pipeline"] = _merge_stages(
-                    existing.get("bfts_pipeline") or [], yaml_parts["bfts_pipeline"],
-                )
-                existing["pipeline"] = _merge_stages(
-                    existing.get("pipeline") or [], yaml_parts["pipeline"],
-                )
-                wf.write_text(yaml.dump(existing, allow_unicode=True, sort_keys=False))
-                return {"ok": True}
-            except Exception as e:
-                return {"ok": False, "error": str(e)}
-
-    return {"ok": False, "error": "workflow.yaml not found"}
+    # CoW seed: edit the per-checkpoint copy only (bundled file never written).
+    try:
+        wf = _checkpoint_workflow_path()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    if wf is None:
+        return {"ok": False, "error": "workflow.yaml not found"}
+    try:
+        existing = yaml.safe_load(wf.read_text()) or {}
+        # Merge flow changes into existing stages, preserving fields
+        # that React Flow doesn't carry (inputs, outputs, skip_if_exists, etc.)
+        existing["bfts_pipeline"] = _merge_stages(
+            existing.get("bfts_pipeline") or [], yaml_parts["bfts_pipeline"],
+        )
+        existing["pipeline"] = _merge_stages(
+            existing.get("pipeline") or [], yaml_parts["pipeline"],
+        )
+        text = yaml.dump(existing, allow_unicode=True, sort_keys=False)
+        wf.write_text(text)
+        return {"ok": True, "revision": workflow_revision(text.encode("utf-8"))}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def _normalize_phase_value(phase: object) -> str | list[str]:
@@ -387,27 +515,31 @@ def _api_save_skill_phases(body: bytes) -> dict:
     if not phase_map:
         return {"ok": False, "error": "no valid skill phase entries", "_status": 400}
 
-    from ari.config.finder import package_config_root
-    wf_candidates = [
-        package_config_root() / "workflow.yaml",
-    ]
-    if _st._checkpoint_dir:
-        wf_candidates.insert(0, _st._checkpoint_dir / "workflow.yaml")
+    guard = _workflow_write_guard()
+    if guard:
+        return guard
+    stale = _workflow_revision_guard(data.get("base_revision"))
+    if stale:
+        return stale
 
-    for wf in wf_candidates:
-        if wf.exists():
-            try:
-                existing = yaml.safe_load(wf.read_text()) or {}
-                for sk in existing.get("skills", []):
-                    sk_name = sk.get("name", "")
-                    if sk_name in phase_map:
-                        sk["phase"] = phase_map[sk_name]
-                wf.write_text(yaml.dump(existing, allow_unicode=True, sort_keys=False))
-                return {"ok": True}
-            except Exception as e:
-                return {"ok": False, "error": str(e)}
-
-    return {"ok": False, "error": "workflow.yaml not found"}
+    # CoW seed: edit the per-checkpoint copy only (bundled file never written).
+    try:
+        wf = _checkpoint_workflow_path()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    if wf is None:
+        return {"ok": False, "error": "workflow.yaml not found"}
+    try:
+        existing = yaml.safe_load(wf.read_text()) or {}
+        for sk in existing.get("skills", []):
+            sk_name = sk.get("name", "")
+            if sk_name in phase_map:
+                sk["phase"] = phase_map[sk_name]
+        text = yaml.dump(existing, allow_unicode=True, sort_keys=False)
+        wf.write_text(text)
+        return {"ok": True, "revision": workflow_revision(text.encode("utf-8"))}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def _api_save_disabled_tools(body: bytes) -> dict:
@@ -422,24 +554,28 @@ def _api_save_disabled_tools(body: bytes) -> dict:
     if not isinstance(disabled, list):
         return {"ok": False, "error": "missing disabled_tools array", "_status": 400}
 
-    from ari.config.finder import package_config_root
-    wf_candidates = [
-        package_config_root() / "workflow.yaml",
-    ]
-    if _st._checkpoint_dir:
-        wf_candidates.insert(0, _st._checkpoint_dir / "workflow.yaml")
+    guard = _workflow_write_guard()
+    if guard:
+        return guard
+    stale = _workflow_revision_guard(data.get("base_revision"))
+    if stale:
+        return stale
 
-    for wf in wf_candidates:
-        if wf.exists():
-            try:
-                existing = yaml.safe_load(wf.read_text()) or {}
-                existing["disabled_tools"] = disabled
-                wf.write_text(yaml.dump(existing, allow_unicode=True, sort_keys=False))
-                return {"ok": True}
-            except Exception as e:
-                return {"ok": False, "error": str(e)}
-
-    return {"ok": False, "error": "workflow.yaml not found"}
+    # CoW seed: edit the per-checkpoint copy only (bundled file never written).
+    try:
+        wf = _checkpoint_workflow_path()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    if wf is None:
+        return {"ok": False, "error": "workflow.yaml not found"}
+    try:
+        existing = yaml.safe_load(wf.read_text()) or {}
+        existing["disabled_tools"] = disabled
+        text = yaml.dump(existing, allow_unicode=True, sort_keys=False)
+        wf.write_text(text)
+        return {"ok": True, "revision": workflow_revision(text.encode("utf-8"))}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def _api_get_default_workflow() -> dict:

@@ -1,180 +1,166 @@
-\section{Preliminary Observations}\label{chapter:eval}
+\section{Evaluation Evidence}\label{chapter:eval}
 
-This chapter reports what the running system establishes at v0.9.0.
-The evidence is of three kinds: an end-to-end generation run whose
-released paper passed every verification gate
-(\cref{sec:eval:sample}); properties that hold by construction and
-are confirmed in operation (\cref{sec:eval:construction}); and an
-earlier reproduction exercise carried out on the then-current v0.8.0
-pipeline (\cref{sec:eval:repro}). All of it is preliminary: the
-end-to-end observations are single runs rather than a controlled
-benchmark, and the panel-scale study they call for is deferred
-(\cref{sec:eval:limits}). Quantitative figures elsewhere in this
-report are illustrative, generated from fixed-seed sample data so
-that the document build is reproducible.
+\subsection{Questions and evidence classes}\label{sec:eval:sample}
 
-\subsection{Case study: a gate-verified sample paper}\label{sec:eval:sample}
-
-One end-to-end result is demonstrated and inspectable: the released
-sample paper, an eight-page study produced autonomously by a real
-run and reproduced in full in \cref{appendix:samplepaper}. It studies compressed sparse row (CSR) sparse-dense matrix
-multiplication (SpMM), selecting a store policy across
-right-hand-side (RHS) widths under the guidance of a performance
-model (the paper's ``loopline'' model) fitted from the run's own
-measurements. We trace this run end to end (\cref{fig:case-study})
-because it is an existence proof for the verification machinery this
-report describes.
-
-\paragraph{Claim structure.}
-The run's metric contract --- minted once at idea time and returned
-verbatim for the rest of the run (\cref{sec:paper:contract}) ---
-declared twelve falsifiable claims. Nine are \emph{independent
-probes} that a single node measures directly: correctness against a
-dense reference, the store-policy comparison, an irregular-gather and
-a locality-destruction probe, a page-footprint (translation
-lookaside buffer, TLB) stress probe, a compute-rate probe, and
-bandwidth microbenchmarks. The remaining three form a
-\emph{computed-evidence chain} --- fit the performance model's
-parameters, cross-validate the fit on held-out probe measurements,
-then select a configuration from the fitted model --- where each
-claim consumes the output of the previous one rather than measuring
-something fresh.
-
-\paragraph{Lineage closure.}
-That chain is the case this run exists to demonstrate. A computed
-claim cannot be evidenced by a node that has no inputs, and three
-earlier runs confirmed the failure mode: nodes directed to fit the
-model from sibling probes re-ran a single probe instead and the
-chain claims stayed uncovered. Here the chain closed because a child
-node inherited its parent probe node's working directory and computed
-the fit, the cross-validation, and the selection from the inherited
-measurements --- lineage chaining
-(\cref{sec:exploration:lineage-chaining}) made ``compute from the
-data you already hold'' the locally available move. The final
-claim--evidence gate then found all twelve claims grounded and
-reported zero errors, so the paper was finalised.
-
-\paragraph{What the gate verified, and what the paper hedged.}
-The result's value is the \emph{verified} property, not any headline
-number: every quantitative claim the released paper asserts is bound
-to a recorded artefact and re-derived by the deterministic gate, and
-the paper hedges explicitly wherever a statement would outrun its
-artefact grounding (\cref{tab:case-study}). The paper restricts its
-strong quantitative claims to the correctness metric --- a maximum
-absolute single-precision (FP32) error of $6.79\times10^{-6}$ against
-an independent dense reference --- and presents the store-policy
-crossover, the bandwidth ceilings, and the model's numerical
-predictions as methodology rather than grounded outcomes. This
-honest scoping is the gate's effect, reinforced by the semantic
-review: that review flagged five overclaims in the draft and the
-refine pass resolved all five, with the resolved count recorded as a
-raw before/after delta (\cref{sec:paper:contract}) so that a refine
-introducing new overclaims would surface as a regression.
+We separate four questions. \emph{Legality} asks whether an illegal
+institutional change is rejected and a legal change commits atomically.
+\emph{Liveness} asks whether proposal, attack, adjudication, transition,
+repair, and replay paths make progress. \emph{Detection performance} asks
+how often known faults are detected and clean cases are falsely rejected.
+\emph{Effectiveness} asks whether governed co-evolution improves research
+quality, calibration, or cost. Tests principally address legality, and
+fixed fault cases exercise particular liveness paths. Detection
+performance and effectiveness require labelled cases, independent runs,
+and controls.
 
 \begin{table}[t]
   \centering
   \small
-  \begin{tabularx}{\columnwidth}{@{}p{0.30\columnwidth}X@{}}
+  \begin{tabularx}{\columnwidth}{@{}lXX@{}}
     \toprule
-    \textbf{Reported as grounded} & Correctness: max absolute FP32 error
-      $6.79\times10^{-6}$ versus an independent dense reference; all
-      twelve declared claims carry emitted evidence; the
-      computed-evidence chain executed. \\
-    \addlinespace
-    \textbf{Explicitly hedged} & Store-policy crossover values,
-      double-precision error, measured bandwidth ceilings, and the
-      performance model's numerical predictions --- stated as
-      methodology and marked not artefact-grounded in this revision. \\
+    \textbf{Evidence} & \textbf{Supports} & \textbf{Does not support} \\
+    \midrule
+    1,124 relevant tests & implemented rules on tested inputs &
+      safety on untested inputs or research quality \\
+    Five faults, one clean case & activation of five specified paths and
+      passage of the clean case &
+      false-positive or false-negative rates, unknown-fault coverage \\
+    Exploratory traces & execution of some long paths &
+      reproducibility, distribution-wide liveness, superiority \\
+    Unrun controlled study & nothing &
+      quality, calibration, cost, or component-level causal effects \\
     \bottomrule
   \end{tabularx}
-  \caption{The released sample paper asserts only gate-grounded numbers
-    and hedges the rest in its own text --- the deterministic gate and
-    the review--refine loop scoping the paper to what the run can
-    support.}
-  \label{tab:case-study}
+  \caption{Claims supported and not supported by the current evidence.}
+  \label{tab:eval-status}
 \end{table}
 
-\begin{figure}[t]
-  \centering
-  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F21_case_study.tex}}
-  \caption{The case-study run as a worked example of the
-    claim--evidence contract. Twelve declared claims split into nine
-    independent probes and a three-claim computed chain; the chain is
-    closed by lineage --- a child node inherits its parent probe
-    node's working directory and computes the fit, cross-validation,
-    and selection from the inherited measurements --- after which the
-    deterministic gate finds every claim grounded and the paper is
-    finalised.}
-  \label{fig:case-study}
-\end{figure}
+\subsection{Lifecycle demonstrations}\label{sec:eval:construction}
 
-We read this result narrowly. The property is worth stating because
-earlier autonomous pipelines lack it: in the closest published
-predecessor, hallucination control is prompt-level, the automated
-review of a finished draft is advisory rather than blocking,
-generated papers were observed to hallucinate experimental details,
-and the authors list automatic verification of reported results as
-future work~\cite{lu2024ai}. A single verified run demonstrates that
-the contract, lineage chaining, gate, and review--refine loop compose
-end to end; it does not establish a distribution, which is exactly
-the controlled study deferred below.
+The exact focused selector recorded in the artifact instructions collects
+1,124 tests directly concerning RQGM and the final manuscript gate; all
+passed in this working tree. The complete suite selector collected 4,805
+tests: 4,787 passed, 16 were skipped, and two were expected failures.
+The focused set partitions without overlap into claim gate 64;
+kernel, transition, epoch, state, founding, and mode 285; adversarial and
+governance 126; repair and clean room 66; utility evolution 85; evaluation
+fixtures and metrics 157; prompt evolution 93; paper roles 94; and context,
+budget, meta-evolution, proposals, and adapter 154. These groups sum to
+1,124; the machine-readable artifact lists every test identifier.
+\Cref{sec:appendix:specification} maps the mechanisms to the component
+lifecycle table, authority matrix, and recovery procedure.
 
-\subsection{Properties holding by construction}\label{sec:eval:construction}
+The previously cited full SHA does not resolve from the public repository
+and does not identify this uncommitted revision. We therefore withdraw the
+public-artifact claim. This working tree now contains a local,
+content-addressed reproduction bundle with source hashes, dependency
+inventory, exact selectors, every collected identifier, a fully expanded
+machine-readable authority matrix, and focused/full logs. It identifies a
+dirty tree by its aggregate content digest rather than
+pretending the current Git SHA names it. It is not an immutable public tag,
+DOI archive, container, or CI record, so third-party retrieval is not yet
+supported. A release must publish and archive the bundle and prompt material
+before the paper cites a public artifact identifier.
 
-Three further properties hold by construction and are confirmed in
-operation. Cost accounting is exact: a dollar cost is attached to
-every model invocation and accumulated, per run, into the
-checkpoint's results record. Exploration termination is not
-budget-only: the stagnation detector
-(\cref{sec:exploration:termination}) provides a content-based exit
-and has been observed to fire before the step and cost budgets
-($\Tmax$ / $\Cmax$) are exhausted. And the execution-profile pathway
-behaves as specified (\cref{sec:paper:paperbench:v072}): rubric
-generation emits a multi-rank Message Passing Interface (MPI)
-execution profile, with the paper's reported scale envelope, for a
-high-performance-computing (HPC) paper and omits it for a
-single-machine paper, while a multi-flag cluster dispatch is
-accepted by the local scheduler once the runtime probes drop the
-flags it does not support.
+The two expected failures are unrelated architecture debts: one command-layer
+module still imports the visualisation layer, and the evaluator still calls
+its model-provider library directly rather than through the shared model
+client. They do not bypass an RQGM kernel check, but they remain visible in
+the full log and are not counted as passes.
 
-\subsection{An earlier reproduction exercise (v0.8.0)}\label{sec:eval:repro}
+Test count is evidence of implementation scale and regression protection,
+not scientific performance. The present environment has no coverage
+instrumentation, so line coverage, branch coverage, and mutation score are
+unknown. Nor does the aggregate establish that every invariant has at
+least one test. We therefore do not use total test count as a safety
+proxy.
 
-The system's first operational end-to-end exercise predates v0.9.0:
-the then-current v0.8.0 pipeline was run against a published
-lossy-compression target, a GPU error-bounded scientific compressor,
-through the reproduction path of \cref{sec:paper:paperbench}. The
-degree of reproduction achieved on this single target was partial
-but substantive. The agent fetched a real slice of the paper's cited
-simulation dataset rather than substituting synthetic data; compiled
-native CUDA interpolation kernels and ran them on the GPU;
-implemented Lorenzo and multi-level interpolation predictors with
-per-level autotuning; and swept a range of error bounds, recovering
-reconstruction qualities from roughly 50 to 90~dB peak
-signal-to-noise ratio (PSNR) with the corresponding compression
-ratios. Against the fine-grained rubric the run cleared on the order
-of a tenth of the weighted leaves, for two reasons rooted in the
-agent's behaviour rather than the pipeline's: the graded metric came
-from a CPU predictor --- the GPU kernels were built and executed,
-but the agent omitted their predicted quality from its reported
-results --- and the agent terminated voluntarily after a small
-fraction of its time budget, leaving the remaining datasets and the
-proprietary lossless stage unattempted. Both behaviours match
-failure modes documented for replication agents at large, where most
-models end runs early claiming completion and score far higher on
-writing code than on executing it and matching the paper's
-results~\cite{starace2025paperbench}. The exercise predates the
-verification machinery of \cref{sec:eval:sample} and is reported
-unchanged, as the historical baseline.
+Founding counts depend on configuration. The base research configuration
+registers 31 prompts, one utility policy, and 20 components. Enabling the
+paper archive adds one prompt and component each for self-preference
+prosecution, paper review, and paper writing, producing totals of 35
+prompt-or-policy records and 23 components. The base component count is 20,
+including the registered research generator; the earlier ``32 and 19''
+figures used the pre-generator component count and have been corrected.
+
+Earlier exploratory executions observed boundary transactions, utility
+policy replacement, re-scoring from saved raw axes, and paper-role
+successor adoption. This report does not bundle the complete checkpoints,
+exact provider-side model versions, decoding settings, seeds, independent
+run counts, task descriptions, or costs. We therefore treat those traces
+as implementation-path observations, not reproducible experimental
+results.
+
+\subsection{Fault injection and construction guarantees}\label{sec:eval:repro}
+
+Fixed labelled fixtures cover five application fault paths: metric manipulation that
+cannot be recomputed from run values, an unsupported overclaim, a prompt
+candidate containing sealed material, forbidden clean-room input, and a
+record dependent on a retired prompt leaking into the candidate set.
+Each was rejected through its expected numeric-evidence, candidate,
+kernel, or impact-exclusion path. One clean numeric claim was not falsely
+rejected.
+
+Additional integrity negatives mutate the event type, identifier,
+transaction identifier, payload, and predecessor digest; reorder committed
+events; and mismatch transaction membership. Each is rejected. A T16 test
+also verifies a forced epoch close/open with a fresh fingerprint, and the
+machine-readable authority export is checked against every sparse
+allow-list entry. These are deterministic regression cases, not event
+fuzzing or model checking.
+
+This establishes only 5/5 detections and 1/1 clean passage for those fixed
+fixtures. The sample is too small and contains only one difficulty level
+per fault, so we do not report false-positive or false-negative estimates.
+Fabricated prior art, denial of the adjudication path, incorrect
+responsibility binding, and semantically preserved clean-room
+contamination do not yet have completed labelled detection experiments.
+
+Construction guarantees also have boundaries. Fixed code rejects
+registry mutation outside the transition engine, unlisted transitions,
+candidate authority expansion, penalties from unadjudicated attacks, and
+replay of uncommitted transactions. This is kernel determinism over saved
+inputs, not regeneration of model output. The schema-v2 audit chain binds
+every replay-relevant envelope field and detects the tested interior
+modifications, but without an external anchor it cannot detect rollback of
+the whole checkpoint to an old valid prefix. T16 now force-closes the epoch
+and opens a freshly fingerprinted epoch in the same transaction.
 
 \subsection{Limitations}\label{sec:eval:limits}
 
-The evaluation remains preliminary. Neither result above is a
-controlled benchmark: the generation run is a single trajectory, and
-the reproduction exercise covers a single target paper. A controlled
-evaluation --- median run cost, per-seed exploration curves, and
-per-category rubric distributions over a frozen checkpoint, together
-with full-rollout replication scores across a panel of contrasting
-target papers --- is left to future work. The same study should
-settle the empirical questions this report leaves open, such as
-which termination cause (\cref{sec:exploration:termination}) fires
-most often in practice.
+An acceptance-grade study must preserve a preregistered task panel, exact
+model and provider version, temperature, sampling method, maximum output,
+tool versions, seeds, independent run count, epoch and node counts,
+candidate counts, attack/motion/judgment/retirement counts, and token,
+time, and monetary costs. Each rate needs a denominator, run-to-run
+variance, and confidence interval.
+
+We implemented five paper-comparison conditions aligned with the original
+RQGM study. P0 evolves the writer against a fixed critic; P1 adds critic
+replacement only; P2 co-evolves both roles but retains utility rows scored
+by displaced critics; P3 makes those stale rows ineligible, realizing full
+RQGM; and P4 adds blocking Constitutional-kernel enforcement to P3. All
+five are evaluation presets over the same paper archive, budget, seeds,
+and model settings, not new production modes. The headline comparison is
+P0/P3/P4, with P1/P2 as mechanism ablations. Paper writing and fixed
+post-hoc rubric review can use separately pinned models; the intended
+study assigns Claude Code to writing and Codex to a panel disjoint from
+the co-evolving reviewer. The paper does not include completed multi-seed
+real-model runs, so this is an implemented protocol rather than a result.
+The mechanism arms follow the original study, but the shipped budget of
+eight epochs and at most 12 expansions per epoch does not reproduce its
+12,288-evaluation compute scale \cite{iacob2026red}. A publication run
+must preregister a common evaluator-call budget and report realized calls
+per arm.
+
+Further component ablations should remove replay, responsibility binding,
+clean-room replacement, mutable utility policy, anchors, and the fixed
+manuscript gate one at a time. Responsibility attribution and impact
+repair additionally need labelled synthetic causal graphs to measure
+target accuracy, reach precision and recall, and over-removal.
+
+The warranted conclusion is consequently limited. The expected checks
+fire on five fixed application fault cases, the event-integrity negatives
+are rejected, and all 1,124 relevant tests pass.
+Improved research quality, general detection performance, long-run
+liveness, and cost effectiveness remain unestablished.

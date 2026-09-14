@@ -4,9 +4,15 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
+  - path: ari-core/ari/memory_cli.py
+    role: implementation
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+  - path: start.sh
+    role: doc
   - path: ari-core/config/default.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-16
 ---
 
 # FAQ
@@ -33,13 +39,14 @@ Do not run `setup.sh` with `sudo` — run it as your normal user.
 ## The dashboard
 
 **What port is the dashboard on?**
-`8765`. Start everything with `./start.sh` (Letta + registry + GUI) at the repo
-root and open <http://localhost:8765>. `./start.sh status` health-checks; stop
-with `./shutdown.sh`. The WebSocket for live tree updates is on `8766`
+`8765`. Start everything with `./start.sh` at the repo root — four services:
+Letta on `8283`, the registry on `8290`, the GUI on `8765`, and the CLI shim on
+`8900` — then open <http://localhost:8765>. `./start.sh status` health-checks;
+stop with `./shutdown.sh`. The WebSocket for live tree updates is on `8766`
 (port + 1).
 
 **The page won't load / a service didn't come up.**
-Re-run `./start.sh` (it restarts all three services every invocation) and check
+Re-run `./start.sh` (it restarts all four services every invocation) and check
 `./start.sh status`. `shutdown.sh` also reaps any apptainer-orphaned
 postgres/redis from a previous Letta run.
 
@@ -49,7 +56,9 @@ postgres/redis from a previous Letta run.
 Into a self-contained checkpoint directory,
 `workspace/checkpoints/<timestamp>_<slug>/` (the timestamp form is
 `YYYYMMDDHHMMSS_<slug>`). Paper, figures, tree, EAR, and reproducibility report
-all live there. Nothing is written to your home directory.
+all live there. Two things do not: each node's work directory is written to
+`workspace/experiments/<run_id>/<node_id>/`, a sibling of `checkpoints/`; and
+the services `./start.sh` launches keep their PID and log files in `~/.ari/`.
 
 **How big should my first run be?**
 Small: 5–10 nodes at depth 3 with 2–4 parallel workers. You can always scale up
@@ -57,13 +66,19 @@ later. Larger searches cost more LLM calls and compute.
 
 **My child nodes all report the same numbers as the parent — is that a bug?**
 No, it is a guardrail doing its job. A child's `work_dir` is seeded by copying
-the parent's, but experiment *outputs* (`results.csv`, `slurm-*.out`,
-`metrics.json`, `*.log`, …) are on a blacklist and are **not** inherited. If a
-child finishes without producing any new/changed files, ARI marks it
-**sterile** (score `0.0`) and prunes it, instead of crediting inherited results.
-If you see this often, the agent isn't actually re-running the experiment —
-check the node's Trace tab. See
-[Architecture → work_dir inheritance](../concepts/architecture.md#work_dir-inheritance--output-artifact-blacklist-v070--phase-7)
+the parent's, but experiment *outputs* (`results.csv`, `results.json`,
+`slurm-*.out`, `metrics.json`, `run.log` / `run_*.log`, `*_output.txt`, …) are
+on a blacklist and are **not** inherited — note the log patterns are those exact
+names, not a blanket `*.log`. If the child changes nothing, ARI marks it
+**sterile**. Sterility does *not* zero the score: the measured score,
+`has_real_data` and `evaluation_status` are left untouched, and what the node
+loses is the right to be expanded again and the right to retire its parent.
+When the run names a pinned problem (`ARI_PROBLEM`), sterility is decided by
+hashing the `score_inputs` that problem declares rather than by diffing the
+whole work_dir — the whole-directory rule practically never fires. If you see this
+often, the agent isn't actually re-running the experiment — check the node's
+MCP Trace tab. See
+[Architecture → work_dir inheritance](../concepts/architecture.md#work-dir-inheritance-—-output-artifact-blacklist-v0-7-0-phase-7)
 and the [Glossary → sterile](../reference/glossary.md).
 
 **An experiment failed — does ARI retry it?**
@@ -74,9 +89,11 @@ happened.
 ## GPU, SLURM & containers
 
 **How do I run on a cluster?**
-Set the SLURM partition in Settings (or `--partition` on the CLI) and use the
+Set the SLURM partition in Settings (or `ari settings --partition` on the CLI —
+`ari run` itself has no `--partition`; it takes `--profile hpc`) and use the
 `hpc` profile. Click **Detect** in Settings to auto-detect partitions, or
-`/api/scheduler/detect` to auto-detect the scheduler (SLURM/PBS/LSF/Kubernetes).
+`/api/scheduler/detect` to auto-detect the scheduler
+(SLURM/PBS/LSF/SGE/Kubernetes).
 See [HPC setup](../guides/hpc_setup.md).
 
 **GPUs aren't being used.**
@@ -97,9 +114,10 @@ Install LaTeX (`conda install -c conda-forge texlive-core`) and the PDF text
 tools (`pip install pymupdf pdfminer.six`).
 
 **Can I move a finished run to another machine?**
-Yes. Each checkpoint carries a `memory_backup.jsonl.gz`, so
+Yes. Each checkpoint carries a `memory_backup.v1.json.gz`, so
 `cp -r workspace/checkpoints/<run> /elsewhere/` followed by `ari resume`
-restores the memory into an empty Letta automatically.
+restores the memory — but only when the target Letta is empty, and only when
+`ARI_MEMORY_AUTO_RESTORE` is not set to `false`.
 
 ---
 

@@ -1,0 +1,99 @@
+{
+  "decision": "eligible-for-verified",
+  "gates": [
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:d11016145411e0e3ed515dad57039400883fc6cc72ef54fd14cd92d73acc92f9",
+      "gate_id": "manifest_schema",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:3ae009521c24fe6410bd3d88f6d99a488056d90c5287d7e0d701c178ecb22c30",
+      "gate_id": "source_package_digest_pin",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:bfd876959b67408317dddb4d07b408fa852bc794266e923130bf8286f80a4957",
+      "gate_id": "live_tools_list_parity",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:2cacb60c64855d745b68a624e23768ec56dce916e06af6034e105e46f94f35f3",
+      "gate_id": "schema_digest_pin",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:12dd96bd95c4d328cb8b252efdac48684f6b26b2b467a3ca1c124ed5356c9365",
+      "gate_id": "capability_contract_conformance",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:07e60b45e537b8cadd82a8e93d2ee9e7f87ae5237d913c3a7bce183b034a3b36",
+      "gate_id": "side_effect_declaration",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:8c76de4a546bb834d280949581500b1ab030e75f91b811543efab5997c040527",
+      "gate_id": "credential_scope",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:69b475d47e46449389b825a3f38c9a7480d6da8346f34cc6c8c9894f790dda19",
+      "gate_id": "environment_allowlist",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:f4b3e433fbf6b73deec14f4c982fd5c75c0939d43b64efa264423ce324f218a2",
+      "gate_id": "timeout_cancellation_process_group",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:86f029afdd209227ce2dcd0ce067c68dc9256b1a0560bb0a2d400c87d4854742",
+      "gate_id": "result_schema",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:258ea8f2f2e1226639972cffc098ce66362d803562176c9829837807b5c6540d",
+      "gate_id": "malicious_description_boundary",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:fee69aa33ed5f3c94b17e7fb7e9ae7adf47e39e900b8055481cc35f8b84dbdbd",
+      "gate_id": "workspace_isolation",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:b226da069f1e3f9ab7115b291e88521c7ec8dd17b0f892ad7fd7a6c6459c78fd",
+      "gate_id": "revocation_behavior",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:62ab00a8d88e2e5677dd8bc4cdc00b336acb88461b34d65fcb4ed5456ce1c342",
+      "gate_id": "schema_drift_detection",
+      "passed": true
+    },
+    {
+      "detail": "closed anonymous exclusive-node CUDA self-test evidence passed",
+      "evidence_digest": "sha256:ce2b91cc444a40e4d95f3e5a6c75bd82375a4b698dbe2a922ba1b9e5ee53cb6d",
+      "gate_id": "unbound_invocation_rejection",
+      "passed": true
+    }
+  ],
+  "manifest_sha256": "sha256:bcf93eda8dba6bd15b3a8cc5bc9dd809817ca720b3e9fe4fc9b723c66aa24804",
+  "provider_id": "ari-cuda-environment-validator",
+  "report_digest": "sha256:e83f50859a0355239b90350bf55c087a5330238da3a5796c6b7f033653b04b57",
+  "schema_version": "ari.capability-provider-registration-report/v1"
+}

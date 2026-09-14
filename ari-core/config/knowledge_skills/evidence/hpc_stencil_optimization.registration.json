@@ -1,0 +1,41 @@
+{
+  "clean_task": {
+    "artifact_digests": {
+      "evidence/hpc_stencil_optimization.clean_task.json": "sha256:1014da0a43d19a86ee73a33898b35c90ca19179866ac97ea9c152f6a433173b2"
+    },
+    "detail": "An independently authored 5-point Jacobi task ran through the typed container Provider in the digest-pinned gcc 13.2.0 image. Per-step trajectory equivalence over sixteen steps was exact, the linearity identity held to 1.7e-16, and the undefined-behaviour/bounds, address and thread sanitizer runs over the two-thread barrier decomposition were clean. The candidate beat its own serial baseline by 1.656x or more across four alternating warm replays against a 1.05x gate, with one thread per distinct physical core of the allocated mask. An earlier run of this same binary stayed below 1.0x because the typed batch step inherited the whole node in its affinity mask; the Provider now runs a single-task payload as a bound job step. No imported attachment executed.",
+    "methods": [
+      "benchmark-comparison",
+      "differential-testing",
+      "metamorphic-testing",
+      "race-detection",
+      "repeated-execution",
+      "sanitizer"
+    ],
+    "status": "pass"
+  },
+  "environment_digest": "sha256:77bf7484d2c47dc8864564dcfa2b9aac0ff714c372bd24d923357aeaa4361a4e",
+  "evidence_digest": "sha256:4ba770ec72e902c927991f45644a69ab9ee30c1176fed10a290636c1282ce4df",
+  "provider_portability": {
+    "abstraction_report_digest": "sha256:54e355f94b937f8fc3e888ab938d0ca95b16b69596133d0d8acb6ef9895e3166",
+    "binding_lock_digests": [
+      "sha256:b8f794fe60bb758730609fb0753644bd4da79d629b4e24c9c01529d1e1f466fd",
+      "sha256:f1cfca15c16a30c03d2fa23be910898e9e7fa887e36d9bdd9638d7fe7e58fc1d"
+    ],
+    "compatible_provider_ids": [
+      "ari.provider.coding"
+    ],
+    "detail": "Provider independence was established by withdrawing the incumbent ari.provider.coding and re-offering the identical capability contracts under the reserved stand-in identity ari.provider.synthetic-substitute. All 4 capabilities the incumbent had won rebound, deterministically, and none stayed bound to the incumbent. No second implementation was executed, so this is not cross-Provider portability: it shows only that the requirement set names capabilities rather than a Provider. The report is stored beside this file as evidence/hpc_stencil_optimization.abstraction.json.",
+    "method": "synthetic-substitution",
+    "provider_catalog_digest": "sha256:dd8c35c5ffa6f61df5dbaca6f9a59ae68a2b98ddf96ee3b0b226163817bc4ac3",
+    "status": "pass"
+  },
+  "schema_version": "ari.knowledge-skill-registration-evidence/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:a73df05ab4266f93af629b1b486e4c7c5ac06d1813e2ef1c7b13e65c09cce241",
+    "id": "hpc.stencil.optimization",
+    "manifest_sha256": "sha256:4fbf7f26f8dd26fc2eac540a50b92dfba87b038a6948588e464b47c002c86de7",
+    "version": "1.0.0"
+  },
+  "source_full_commit_sha": "ec220484edcbdb72b9abad7337f65871254d0c73"
+}

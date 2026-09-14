@@ -22,7 +22,8 @@ in-memory.  New code that needs the rich API should obtain a backend via
 **Funnel policy (the one allowed core→skill edge).** ``ari_skill_memory`` may be
 imported **only** from within ``ari/memory/**`` — specifically ``backend.py``
 (the sanctioned forwards ``get_backend`` / ``clear_backend_cache`` /
-``build_verified_context``), ``letta_client.py``, and ``auto_migrate.py``.
+``build_verified_context``) and ``letta_client.py``. Legacy conversion is an
+explicit offline command in ``ari.memory_cli``.
 Every other ``ari-core`` module reaches the skill backend through the
 ``ari.memory`` re-exports below, so the sanctioned edge (introduced v0.6.0) is
 confined to one directory and a future import-boundary checker (subtask 026) can
@@ -38,7 +39,6 @@ See also:
 """
 from __future__ import annotations
 
-from ari.memory.auto_migrate import maybe_auto_migrate
 from ari.memory.backend import (
     build_verified_context,
     clear_backend_cache,
@@ -54,7 +54,6 @@ __all__ = [
     "LettaMemoryClient",
     "FileMemoryClient",
     "LocalMemoryClient",
-    "maybe_auto_migrate",
     "get_backend",
     "clear_backend_cache",
     "build_verified_context",

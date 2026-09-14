@@ -10,11 +10,13 @@ Design constraints (P1/P2):
   user `include`. They prevent accidental publication of `.env*`,
   secrets, private keys, etc.
 """
+
 from __future__ import annotations
 
 import fnmatch
 import hashlib
 import json
+import os
 import shutil
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
@@ -65,7 +67,8 @@ class CurateResult:
         excluded_count: number of files that matched include but were
             removed by built-in deny or user exclude. Paths are NOT
             recorded — only the count, by design (FR-C6).
-        skipped: True iff publish.yaml is absent and curation was skipped.
+        skipped: Compatibility field; always False because an absent
+            publish.yaml uses the built-in reproducibility allowlist.
     """
 
     ear_published_dir: Path
@@ -79,6 +82,7 @@ class CurateResult:
 # ---------------------------------------------------------------------------
 # Glob matching
 # ---------------------------------------------------------------------------
+
 
 def _normalize_rel(path: Path) -> str:
     """POSIX-style relative path string for matching."""
@@ -113,7 +117,13 @@ def _match_any(rel: str, patterns: Iterable[str]) -> bool:
 
 
 def _walk_files(root: Path) -> list[Path]:
-    return [p for p in root.rglob("*") if p.is_file()]
+    files: list[Path] = []
+    for path in root.rglob("*"):
+        if path.is_symlink():
+            raise CurateError(f"symbolic EAR path refused: {path.relative_to(root)}")
+        if path.is_file():
+            files.append(path)
+    return files
 
 
 def _sha256_file(p: Path) -> str:
@@ -124,9 +134,84 @@ def _sha256_file(p: Path) -> str:
     return h.hexdigest()
 
 
+def _canonical_digest(value: object) -> str:
+    payload = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _file_role(relative: str) -> str:
+    if relative == "locks/SKILLS.lock":
+        return "skills-lock"
+    if relative == "catalog/CATALOG.lock":
+        return "catalog-lock"
+    if relative.startswith("catalog/cassettes/") or relative.startswith(
+        "catalog/raw-cassettes/"
+    ):
+        return "cassette"
+    if relative.startswith("admission/"):
+        return "admission"
+    if relative.startswith("artifacts/mcp-results/"):
+        return "result-envelope-artifact"
+    if relative.startswith("contracts/"):
+        return "science-contract"
+    if relative == "evidence.index.json":
+        return "evidence-index"
+    return "ear-output"
+
+
+def _verify_evidence_index(ear: Path) -> dict | None:
+    path = ear / "evidence.index.json"
+    if not path.is_file():
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise CurateError(f"invalid evidence.index.json: {exc}") from exc
+    if not isinstance(value, dict) or value.get("schema_version") != "ari.ear-evidence-index/v1":
+        raise CurateError("unsupported evidence index schema")
+    digest = value.get("index_digest")
+    unsigned = dict(value)
+    unsigned.pop("index_digest", None)
+    encoded = (
+        json.dumps(unsigned, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    ).encode("utf-8")
+    expected = "sha256:" + hashlib.sha256(encoded).hexdigest()
+    if digest != expected:
+        raise CurateError("evidence index digest mismatch")
+    records = value.get("records")
+    if not isinstance(records, list):
+        raise CurateError("evidence index records must be a list")
+    seen: set[str] = set()
+    for record in records:
+        if not isinstance(record, dict):
+            raise CurateError("evidence index record must be an object")
+        relative = str(record.get("path") or "")
+        candidate = ear / relative
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(ear.resolve(strict=True))
+        except (OSError, ValueError) as exc:
+            raise CurateError(f"evidence path escapes EAR: {relative}") from exc
+        if relative in seen or candidate.is_symlink() or not candidate.is_file():
+            raise CurateError(f"evidence path missing, duplicate, or symbolic: {relative}")
+        seen.add(relative)
+        if record.get("digest") != "sha256:" + _sha256_file(candidate):
+            raise CurateError(f"evidence digest mismatch: {relative}")
+        if record.get("size_bytes") != candidate.stat().st_size:
+            raise CurateError(f"evidence size mismatch: {relative}")
+    return value
+
+
 # ---------------------------------------------------------------------------
 # publish.yaml loading
 # ---------------------------------------------------------------------------
+
 
 def _load_publish_yaml(path: Path) -> dict:
     if yaml is None:  # pragma: no cover - import guard
@@ -149,7 +234,8 @@ def _load_publish_yaml(path: Path) -> dict:
 # Default publish.yaml content used when the author hasn't supplied one.
 # Tuned for the ORS reproducibility flow: include everything a re-runner
 # needs to rebuild + execute (reproduce.sh + code/ + data/ + environment),
-# exclude human-only docs and the figures/ directory (figures are outputs).
+# include immutable federated-tool provenance under catalog/, and exclude
+# human-only docs and the figures/ directory (figures are outputs).
 _DEFAULT_PUBLISH_YAML: dict = {
     "include": [
         "reproduce.sh",
@@ -158,6 +244,12 @@ _DEFAULT_PUBLISH_YAML: dict = {
         "data/**",
         "scripts/**",
         "configs/**",
+        "catalog/**",
+        "locks/**",
+        "contracts/**",
+        "admission/**",
+        "artifacts/**",
+        "evidence.index.json",
     ],
     "exclude": [],
     "max_file_mb": 100,
@@ -172,6 +264,7 @@ _DEFAULT_PUBLISH_YAML: dict = {
 # Public entrypoints
 # ---------------------------------------------------------------------------
 
+
 def curate(checkpoint_dir: str | Path) -> CurateResult:
     """Curate an EAR according to its publish.yaml.
 
@@ -182,7 +275,7 @@ def curate(checkpoint_dir: str | Path) -> CurateResult:
         <checkpoint>/ear_published/manifest.lock — written by this function
 
     Returns:
-        CurateResult. ``skipped=True`` iff publish.yaml is absent.
+        CurateResult. ``skipped`` is False for both authored and default policy.
 
     Raises:
         CurateError: on any hard failure (size cap, schema, missing ear/).
@@ -200,10 +293,13 @@ def curate(checkpoint_dir: str | Path) -> CurateResult:
     else:
         # No author-supplied publish.yaml — fall back to a built-in default
         # tuned for ORS reproducibility (include reproduce.sh + code/ + data/
-        # + environment.json). Without this fallback, ear_curate skips and
+        # + environment.json + federated catalog evidence). Without this fallback,
+        # ear_curate skips and
         # the downstream ear_publish / ors_seed_sandbox chain has nothing
         # to ship to the sandbox.
         cfg = dict(_DEFAULT_PUBLISH_YAML)
+
+    evidence_index = _verify_evidence_index(ear)
 
     # Decide which files survive each filter.
     all_files = _walk_files(ear)
@@ -253,11 +349,14 @@ def curate(checkpoint_dir: str | Path) -> CurateResult:
         dest = tmp_dir / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(p, dest)
-        file_records.append({
-            "path": rel.as_posix(),
-            "size": p.stat().st_size,
-            "sha256": _sha256_file(p),
-        })
+        file_records.append(
+            {
+                "path": rel.as_posix(),
+                "size": p.stat().st_size,
+                "sha256": _sha256_file(p),
+                "role": _file_role(rel.as_posix()),
+            }
+        )
 
     # Canonical bundle digest depends ONLY on file content + relative paths.
     # We deliberately exclude created_at, visibility and other metadata so
@@ -266,17 +365,68 @@ def curate(checkpoint_dir: str | Path) -> CurateResult:
     # is the property that lets the paper-baked digest be a permanent
     # source of truth.
     canonical_payload = {
-        "version": 1,
-        "files": [{"path": r["path"], "sha256": r["sha256"], "size": r["size"]} for r in file_records],
+        "version": 2,
+        "files": [
+            {
+                "path": r["path"],
+                "sha256": r["sha256"],
+                "size": r["size"],
+                "role": r["role"],
+            }
+            for r in file_records
+        ],
     }
     canonical = json.dumps(
         canonical_payload,
-        sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
     )
     bundle_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
+    policy_payload = {
+        "include": include_globs,
+        "exclude": exclude_globs,
+        "builtin_deny": list(BUILTIN_DENY),
+        "max_file_mb": cfg["max_file_mb"],
+    }
+    role_records = {
+        role: [
+            {"path": record["path"], "sha256": record["sha256"]}
+            for record in file_records
+            if record["role"] == role
+        ]
+        for role in (
+            "skills-lock",
+            "catalog-lock",
+            "result-envelope-artifact",
+            "cassette",
+            "admission",
+            "science-contract",
+        )
+    }
+    admission_status = (
+        "complete"
+        if role_records["skills-lock"]
+        and (
+            role_records["catalog-lock"]
+            or not role_records["cassette"]
+        )
+        else "incomplete"
+    )
+    deterministic_lock = {
+        **canonical_payload,
+        "bundle_sha256": bundle_digest,
+        "policy_digest": _canonical_digest(policy_payload),
+        "evidence_index_digest": (
+            evidence_index.get("index_digest") if evidence_index else None
+        ),
+        "evidence": role_records,
+        "admission_status": admission_status,
+    }
     manifest = {
-        "version": 1,
+        "schema_version": "ari.ear-manifest/v2",
+        "version": 2,
         "checkpoint_id": ckpt.name,
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "publish": {
@@ -290,6 +440,11 @@ def curate(checkpoint_dir: str | Path) -> CurateResult:
         "files": file_records,
         "excluded_count": excluded_count,
         "bundle_sha256": bundle_digest,
+        "policy_digest": deterministic_lock["policy_digest"],
+        "evidence_index_digest": deterministic_lock["evidence_index_digest"],
+        "evidence": role_records,
+        "admission_status": admission_status,
+        "lock_digest": _canonical_digest(deterministic_lock),
     }
 
     manifest_path = tmp_dir / "manifest.lock"
@@ -298,11 +453,24 @@ def curate(checkpoint_dir: str | Path) -> CurateResult:
         encoding="utf-8",
     )
 
-    # Swap into place atomically (best-effort on POSIX; on most filesystems
-    # rename of a directory replacing an existing one needs a 2-step swap).
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    tmp_dir.rename(out_dir)
+    # Recoverable two-phase directory swap.  A prior good curated bundle is
+    # restored if the final rename fails; publish failures never touch either.
+    backup_dir = ckpt / "ear_published.previous"
+    if backup_dir.exists():
+        shutil.rmtree(backup_dir)
+    moved_previous = False
+    try:
+        if out_dir.exists():
+            os.replace(out_dir, backup_dir)
+            moved_previous = True
+        os.replace(tmp_dir, out_dir)
+    except Exception:
+        if moved_previous and backup_dir.exists() and not out_dir.exists():
+            os.replace(backup_dir, out_dir)
+        raise
+    else:
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir)
 
     return CurateResult(
         ear_published_dir=out_dir,

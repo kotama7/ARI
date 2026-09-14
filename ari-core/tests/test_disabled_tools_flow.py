@@ -8,7 +8,6 @@ auto_config() which does not read workflow.yaml.
 
 from __future__ import annotations
 
-import textwrap
 from pathlib import Path
 
 import yaml
@@ -77,13 +76,13 @@ def test_run_pipeline_skips_disabled_tools(tmp_path: Path, monkeypatch):
     # Minimal workflow.yaml with one paper stage that should be skipped.
     wf = tmp_path / "workflow.yaml"
     wf.write_text(yaml.safe_dump({
-        "disabled_tools": ["collect_references_iterative"],
+        "disabled_tools": ["search_papers"],
         "skills": [],
         "pipeline": [
             {
                 "stage": "search_related_work",
                 "skill": "web-skill",
-                "tool": "collect_references_iterative",
+                "tool": "search_papers",
                 "enabled": True,
                 "phase": "paper",
                 "inputs": {},
@@ -128,6 +127,7 @@ def test_pipeline_subprocess_script_passes_disabled_tools():
         sources.append(sr.read_text())
     src = "\n".join(sources)
     assert (
-        "MCPClient(skills, disabled_tools=getattr(cfg, 'disabled_tools', []) or [])"
+        "MCPClient(skills, disabled_tools=getattr(cfg, 'disabled_tools', []) or [], "
         in src
     ), "paper subprocess MCPClient must be constructed with disabled_tools"
+    assert "skill_lock_scope='subset'" in src

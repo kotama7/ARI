@@ -1,0 +1,30 @@
+{
+  "figure_refs": [],
+  "numeric_mentions": [
+    {
+      "line": 10,
+      "requires_assertion": true,
+      "section": "results",
+      "type": "result_claim",
+      "unit": "%",
+      "value": 120.0
+    }
+  ],
+  "paper_claim_links": [
+    {
+      "anchor": "CLAIM:CG1:NCG1",
+      "claim_id": "CG1",
+      "figures": [],
+      "line_range": [
+        10,
+        10
+      ],
+      "numeric_id": "NCG1",
+      "resolved": true,
+      "section": "results",
+      "span_hash": "h"
+    }
+  ],
+  "uncovered_numeric_candidates": [],
+  "unresolved_anchors": []
+}

@@ -11,6 +11,7 @@ These tests inject a fake ``litellm`` so they never touch the network.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -66,6 +67,55 @@ def test_completion_sync_raises():
     completer = LC.LiteLLMTurnCompleter.Config(model="gpt-5").build()
     with pytest.raises(NotImplementedError):
         completer.completion(conversation=[])
+
+
+def test_paperbench_file_selection_normalizes_private_absolute_paths():
+    conversation = [{
+        "role": "user",
+        "content": (
+            "Here are the files in the submission attempt:\n\n"
+            "Directory structure:\n"
+            "├── jacobi.c\n"
+            "└── submission\n"
+            "    ├── jacobi.c\n"
+            "    └── analyze.py\n\n"
+            "Now return a list of the 10 most relevant files in order of relevance "
+            "(descending)."
+        ),
+    }]
+    content = (
+        "/tmp/ari-cli-shim-abc/jacobi.c\n"
+        "/tmp/ari-cli-shim-abc/submission/jacobi.c\n"
+        "/tmp/ari-cli-shim-abc/submission/analyze.py"
+    )
+
+    assert LC._normalize_paperbench_file_selection(conversation, content) == (
+        "jacobi.c\nsubmission/jacobi.c\nsubmission/analyze.py"
+    )
+
+
+def test_file_selection_normalizer_does_not_touch_other_prompts():
+    assert LC._normalize_paperbench_file_selection(
+        [{"role": "user", "content": "Review this file."}],
+        "/tmp/private/result.txt",
+    ) == "/tmp/private/result.txt"
+
+
+def test_paperbench_file_tree_paths_distinguishes_empty_from_other_prompt():
+    empty_ranking = [{
+        "role": "user",
+        "content": (
+            "Here are the files in the submission attempt:\n\n"
+            "Directory structure:\n\n\n"
+            "Now return a list of the 10 most relevant files in order of relevance "
+            "(descending)."
+        ),
+    }]
+
+    assert LC._paperbench_file_tree_paths(empty_ranking) == set()
+    assert LC._paperbench_file_tree_paths(
+        [{"role": "user", "content": "Review this submission."}]
+    ) is None
 
 
 # ── async_completion: integration with a fake litellm ──────────────────────
@@ -181,6 +231,93 @@ async def test_async_completion_handles_missing_usage(monkeypatch):
     assert result.output_messages[0].content == "answer"
 
 
+@pytest.mark.asyncio
+async def test_async_completion_short_circuits_empty_paperbench_tree(
+    tmp_path, monkeypatch
+):
+    fake = types.ModuleType("litellm")
+
+    async def acompletion(**kwargs):
+        raise AssertionError("provider must not be called for an empty file tree")
+
+    fake.acompletion = acompletion
+    monkeypatch.setitem(sys.modules, "litellm", fake)
+    trace_dir = tmp_path / "calls"
+    completer = LC.LiteLLMTurnCompleter.Config(
+        model="gpt-5-mini", trace_dir=str(trace_dir)
+    ).build()
+    conversation = [{
+        "role": "user",
+        "content": (
+            "Here are the files in the submission attempt:\n\n"
+            "Directory structure:\n\n\n"
+            "Now return a list of the 10 most relevant files in order of relevance "
+            "(descending)."
+        ),
+    }]
+
+    result = await completer.async_completion(conversation=conversation)
+
+    assert result.output_messages[0].content == ""
+    assert result.usage is None
+    trace = json.loads(next(trace_dir.glob("*.json")).read_text())
+    assert trace["error"] is None
+    assert trace["response"]["content"] == ""
+    assert (
+        trace["response"]["synthetic_reason"]
+        == "paperbench-empty-submission-tree"
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_completion_persists_digest_bound_raw_trace(
+    tmp_path, monkeypatch
+):
+    captured: dict = {}
+    _install_fake_litellm(monkeypatch, captured, content="raw judge response")
+    trace_dir = tmp_path / "calls"
+    completer = LC.LiteLLMTurnCompleter.Config(
+        model="gpt-5-mini", trace_dir=str(trace_dir)
+    ).build()
+
+    await completer.async_completion(
+        conversation=[{"role": "user", "content": "raw judge prompt"}]
+    )
+
+    traces = list(trace_dir.glob("*.json"))
+    assert len(traces) == 1
+    trace = json.loads(traces[0].read_text())
+    assert trace["schema_version"] == "ari.model-call-trace/v1"
+    assert trace["request"]["messages"][0]["content"] == "raw judge prompt"
+    assert trace["response"]["content"] == "raw judge response"
+    assert trace["request_digest"] == LC._canonical_digest(trace["request"])
+    assert trace["response_digest"] == LC._canonical_digest(trace["response"])
+
+
+@pytest.mark.asyncio
+async def test_async_completion_persists_provider_failure(tmp_path, monkeypatch):
+    fake = types.ModuleType("litellm")
+
+    async def acompletion(**kwargs):
+        raise RuntimeError("provider unavailable")
+
+    fake.acompletion = acompletion
+    monkeypatch.setitem(sys.modules, "litellm", fake)
+    trace_dir = tmp_path / "calls"
+    completer = LC.LiteLLMTurnCompleter.Config(
+        model="gpt-5-mini", trace_dir=str(trace_dir)
+    ).build()
+
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        await completer.async_completion(
+            conversation=[{"role": "user", "content": "prompt"}]
+        )
+
+    trace = json.loads(next(trace_dir.glob("*.json")).read_text())
+    assert trace["response"] is None
+    assert "provider unavailable" in trace["error"]
+
+
 # ── integration: bridge wires the new completer ────────────────────────────
 
 
@@ -193,4 +330,9 @@ def test_bridge_uses_litellm_completer():
     """
     bridge_src = (SRC / "_paperbench_bridge.py").read_text()
     assert "LiteLLMTurnCompleter" in bridge_src
-    assert "LiteLLMTurnCompleter.Config(model=judge_model)" in bridge_src
+    assert "int_completer_config=int_cfg" in bridge_src
+    assert "float_completer_config=float_cfg" in bridge_src
+    assert "trace_dir=trace_value" in bridge_src
+    assert bridge_src.count(
+        'api_base=os.environ.get("ARI_LLM_API_BASE") or None'
+    ) >= 3

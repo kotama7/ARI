@@ -1,0 +1,393 @@
+{
+  "$defs": {
+    "CitationEdgeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "relation": {
+          "enum": [
+            "cites",
+            "is-cited-by",
+            "related"
+          ],
+          "title": "Relation",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.citation-edge/v1",
+          "default": "ari.citation-edge/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "target_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Target Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "target_id",
+        "relation",
+        "provider"
+      ],
+      "title": "CitationEdgeV1",
+      "type": "object"
+    },
+    "ResearchArtifactRefV1": {
+      "additionalProperties": false,
+      "description": "Content-addressed research artifact under a checkpoint/workspace root.",
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "logical_name": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Logical Name",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.research-artifact-ref/v1",
+          "default": "ari.research-artifact-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_run_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Run Id"
+        }
+      },
+      "required": [
+        "logical_name",
+        "digest",
+        "media_type",
+        "role"
+      ],
+      "title": "ResearchArtifactRefV1",
+      "type": "object"
+    },
+    "RetrievalRecordV1": {
+      "additionalProperties": false,
+      "description": "Provider-neutral, content-addressed literature or web record.",
+      "properties": {
+        "abstract": {
+          "default": "",
+          "maxLength": 100000,
+          "title": "Abstract",
+          "type": "string"
+        },
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Aliases",
+          "type": "array"
+        },
+        "authors": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Authors",
+          "type": "array"
+        },
+        "canonical_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Canonical Id",
+          "type": "string"
+        },
+        "citation_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Citation Count"
+        },
+        "license": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License"
+        },
+        "payload_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Payload Digest",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "provider_record_id": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Record Id"
+        },
+        "provider_version": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Version"
+        },
+        "query": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "retrieved_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retrieved At"
+        },
+        "schema_version": {
+          "const": "ari.retrieval-record/v1",
+          "default": "ari.retrieval-record/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Url"
+        },
+        "title": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "use_restriction": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Use Restriction"
+        },
+        "year": {
+          "anyOf": [
+            {
+              "maximum": 9999,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Year"
+        }
+      },
+      "required": [
+        "canonical_id",
+        "provider",
+        "query",
+        "title",
+        "payload_digest"
+      ],
+      "title": "RetrievalRecordV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/survey-snapshot-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Exact retrieval input consumed by one idea-generation attempt.",
+  "properties": {
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/ResearchArtifactRefV1"
+      },
+      "maxItems": 10000,
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "byte_reproducible": {
+      "title": "Byte Reproducible",
+      "type": "boolean"
+    },
+    "citation_edges": {
+      "items": {
+        "$ref": "#/$defs/CitationEdgeV1"
+      },
+      "maxItems": 1000000,
+      "title": "Citation Edges",
+      "type": "array"
+    },
+    "mode": {
+      "enum": [
+        "live",
+        "record",
+        "replay",
+        "frozen",
+        "inline"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "provider": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Provider",
+      "type": "string"
+    },
+    "provider_version": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Version"
+    },
+    "query": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    },
+    "records": {
+      "items": {
+        "$ref": "#/$defs/RetrievalRecordV1"
+      },
+      "maxItems": 100000,
+      "title": "Records",
+      "type": "array"
+    },
+    "retrieved_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Retrieved At"
+    },
+    "schema_version": {
+      "const": "ari.survey-snapshot/v1",
+      "default": "ari.survey-snapshot/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Snapshot Digest",
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1000,
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "snapshot_digest",
+    "mode",
+    "provider",
+    "query",
+    "byte_reproducible"
+  ],
+  "title": "ARI Survey Snapshot v1",
+  "type": "object"
+}

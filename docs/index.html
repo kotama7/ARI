@@ -4,7 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>ARI — Autonomous Research Infrastructure</title>
-  <meta name="description" content="Describe your goal in plain text — ARI runs the experiments, writes the paper, and verifies the results autonomously. From laptop to supercomputer, from idea to verified paper."/>
+  <meta name="description" content="Describe your goal in plain text — ARI runs the experiments, writes and verifies the paper, and can govern the research process through Constitutional ARI-RQGM."/>
   <link rel="canonical" href="https://kotama7.github.io/ARI/"/>
   <meta name="theme-color" content="#04060c"/>
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png"/>
@@ -13,11 +13,11 @@
   <meta property="og:site_name" content="ARI"/>
   <meta property="og:url" content="https://kotama7.github.io/ARI/"/>
   <meta property="og:title" content="ARI — Autonomous Research Infrastructure"/>
-  <meta property="og:description" content="Describe your goal in plain text — ARI runs the experiments, writes the paper, and verifies the results autonomously."/>
+  <meta property="og:description" content="Autonomous experiments, verified papers, and opt-in constitutional research governance with ARI-RQGM."/>
   <meta property="og:image" content="https://kotama7.github.io/ARI/assets/og-image.png"/>
   <meta name="twitter:card" content="summary_large_image"/>
   <meta name="twitter:title" content="ARI — Autonomous Research Infrastructure"/>
-  <meta name="twitter:description" content="Describe your goal in plain text — ARI runs the experiments, writes the paper, and verifies the results autonomously."/>
+  <meta name="twitter:description" content="Autonomous experiments, verified papers, and opt-in constitutional research governance with ARI-RQGM."/>
   <meta name="twitter:image" content="https://kotama7.github.io/ARI/assets/og-image.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -40,6 +40,7 @@
     <a href="#philosophy"><span id="t-nav-phi">Philosophy</span></a>
     <a href="#inspired"><span id="t-nav-inspired">Prior Work</span></a>
     <a href="#how"><span id="t-nav-how">How It Works</span></a>
+    <a href="#governance"><span id="t-nav-rqgm">RQGM</span></a>
     <a href="#universal"><span id="t-universal-label">Universal</span></a>
     <a href="docs/" class="js-docs-link"><span id="t-nav-docs">Docs</span></a>
     <a href="#quickstart"><span id="t-quickstart-label">Quick Start</span></a>
@@ -55,7 +56,7 @@
       <img class="logo" src="assets/logo.png" alt="ARI" width="320" height="219"/>
       <p class="hero-eyebrow"><span id="t-hero-eyebrow">Autonomous Research Infrastructure</span></p>
       <h1><span id="t-hero-title">Research, automated end-to-end.</span></h1>
-      <p class="hero-sub"><span id="t-hero-sub">Describe your goal in plain text. ARI runs the experiments, writes the paper, and verifies the results — entirely on its own. Currently supports digital computation experiments (HPC, ML, systems).</span></p>
+      <p class="hero-sub"><span id="t-hero-sub">Describe your goal in plain text. ARI runs the experiments, writes the paper, and verifies the results — with established BFTS or opt-in constitutional RQGM governance. Currently supports digital computation experiments (HPC, ML, systems).</span></p>
       <div class="hero-cta">
         <a href="#quickstart" class="btn-hero btn-hero-primary"><span id="t-hero-btn-start">Get Started</span></a>
         <a href="#demo" class="btn-hero btn-hero-secondary"><span id="t-hero-btn-demo">Watch Demo</span></a>
@@ -128,25 +129,25 @@
     </div>
     <p class="paper-note"><span id="t-sample-pages-note">The complete 8-page sample paper, exactly as ARI generated and verified it — scroll to read, or download the PDF above.</span></p>
 
-    <!-- ARI System Report — per-language PDFs surfaced from report/{en,ja,zh} (P6).
+    <!-- Constitutional ARI-RQGM Technical Report — per-language PDFs surfaced from report/{en,ja,zh} (P6).
          The card matching the active site language is marked .is-default by i18n.js. -->
     <div class="paper-sheet" data-reveal>
-      <h3 class="demo-inline-title"><span id="t-report-title">Read the ARI System Report</span></h3>
-      <p class="demo-inline-sub"><span id="t-report-sub">The full arXiv-style technical report behind ARI — maintained in three languages.</span></p>
+      <h3 class="demo-inline-title"><span id="t-report-title">Read the Constitutional ARI-RQGM Report</span></h3>
+      <p class="demo-inline-sub"><span id="t-report-sub">The arXiv-style technical report on constitutional governance, governed co-evolution, and the paper archive — maintained in three languages.</span></p>
       <div class="report-grid">
         <div class="report-card" id="report-card-en">
           <div class="report-lang"><span id="t-report-cta-en">English</span></div>
-          <h4>ARI System Report</h4>
+          <h4>Constitutional ARI-RQGM</h4>
           <a href="assets/report/en.pdf" target="_blank">PDF →</a>
         </div>
         <div class="report-card" id="report-card-ja">
           <div class="report-lang"><span id="t-report-cta-ja">Japanese</span></div>
-          <h4>ARI System Report</h4>
+          <h4>Constitutional ARI-RQGM</h4>
           <a href="assets/report/ja.pdf" target="_blank">PDF →</a>
         </div>
         <div class="report-card" id="report-card-zh">
           <div class="report-lang"><span id="t-report-cta-zh">Chinese</span></div>
-          <h4>ARI System Report</h4>
+          <h4>Constitutional ARI-RQGM</h4>
           <a href="assets/report/zh.pdf" target="_blank">PDF →</a>
         </div>
       </div>
@@ -251,7 +252,7 @@
         <span class="step-no" aria-hidden="true">03</span>
         <span class="step-core">BFTS</span>
         <h3><span id="t-step3-title">Experiment</span></h3>
-        <p><span id="t-step3-body">Best-First Tree Search (BFTS) with five node types — DRAFT, IMPROVE, DEBUG, ABLATION, VALIDATION — explores the hypothesis space in parallel. The LLM selects which frontier node to expand next based on peer-review scores, not heuristics. Failed nodes generate debug children, not retries. All generated code is captured per node.</span></p>
+        <p><span id="t-step3-body">Choose the established BFTS path or opt into Constitutional ARI-RQGM. RQGM freezes each governance epoch while prompts, components, adversaries, and utility policy co-evolve through deterministic transitions. Failed nodes generate debug children, not blind retries.</span></p>
       </div>
       <div class="step">
         <span class="step-no" aria-hidden="true">04</span>
@@ -284,30 +285,28 @@
     <!-- GUI Dashboard highlight -->
     <div class="dashboard-highlight" data-reveal>
       <div class="dash-code" aria-hidden="true">ari viz</div>
-      <h3><span id="t-dashboard-title">Web Dashboard — Real-time Control</span></h3>
+      <h3><span id="t-dashboard-title">Dashboard v2 — Run-scoped Control</span></h3>
       <p class="dashboard-desc">
-        <span id="t-dashboard-desc">A 10-page React/TypeScript SPA dashboard (built with Vite) with an Overleaf-like LaTeX editor,
-        React Flow visual workflow editor (BFTS / Paper / Reproduce phase toggles per skill),
-        D3 experiment tree, VLM figure review loop,
-        rubric-driven paper review with ensemble + Area Chair meta-review and few-shot example manager,
-        container runtime management, Letta-backed memory admin, recursive sub-experiments,
-        and a 4-step experiment wizard — all from your browser.
-        Component-based architecture with separate modules for each page. All output is isolated per project.</span>
+        <span id="t-dashboard-desc">A run-scoped React/TypeScript control plane for Projects, Overview, Tree, Ideas,
+        Results, Governance, Config, and Studio. Deep links carry the run identity;
+        logs and events update in real time; the canonical /api/v1 surface provides
+        typed reads, safe writes, token authentication, and operational diagnostics.
+        Legacy tools remain reachable during the v2 cutover.</span>
       </p>
 
       <p class="dashboard-see"><span id="t-dashboard-see-demo"><a href="#demo">See the live walkthrough in the Demo section ↑</a></span></p>
 
       <div class="pill-row">
-        <span class="pill"><span id="t-dashboard-p1">[home] Home Dashboard</span></span>
-        <span class="pill"><span id="t-dashboard-p2">[exp] Experiments</span></span>
-        <span class="pill"><span id="t-dashboard-p3">[monitor] Monitor + D3 Tree</span></span>
-        <span class="pill"><span id="t-dashboard-p4">[tree] Tree + Code Viewer</span></span>
-        <span class="pill"><span id="t-dashboard-p5">[results] Results + LaTeX Editor</span></span>
-        <span class="pill"><span id="t-dashboard-p6">[wizard] Experiment Wizard</span></span>
-        <span class="pill"><span id="t-dashboard-p7">[ideas] VirSci Ideas</span></span>
-        <span class="pill"><span id="t-dashboard-p8">[flow] React Flow Workflow</span></span>
-        <span class="pill"><span id="t-dashboard-p9">[config] Settings + Container</span></span>
-        <span class="pill"><span id="t-dashboard-p10">[sub] Sub-Experiments</span></span>
+        <span class="pill"><span id="t-dashboard-p1">[portfolio] Projects</span></span>
+        <span class="pill"><span id="t-dashboard-p2">[run] Overview</span></span>
+        <span class="pill"><span id="t-dashboard-p3">[lineage] Tree</span></span>
+        <span class="pill"><span id="t-dashboard-p4">[research] Ideas</span></span>
+        <span class="pill"><span id="t-dashboard-p5">[evidence] Results</span></span>
+        <span class="pill"><span id="t-dashboard-p6">[constitution] Governance</span></span>
+        <span class="pill"><span id="t-dashboard-p7">[resolved] Config</span></span>
+        <span class="pill"><span id="t-dashboard-p8">[launch] Studio</span></span>
+        <span class="pill"><span id="t-dashboard-p9">[stream] Realtime logs</span></span>
+        <span class="pill"><span id="t-dashboard-p10">[compat] Legacy tools</span></span>
       </div>
       <div class="mono-box">
         ari viz ./checkpoints/my_run/ --port 8765
@@ -316,11 +315,67 @@
   </div>
 </section>
 
+<!-- CONSTITUTIONAL RQGM -->
+<section class="universal" id="governance">
+  <div class="container">
+    <div class="sec-head" data-reveal>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">05</span><span class="section-label"><span id="t-rqgm-label">Constitutional RQGM</span></span></p>
+      <h2 class="section-title"><span id="t-rqgm-title">Research that governs its own evolution.</span></h2>
+      <p class="section-sub"><span id="t-rqgm-sub">The opt-in ari_rqgm mode adds an application-level constitutional reference monitor without changing the default simple_bfts path. Policy and declared execution identities are frozen and replayable per epoch.</span></p>
+    </div>
+    <figure class="governance-flow" data-reveal>
+      <a id="rqgm-audit-flow-link" class="governance-flow-frame" href="assets/images/rqgm/rqgm_audit_flow_en.svg" target="_blank" rel="noopener">
+        <img
+          id="rqgm-audit-flow"
+          src="assets/images/rqgm/rqgm_audit_flow_en.svg"
+          alt="Complete Constitutional ARI-RQGM audit network linking all sanctionable registered components to per-node adversarial review, epoch-boundary governance, kernel self-audit, registry transitions, repair, and final claim verification."
+          width="1900"
+          height="1450"
+          loading="lazy"
+          decoding="async"
+          aria-describedby="t-rqgm-flow-caption"
+        />
+      </a>
+      <figcaption id="t-rqgm-flow-caption">The network enumerates every sanctionable registered component and shows how its records return through adversarial review, evidence admission, motion, defense, adjudication, kernel self-audit, and fixed enforcement. Open governance paths are marked explicitly. Select it to open at full size.</figcaption>
+    </figure>
+    <div class="axis-grid" data-reveal>
+      <div class="axis-card">
+        <div class="axis-code">[kernel]</div>
+        <h3><span id="t-rqgm-c1-title">Constitutional evolution</span></h3>
+        <p><span id="t-rqgm-c1-body">A founding registry of 32 prompt-or-policy records and 20 components evolves only through T1–T21. T16 force-closes the epoch; policy and execution fingerprints identify its successor.</span></p>
+        <div class="axis-range">32 records · 20 components</div>
+      </div>
+      <div class="axis-card">
+        <div class="axis-code">[paper]</div>
+        <h3><span id="t-rqgm-c2-title">Governed paper archive</span></h3>
+        <p><span id="t-rqgm-c2-body">Writer and reviewer roles search a paper-draft tree under the same governance rules, then hand the selected draft to the existing compiler and claim-evidence gate.</span></p>
+        <div class="axis-range">35 records · 23 components</div>
+      </div>
+      <div class="axis-card">
+        <div class="axis-code">[audit]</div>
+        <h3><span id="t-rqgm-c3-title">Accountable by construction</span></h3>
+        <p><span id="t-rqgm-c3-body">Research nodes carry write-once producer provenance, so validated attacks bind the epoch-frozen generator rather than a successor. This is trusted-host workflow integrity, not OS or cryptographic isolation.</span></p>
+        <div class="axis-range">audit · recusal · sanctions</div>
+      </div>
+      <div class="axis-card">
+        <div class="axis-code">[policy]</div>
+        <h3><span id="t-rqgm-c4-title">Policy-safe repair</span></h3>
+        <p><span id="t-rqgm-c4-body">A successor utility policy re-scores live nodes from stored raw axis scores. Missing evidence fails closed, and historical scored evidence remains distinguishable from the repaired frontier.</span></p>
+        <div class="axis-range">raw axes → successor utility</div>
+      </div>
+    </div>
+    <div class="btn-row mt-40" data-reveal>
+      <a href="docs/guides/execution_modes" class="btn-base btn-solid"><span id="t-rqgm-btn-modes">Compare execution modes</span></a>
+      <a href="docs/concepts/rqgm_architecture" class="btn-base btn-outline"><span id="t-rqgm-btn-architecture">Explore the RQGM architecture</span></a>
+    </div>
+  </div>
+</section>
+
 <!-- UNIVERSAL -->
 <section class="universal" id="universal">
   <div class="container">
     <div class="sec-head" data-reveal>
-      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">05</span><span class="section-label"><span id="t-universal-label2">Universal</span></span></p>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">06</span><span class="section-label"><span id="t-universal-label2">Universal</span></span></p>
       <h2 class="section-title"><span id="t-universal-title">Works everywhere. For everyone.</span></h2>
       <p class="section-sub"><span id="t-universal-sub">ARI is not built for one environment or one type of user. It scales across five dimensions.</span></p>
     </div>
@@ -363,7 +418,7 @@
 <section class="future">
   <div class="container">
     <div class="sec-head" data-reveal>
-      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">06</span><span class="section-label"><span id="t-vision-label">Vision</span></span></p>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">07</span><span class="section-label"><span id="t-vision-label">Vision</span></span></p>
       <h2 class="section-title"><span id="t-vision-title">Beyond software.</span></h2>
       <p class="section-sub"><span id="t-vision-sub">The current version automates digital computation experiments. Physical world integration is on the roadmap — not yet implemented.</span></p>
     </div>
@@ -396,7 +451,7 @@
 <section class="qs" id="quickstart">
   <div class="container">
     <div class="sec-head" data-reveal>
-      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">07</span><span class="section-label"><span id="t-qs-label">Quick Start</span></span></p>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">08</span><span class="section-label"><span id="t-qs-label">Quick Start</span></span></p>
       <h2 class="section-title"><span id="t-qs-title">Running in minutes.</span></h2>
     </div>
     <div class="qs-grid">
@@ -455,6 +510,7 @@ Primary score
         <p class="qs-note"><span id="t-qs-note">ARI will survey related papers, run experiments, generate figures, write a complete paper, and verify reproducibility independently — automatically. A unique LLM-generated title is assigned to each experiment project.</span></p>
         <div class="btn-row mt-24">
           <a href="docs/getting-started/quickstart" class="btn-base btn-solid"><span id="t-qs-btn-guide">Full Setup Guide</span></a>
+          <a href="docs/guides/execution_modes" class="btn-base btn-outline"><span id="t-qs-btn-modes">Execution Modes</span></a>
           <a href="docs/guides/paperbench/paperbench_quickstart" class="btn-base btn-outline"><span id="t-qs-btn-paperbench">PaperBench Quickstart (v0.8.0)</span></a>
           <a href="assets/sample_paper.pdf" target="_blank" class="btn-base btn-outline"><span id="t-qs-btn-sample">Sample Paper (PDF)</span></a>
           <a href="https://github.com/kotama7/ARI" class="btn-base btn-outline"><span id="t-qs-btn-github">View on GitHub →</span></a>
@@ -468,7 +524,7 @@ Primary score
 <section class="community">
   <div class="container text-center max-w-860 mx-auto">
     <div class="sec-head is-center" data-reveal>
-      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">08</span><span class="section-label"><span id="t-comm-label">Community</span></span></p>
+      <p class="sec-meta"><span class="sec-idx" aria-hidden="true">09</span><span class="section-label"><span id="t-comm-label">Community</span></span></p>
       <h2 class="section-title"><span id="t-comm-title">Built together.</span></h2>
       <p class="section-sub"><span id="t-comm-sub">ARI is open source and welcomes contributions of all kinds — new skills, pipeline ideas, bug reports, and more.</span></p>
     </div>

@@ -17,8 +17,8 @@ Usage:
     # local PDF:
     python scripts/sc_paper_dogfood.py --pdf /path/to/cuSZ-i.pdf
 
-    # with two-stage rubric generation + judge dry-run:
-    python scripts/sc_paper_dogfood.py --arxiv 2404.14193 --two-stage --judge-dryrun
+    # with calibrated hierarchical rubric generation + judge dry-run:
+    python scripts/sc_paper_dogfood.py --arxiv 2404.14193 --judge-dryrun
 
 Environment:
     ARI_MODEL_RUBRIC_GEN   model for rubric generation (default: gpt-5-mini)
@@ -153,13 +153,13 @@ def _walk_leaves(node: dict, weight_prefix: float = 1.0):
         yield node, weight_prefix * float(node.get("weight", 1.0))
 
 
-async def run_rubric(paper_text: str, out_dir: Path, *, two_stage: bool,
+async def run_rubric(paper_text: str, out_dir: Path, *,
                      target_leaves: int, model: str,
                      rubric_template: str | None = None) -> dict:
     from generator import generate_rubric_async  # type: ignore
 
     out_path = out_dir / "rubric.json"
-    print(f"[rubric] model={model or '<default>'} two_stage={two_stage} "
+    print(f"[rubric] model={model or '<default>'} strategy=hierarchical-v2 "
           f"target_leaves={target_leaves or '<auto>'} "
           f"template={rubric_template or '<generic>'}")
     res = await generate_rubric_async(
@@ -167,7 +167,6 @@ async def run_rubric(paper_text: str, out_dir: Path, *, two_stage: bool,
         output_path=str(out_path),
         target_leaf_count=target_leaves,
         model=model,
-        two_stage=two_stage,
         paperbench_rubric_id=rubric_template,
     )
     return res
@@ -257,8 +256,6 @@ def main() -> int:
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--pdf", type=Path, help="Local PDF path.")
     src.add_argument("--arxiv", help="arXiv ID (e.g. 2404.14193).")
-    ap.add_argument("--two-stage", action="store_true",
-                    help="Use two-stage rubric generation (skeleton → subtrees).")
     ap.add_argument("--target-leaves", type=int, default=0,
                     help="Target leaf count (0 = auto from paper length).")
     ap.add_argument("--rubric-template", default="",
@@ -356,10 +353,11 @@ def main() -> int:
                          "singularity | slurm. Default 'local'.")
     ap.add_argument("--reproduce-container-image", default="",
                     help="Stage 2 container image. For sandbox=docker an "
-                         "image:tag; for apptainer/singularity an .sif path "
-                         "or docker://... URI. When empty, falls back to "
-                         "ARI_PHASE1_DOCKER_IMAGE / "
-                         "ARI_PHASE1_APPTAINER_IMAGE env or ubuntu:24.04.")
+                         "exact sha256:<image-id> or name@sha256:<digest>; "
+                         "for apptainer/singularity a local non-symlink SIF "
+                         "or digest-pinned URI. When empty, the matching "
+                         "ARI_PHASE1_*_IMAGE variable is used; there is no "
+                         "mutable default.")
     ap.add_argument("--reproduce-time-limit-sec", type=int, default=1800,
                     help="Wall-clock budget for Stage 2 reproduce.sh "
                          "(default 30 min for dogfood).")
@@ -427,16 +425,9 @@ def main() -> int:
     os.environ["ARI_MULTIMODAL_MAX_IMAGES"] = str(args.max_images)
 
     rubric_template_id = args.rubric_template.strip() or None
-    # paper_audit mode (sc.yaml, future neurips.yaml, …) requires two_stage —
-    # the loader enforces this but it's friendlier to flip the flag here so
-    # casual `--rubric-template sc` invocations don't surface an error.
-    if rubric_template_id and not args.two_stage:
-        print(f"[hint] --rubric-template {rubric_template_id!r} implies --two-stage; enabling")
-        args.two_stage = True
     rubric_res = asyncio.run(run_rubric(
         paper_text=paper_text,
         out_dir=out_dir,
-        two_stage=args.two_stage,
         target_leaves=args.target_leaves,
         model=args.rubric_model,
         rubric_template=rubric_template_id,

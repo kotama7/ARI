@@ -1,0 +1,264 @@
+{
+  "active_harness_lock_digest": "sha256:cacac27b58bf7b880a4df8cfc2a34db444f37f717218a5bc1856e053762170e7",
+  "attempt_id": "har-f6f9a0b4ed33f2927876856b25011380-0",
+  "attestation_digest": "sha256:ad60185cf4b7ed6ca2d69f62787e6c1ab59f0b22809bcabb595bc170d3ca7880",
+  "baseline_harness_lock_digest": "sha256:cacac27b58bf7b880a4df8cfc2a34db444f37f717218a5bc1856e053762170e7",
+  "capability_binding_lock_digest": "sha256:194df4714255447584ae860c72eda00149f947de24df6dcc1812e4fe9acc6980",
+  "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
+  "dataset_digest": "sha256:17d6b66d3387670643f197c4e403816866fcfea208e886985bbe93f5b2fd0590",
+  "driver_digest": "sha256:2dc37582aac3d035b68a2f6f79bff0edde9d81bb7dc1f614d0c5fb32abf66abb",
+  "epoch_id": "registration-epoch",
+  "evidence_artifact_refs": [
+    {
+      "digest": "sha256:69bfd0feb43e99d570df5211690ea80f4e0484a0cb10a775f9e7a8ec2cdcf61f",
+      "logical_name": ".ari-execution/69bfd0feb43e99d570df5211690ea80f4e0484a0cb10a775f9e7a8ec2cdcf61f.stdout.log",
+      "media_type": "text/plain; charset=utf-8",
+      "role": "harness-stdout",
+      "schema_version": "ari.research-artifact-ref/v1",
+      "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
+    },
+    {
+      "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "logical_name": ".ari-execution/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.stderr.log",
+      "media_type": "text/plain; charset=utf-8",
+      "role": "harness-stderr",
+      "schema_version": "ari.research-artifact-ref/v1",
+      "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
+    }
+  ],
+  "execution_identity": "sha256:b91c9c9ecf74c2202de0ce8fbbe8e1c32b867cec303505dc5a4094a0de6da1d2",
+  "execution_result_digest": "sha256:ec7d94f8f32824a28bce19ac2d60d766bcc82be4a653c66cdda25710bebec48d",
+  "harness_manifest_digest": "sha256:92c09ee51f3b79bdfa33458e6c104b3620887e6b4ea1dc0d6b095e2ad86f7a9f",
+  "infrastructure_status": "ready",
+  "knowledge_skill_use_digest": "sha256:8e2a116b1daea019352a9ed94735fc604385b48c7d554ce13a812255068422da",
+  "node_id": "registration-clean-certify",
+  "nondeterminism_declaration": "none",
+  "nondeterminism_observations": [],
+  "oracle_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
+  "producer_component_id": "fixed_verifier_v1",
+  "producer_epoch_id": "registration-epoch",
+  "producer_prompt_hash": null,
+  "property_results": [
+    {
+      "covered_atom_digests": [
+        "sha256:51ebfedff96c30de23e7a2691298badfd9c91ba30b523c289348ef9da7355572"
+      ],
+      "evidence_artifact_refs": [
+        {
+          "digest": "sha256:69bfd0feb43e99d570df5211690ea80f4e0484a0cb10a775f9e7a8ec2cdcf61f",
+          "logical_name": ".ari-execution/69bfd0feb43e99d570df5211690ea80f4e0484a0cb10a775f9e7a8ec2cdcf61f.stdout.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stdout",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
+        },
+        {
+          "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "logical_name": ".ari-execution/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.stderr.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stderr",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
+        }
+      ],
+      "measurements": {
+        "case_count": 3,
+        "failed_case_count": 0,
+        "output_elements_by_case": {
+          "1000x1000x1000": {
+            "expected": 1000000,
+            "written": 1000000
+          },
+          "1500x600x1500": {
+            "expected": 2250000,
+            "written": 2250000
+          },
+          "2000x500x500": {
+            "expected": 1000000,
+            "written": 1000000
+          }
+        },
+        "worst_residual_ratio": 0.0015107998258515809,
+        "worst_residual_ratio_by_case": {
+          "1000x1000x1000": 0.0008524619593885873,
+          "1500x600x1500": 0.0013815814227917942,
+          "2000x500x500": 0.0015107998258515809
+        }
+      },
+      "method": "differential-testing",
+      "oracle_comparison": {
+        "build_error": null,
+        "candidate_toolchain": {
+          "requested": null,
+          "resolved_path": "/usr/local/bin/wrapped-cc/cc",
+          "status": "default",
+          "version": "gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0"
+        },
+        "dataset_revision": "native-perf-gemm-cases/v1@scored-2026q3",
+        "interface_error": null,
+        "oracle": "gemm-family-residual-bound",
+        "problem": "gemm-dense-fp64/v1@2026q3",
+        "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
+        "report_digest": "sha256:85446e059799fb22d95397c121e1e7182542cfabf59db5ad41b0ce1ab749c76c",
+        "sandbox": {
+          "does_not_restrict": [
+            "fork",
+            "cpu",
+            "network-by-itself",
+            "memory"
+          ],
+          "filesystem_isolation": true,
+          "interfaces_beyond_loopback": 0,
+          "landlock_abi": 6,
+          "mechanism": "landlock",
+          "network_does_not_restrict": [
+            "unix-sockets",
+            "loopback",
+            "shared-memory"
+          ],
+          "network_isolation": true,
+          "network_mechanism": "network-namespace",
+          "network_probe": "ENETUNREACH"
+        }
+      },
+      "property_id": "numerical-equivalence",
+      "tested_scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "tier": "certify",
+      "tolerance_evidence": {
+        "error_model": "per-element backward-error bound (family oracle)",
+        "residual_ratio_limit": 1.0
+      },
+      "verdict": "pass"
+    },
+    {
+      "covered_atom_digests": [
+        "sha256:64d1962cea65ccfc05dc58a171e6b495e33108ddfe5b32693a3473464415fe21"
+      ],
+      "evidence_artifact_refs": [
+        {
+          "digest": "sha256:69bfd0feb43e99d570df5211690ea80f4e0484a0cb10a775f9e7a8ec2cdcf61f",
+          "logical_name": ".ari-execution/69bfd0feb43e99d570df5211690ea80f4e0484a0cb10a775f9e7a8ec2cdcf61f.stdout.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stdout",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
+        },
+        {
+          "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "logical_name": ".ari-execution/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.stderr.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stderr",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness"
+        }
+      ],
+      "measurements": {
+        "case_count": 3,
+        "failed_case_count": 0,
+        "output_elements_by_case": {
+          "1000x1000x1000": {
+            "expected": 1000000,
+            "written": 1000000
+          },
+          "1500x600x1500": {
+            "expected": 2250000,
+            "written": 2250000
+          },
+          "2000x500x500": {
+            "expected": 1000000,
+            "written": 1000000
+          }
+        },
+        "worst_residual_ratio": 0.0015107998258515809,
+        "worst_residual_ratio_by_case": {
+          "1000x1000x1000": 0.0008524619593885873,
+          "1500x600x1500": 0.0013815814227917942,
+          "2000x500x500": 0.0015107998258515809
+        }
+      },
+      "method": "interface-check",
+      "oracle_comparison": {
+        "build_error": null,
+        "candidate_toolchain": {
+          "requested": null,
+          "resolved_path": "/usr/local/bin/wrapped-cc/cc",
+          "status": "default",
+          "version": "gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0"
+        },
+        "dataset_revision": "native-perf-gemm-cases/v1@scored-2026q3",
+        "interface_error": null,
+        "oracle": "gemm-family-residual-bound",
+        "problem": "gemm-dense-fp64/v1@2026q3",
+        "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
+        "report_digest": "sha256:85446e059799fb22d95397c121e1e7182542cfabf59db5ad41b0ce1ab749c76c",
+        "sandbox": {
+          "does_not_restrict": [
+            "fork",
+            "cpu",
+            "network-by-itself",
+            "memory"
+          ],
+          "filesystem_isolation": true,
+          "interfaces_beyond_loopback": 0,
+          "landlock_abi": 6,
+          "mechanism": "landlock",
+          "network_does_not_restrict": [
+            "unix-sockets",
+            "loopback",
+            "shared-memory"
+          ],
+          "network_isolation": true,
+          "network_mechanism": "network-namespace",
+          "network_probe": "ENETUNREACH"
+        }
+      },
+      "property_id": "interface-conformance",
+      "tested_scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "tier": "certify",
+      "tolerance_evidence": {
+        "error_model": "per-element backward-error bound (family oracle)",
+        "residual_ratio_limit": 1.0
+      },
+      "verdict": "pass"
+    }
+  ],
+  "research_contract_digest": "sha256:a9dc7268a83b6111d8165e77cefe935b4cf063297a4178f0aee5182ddf941359",
+  "retry_index": 0,
+  "run_id": "harness-registration-hpc-gemm-dense-fp64-problem-correctness",
+  "schema_version": "ari.harness-attestation/v1",
+  "target_digest": "sha256:6e56b8e6350e8d57e0f992dc87c8d84b22506375239755608f8fa0876e0cd436",
+  "target_kind": "benchmark-submission",
+  "target_logical_name": "candidate_gemm.c",
+  "verdict": "pass",
+  "verification_contract_digest": "sha256:f18525b042f826874c1990f6b4059f0f00cf981b5a677107fe4c2fde28d33730"
+}

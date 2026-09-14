@@ -26,11 +26,14 @@ def test_nodes_to_science_data_is_a_registered_mcp_tool():
 
 def test_load_run_metric_contract_reads_sibling(tmp_path):
     (tmp_path / "metric_contract.json").write_text(json.dumps(
-        {"key": "tput",
+        {"key": "tput", "unit": "count", "formula": "value",
+         "formula_operands": {"value": "tput"},
          "claims": [{"claim": "M helps", "required_evidence": ["m_on", "m_off"]}]}))
     mc = _load_run_metric_contract(str(tmp_path / "tree.json"))
     assert mc is not None
+    assert mc["schema_version"] == "ari.metric-gate-contract/v1"
     assert mc["claims"][0]["required_evidence"] == ["m_on", "m_off"]
+    assert mc["metric_contract"]["admission_status"] == "human-review-required"
 
 
 def test_load_run_metric_contract_absent_is_none(tmp_path):
@@ -50,12 +53,15 @@ def test_seam_metric_contract_reaches_gate(tmp_path):
     import pytest
     contract = pytest.importorskip("ari.pipeline.claim_gate.contract")
     (tmp_path / "metric_contract.json").write_text(json.dumps(
-        {"key": "tput", "claims": [
+        {"key": "tput", "unit": "count", "formula": "value",
+         "formula_operands": {"value": "tput"}, "claims": [
             {"claim": "page-shaping controller helps reach-limited regimes",
              "required_evidence": ["thp_on_tput", "thp_off_tput"]}]}))
     mc = _load_run_metric_contract(str(tmp_path / "tree.json"))
+    from ari.public.claim_gate import parse_metric_gate_contract
+    gate_projection = parse_metric_gate_contract(mc).gate_projection()
     science_data = {  # == what nodes_to_science_data builds: out["metric_contract"] = mc
-        "metric_contract": mc,
+        "metric_contract": gate_projection,
         "configurations": [{"config_id": "c", "measurements": {"tput": 100.0, "K": 8.0}}],
     }
     fs = contract.check_contract(science_data)

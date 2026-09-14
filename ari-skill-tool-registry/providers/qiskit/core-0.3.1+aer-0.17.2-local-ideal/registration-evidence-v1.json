@@ -1,0 +1,334 @@
+{
+  "artifact": {
+    "core_mcp": {
+      "dependency_lock_digest": "sha256:26366868703a781fc9636f7a65d42a8154844d0f137e91e2a2d1b4175c5d895c",
+      "direct_dependencies": [
+        "fastmcp>=3.2.0,<4",
+        "nest-asyncio>=1.5.0",
+        "pydantic>=2.0.0",
+        "python-dotenv>=1.0.0",
+        "qiskit-qasm3-import>=0.5.0",
+        "qiskit>=1.3.0"
+      ],
+      "distribution_name": "qiskit-mcp-server",
+      "license_digest": "sha256:c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "license_id": "Apache-2.0",
+      "mcp_contract_digest": "sha256:ab3ff5d3b10c6871cc78587c4366f4d032705295743f54e494d514a87931d52b",
+      "package_tree_digest": "sha256:f5f66a46a6bdac9b5e751e045440f13cb336e6b5f7031926de5b2b0c17498d53",
+      "python_requires": ">=3.10,<3.15",
+      "repository_commit": "8c1abcec04ea5d504cc178c42441c8363c6935b5",
+      "repository_tag": "qiskit-v0.3.1",
+      "repository_url": "https://github.com/Qiskit/mcp-servers",
+      "role": "circuit",
+      "source_archive_digest": "sha256:cb060f55e373c03292b11fee8b6338edf763d69aadae83f51b6abdd6e1ab9051",
+      "version": "0.3.1",
+      "wheel_digest": "sha256:82b9ab1361e7255278b0db849bb763136ee823f5b4c12298b2f4595cef9f92b1"
+    },
+    "qiskit": {
+      "distribution_name": "qiskit",
+      "license_id": "Apache-2.0",
+      "python_requires": ">=3.10",
+      "source_archive_digest": "sha256:923e11f02c6720da4f9435cbfc78b6d2c4a106198175a16d32ae730eaa007fa6",
+      "version": "2.5.1"
+    },
+    "qiskit_aer": {
+      "distribution_name": "qiskit-aer",
+      "license_id": "Apache-2.0",
+      "maintenance_status": "reduced-maintenance",
+      "python_requires": ">=3.7",
+      "source_archive_digest": "sha256:134eef8e509311955a15be543d2ba368f988f3583a2bc1f548af3196da820eb4",
+      "version": "0.17.2"
+    }
+  },
+  "bundle_digest": "sha256:2a5a414d56634ec4f8dc9678f3106062a4a5c1e5e8307e2c1fd4adc54aa2f12e",
+  "capability_scope": {
+    "credential_scope_ids": [],
+    "determinism": "seeded",
+    "environment_requirements": [
+      "cpu"
+    ],
+    "permissions": [
+      "process",
+      "workspace-read",
+      "workspace-write"
+    ],
+    "profiles": [
+      {
+        "capability_contract_digest": "sha256:0abe3edbbc386e0a67800d5e9d1707e52d629a82c09d8d53689acf9008718a8d",
+        "capability_ref": "ari.quantum.sample.local-ideal/v1",
+        "experiment_digest": "sha256:68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b",
+        "golden_fixture_digest": "sha256:2de6449f907bccd547a72ce05b577b633978ffe91d7f0fbb02fc8a8d0b01c93e",
+        "input_schema_digest": "sha256:a5daa4225b93d2f2fa5d2102aed7de3be65ff34f33dd31f77cc4be23ccd0a98c",
+        "leaf_name": "ari_qiskit_sample__local_ideal",
+        "method_digest": "sha256:f7d07fe08c89927826f69a4adc3038eb5dc02b5b1b953840784e7b2c172b04c6",
+        "output_schema_digest": "sha256:4f5c05c3413a658ff08571e36831465827020e114f05003f90121b909ad5f188",
+        "profile_id": "local-ideal",
+        "qpy_digest": "sha256:761cf1eb8e386cf53900cd96a4bfac6e2d713a307f42b00ecbf5f05251c9699f",
+        "qpy_version": 17,
+        "replay_fixture_digest": "sha256:9c64c5e7f8f099f3fad090e0ad4451cdf65af1b301f59b6a7a5af33629186b37",
+        "target_digest": "sha256:937b43bd4e3d4e47436c27784e67c9766f3b3fe991c7ba3828e52f12dc27c80d"
+      }
+    ],
+    "resource_type": "quantum-simulator",
+    "side_effects": "workspace-write"
+  },
+  "captured_date": "2026-08-08",
+  "gate_evidence": {
+    "capability_contract_conformance": {
+      "capability_ref": "ari.quantum.sample.local-ideal/v1",
+      "experiment_digest": "sha256:68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b",
+      "method_digest": "sha256:f7d07fe08c89927826f69a4adc3038eb5dc02b5b1b953840784e7b2c172b04c6"
+    },
+    "credential_scope": {
+      "credential_scope_ids": [],
+      "ibm_backend_admitted": false,
+      "ibm_runtime_loaded": false
+    },
+    "environment_allowlist": {
+      "provider_digest": "sha256:1dc6dace5db4674906237e3ec11500167d5b0afc3c0a511bb8f31896c409df79",
+      "runtime_target": {
+        "architecture": "x86_64",
+        "operating_system": "linux",
+        "python_implementation": "CPython",
+        "python_minor": "3.13"
+      }
+    },
+    "live_tools_list_parity": {
+      "admitted_leaf": "ari_qiskit_sample__local_ideal",
+      "snapshot_digest": "sha256:6ca98e6132ec645330f1efe40a0751f1ff3f075fcf7e299dfa57d881d20de93a",
+      "upstream_tools": [
+        "analyze_circuit_tool",
+        "compare_optimization_levels_tool",
+        "convert_qasm3_to_qpy_tool",
+        "convert_qpy_to_qasm3_tool",
+        "export_circuit_to_qasm_tool",
+        "load_circuit_from_qasm_tool",
+        "transpile_circuit_tool"
+      ]
+    },
+    "malicious_description_boundary": {
+      "authority_source": "immutable profile and active catalog lock",
+      "test_output_sha256": "sha256:dc2e126ed9de0136fa1a1d435942453b8b3ae06975156a94aedafd13fd54bc35"
+    },
+    "manifest_schema": {
+      "schema": "ari.qiskit-capability-provider-manifest/v1",
+      "test_output_sha256": "sha256:dc2e126ed9de0136fa1a1d435942453b8b3ae06975156a94aedafd13fd54bc35"
+    },
+    "result_schema": {
+      "counts": {
+        "00": 2046,
+        "11": 2050
+      },
+      "experiment_digest": "sha256:68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b",
+      "method_digest": "sha256:f7d07fe08c89927826f69a4adc3038eb5dc02b5b1b953840784e7b2c172b04c6",
+      "result_digest": "sha256:77b0c72151cd2dbb3c10e13a3dd77159219318683ae7e08046151a88521181a5",
+      "shots": 4096
+    },
+    "revocation_behavior": {
+      "rule": "non-verified status is ineligible for enforce binding"
+    },
+    "schema_digest_pin": {
+      "input_schema_digest": "sha256:a5daa4225b93d2f2fa5d2102aed7de3be65ff34f33dd31f77cc4be23ccd0a98c",
+      "name": "ari_qiskit_sample__local_ideal",
+      "output_schema_digest": "sha256:4f5c05c3413a658ff08571e36831465827020e114f05003f90121b909ad5f188"
+    },
+    "schema_drift_detection": {
+      "upstream_contract_digest": "sha256:6ca98e6132ec645330f1efe40a0751f1ff3f075fcf7e299dfa57d881d20de93a",
+      "virtual_leaf_schema": {
+        "input_schema_digest": "sha256:a5daa4225b93d2f2fa5d2102aed7de3be65ff34f33dd31f77cc4be23ccd0a98c",
+        "name": "ari_qiskit_sample__local_ideal",
+        "output_schema_digest": "sha256:4f5c05c3413a658ff08571e36831465827020e114f05003f90121b909ad5f188"
+      }
+    },
+    "side_effect_declaration": {
+      "permissions": [
+        "process",
+        "workspace-read",
+        "workspace-write"
+      ],
+      "side_effects": "workspace-write"
+    },
+    "source_package_digest_pin": {
+      "core_mcp": {
+        "dependency_lock_digest": "sha256:26366868703a781fc9636f7a65d42a8154844d0f137e91e2a2d1b4175c5d895c",
+        "direct_dependencies": [
+          "fastmcp>=3.2.0,<4",
+          "nest-asyncio>=1.5.0",
+          "pydantic>=2.0.0",
+          "python-dotenv>=1.0.0",
+          "qiskit-qasm3-import>=0.5.0",
+          "qiskit>=1.3.0"
+        ],
+        "distribution_name": "qiskit-mcp-server",
+        "license_digest": "sha256:c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+        "license_id": "Apache-2.0",
+        "mcp_contract_digest": "sha256:ab3ff5d3b10c6871cc78587c4366f4d032705295743f54e494d514a87931d52b",
+        "package_tree_digest": "sha256:f5f66a46a6bdac9b5e751e045440f13cb336e6b5f7031926de5b2b0c17498d53",
+        "python_requires": ">=3.10,<3.15",
+        "repository_commit": "8c1abcec04ea5d504cc178c42441c8363c6935b5",
+        "repository_tag": "qiskit-v0.3.1",
+        "repository_url": "https://github.com/Qiskit/mcp-servers",
+        "role": "circuit",
+        "source_archive_digest": "sha256:cb060f55e373c03292b11fee8b6338edf763d69aadae83f51b6abdd6e1ab9051",
+        "version": "0.3.1",
+        "wheel_digest": "sha256:82b9ab1361e7255278b0db849bb763136ee823f5b4c12298b2f4595cef9f92b1"
+      },
+      "qiskit": {
+        "distribution_name": "qiskit",
+        "license_id": "Apache-2.0",
+        "python_requires": ">=3.10",
+        "source_archive_digest": "sha256:923e11f02c6720da4f9435cbfc78b6d2c4a106198175a16d32ae730eaa007fa6",
+        "version": "2.5.1"
+      },
+      "qiskit_aer": {
+        "distribution_name": "qiskit-aer",
+        "license_id": "Apache-2.0",
+        "maintenance_status": "reduced-maintenance",
+        "python_requires": ">=3.7",
+        "source_archive_digest": "sha256:134eef8e509311955a15be543d2ba368f988f3583a2bc1f548af3196da820eb4",
+        "version": "0.17.2"
+      }
+    },
+    "timeout_cancellation_process_group": {
+      "bounded_timeout": 120,
+      "test_ids": [
+        "ari-skill-tool-registry/tests/test_qiskit_contracts.py",
+        "ari-skill-tool-registry/tests/test_qiskit_adapter.py",
+        "ari-skill-tool-registry/tests/test_qiskit_worker.py",
+        "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_timeout_reaps_the_provider_process_group"
+      ],
+      "test_output_sha256": "sha256:dc2e126ed9de0136fa1a1d435942453b8b3ae06975156a94aedafd13fd54bc35"
+    },
+    "unbound_invocation_rejection": {
+      "live_adapter_check": true
+    },
+    "workspace_isolation": {
+      "artifact_refs": [
+        {
+          "digest": "sha256:761cf1eb8e386cf53900cd96a4bfac6e2d713a307f42b00ecbf5f05251c9699f",
+          "logical_name": "qiskit/sha256/76/761cf1eb8e386cf53900cd96a4bfac6e2d713a307f42b00ecbf5f05251c9699f--qiskit-input-circuit-qpy.qpy",
+          "logical_role": "qiskit-input-circuit-qpy",
+          "media_type": "application/x-qiskit-qpy",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 367
+        },
+        {
+          "digest": "sha256:1812aae609f1c304c8ecf0822aaae5473e10201e2a371237d803206beb021bdd",
+          "logical_name": "qiskit/sha256/18/1812aae609f1c304c8ecf0822aaae5473e10201e2a371237d803206beb021bdd--qiskit-transpiled-circuit-qpy.qpy",
+          "logical_role": "qiskit-transpiled-circuit-qpy",
+          "media_type": "application/x-qiskit-qpy",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 542
+        },
+        {
+          "digest": "sha256:fd1aa4ca16d768ef61e340fd328bb688ba9a9ae0d0db8fe73e94e54f56115cc1",
+          "logical_name": "qiskit/sha256/fd/fd1aa4ca16d768ef61e340fd328bb688ba9a9ae0d0db8fe73e94e54f56115cc1--qiskit-raw-aer-result.json",
+          "logical_role": "qiskit-raw-aer-result",
+          "media_type": "application/json",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 706
+        },
+        {
+          "digest": "sha256:1bd290e31be2e71e044b1546f104a2365fd844aa66547baf3f9cc3e4203f5929",
+          "logical_name": "qiskit/sha256/1b/1bd290e31be2e71e044b1546f104a2365fd844aa66547baf3f9cc3e4203f5929--qiskit-execution-transcript.json",
+          "logical_role": "qiskit-execution-transcript",
+          "media_type": "application/json",
+          "schema_version": "ari.artifact-ref/v1",
+          "size": 1405
+        }
+      ],
+      "qpy_digest": "sha256:761cf1eb8e386cf53900cd96a4bfac6e2d713a307f42b00ecbf5f05251c9699f"
+    }
+  },
+  "observations": {
+    "execution_artifact_refs": [
+      {
+        "digest": "sha256:761cf1eb8e386cf53900cd96a4bfac6e2d713a307f42b00ecbf5f05251c9699f",
+        "logical_name": "qiskit/sha256/76/761cf1eb8e386cf53900cd96a4bfac6e2d713a307f42b00ecbf5f05251c9699f--qiskit-input-circuit-qpy.qpy",
+        "logical_role": "qiskit-input-circuit-qpy",
+        "media_type": "application/x-qiskit-qpy",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 367
+      },
+      {
+        "digest": "sha256:1812aae609f1c304c8ecf0822aaae5473e10201e2a371237d803206beb021bdd",
+        "logical_name": "qiskit/sha256/18/1812aae609f1c304c8ecf0822aaae5473e10201e2a371237d803206beb021bdd--qiskit-transpiled-circuit-qpy.qpy",
+        "logical_role": "qiskit-transpiled-circuit-qpy",
+        "media_type": "application/x-qiskit-qpy",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 542
+      },
+      {
+        "digest": "sha256:fd1aa4ca16d768ef61e340fd328bb688ba9a9ae0d0db8fe73e94e54f56115cc1",
+        "logical_name": "qiskit/sha256/fd/fd1aa4ca16d768ef61e340fd328bb688ba9a9ae0d0db8fe73e94e54f56115cc1--qiskit-raw-aer-result.json",
+        "logical_role": "qiskit-raw-aer-result",
+        "media_type": "application/json",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 706
+      },
+      {
+        "digest": "sha256:1bd290e31be2e71e044b1546f104a2365fd844aa66547baf3f9cc3e4203f5929",
+        "logical_name": "qiskit/sha256/1b/1bd290e31be2e71e044b1546f104a2365fd844aa66547baf3f9cc3e4203f5929--qiskit-execution-transcript.json",
+        "logical_role": "qiskit-execution-transcript",
+        "media_type": "application/json",
+        "schema_version": "ari.artifact-ref/v1",
+        "size": 1405
+      }
+    ],
+    "fixtures": {
+      "golden_digest": "sha256:2de6449f907bccd547a72ce05b577b633978ffe91d7f0fbb02fc8a8d0b01c93e",
+      "qpy_digest": "sha256:761cf1eb8e386cf53900cd96a4bfac6e2d713a307f42b00ecbf5f05251c9699f",
+      "replay_digest": "sha256:9c64c5e7f8f099f3fad090e0ad4451cdf65af1b301f59b6a7a5af33629186b37"
+    },
+    "provider_digest_in_validation_environment": "sha256:1dc6dace5db4674906237e3ec11500167d5b0afc3c0a511bb8f31896c409df79",
+    "result": {
+      "counts": {
+        "00": 2046,
+        "11": 2050
+      },
+      "experiment_digest": "sha256:68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b",
+      "method_digest": "sha256:f7d07fe08c89927826f69a4adc3038eb5dc02b5b1b953840784e7b2c172b04c6",
+      "result_digest": "sha256:77b0c72151cd2dbb3c10e13a3dd77159219318683ae7e08046151a88521181a5",
+      "shots": 4096
+    },
+    "unbound_invocation_rejected": true,
+    "upstream_mcp_schema_snapshot_digest": "sha256:6ca98e6132ec645330f1efe40a0751f1ff3f075fcf7e299dfa57d881d20de93a",
+    "upstream_mcp_tools": [
+      "analyze_circuit_tool",
+      "compare_optimization_levels_tool",
+      "convert_qasm3_to_qpy_tool",
+      "convert_qpy_to_qasm3_tool",
+      "export_circuit_to_qasm_tool",
+      "load_circuit_from_qasm_tool",
+      "transpile_circuit_tool"
+    ],
+    "virtual_leaf": {
+      "input_schema_digest": "sha256:a5daa4225b93d2f2fa5d2102aed7de3be65ff34f33dd31f77cc4be23ccd0a98c",
+      "name": "ari_qiskit_sample__local_ideal",
+      "output_schema_digest": "sha256:4f5c05c3413a658ff08571e36831465827020e114f05003f90121b909ad5f188"
+    }
+  },
+  "provider_id": "qiskit-mcp-servers",
+  "provider_version": "core-0.3.1",
+  "schema_version": "ari.qiskit-registration-evidence/v1",
+  "test_run": {
+    "command": [
+      "<test-python>",
+      "-m",
+      "pytest",
+      "ari-skill-tool-registry/tests/test_qiskit_contracts.py",
+      "ari-skill-tool-registry/tests/test_qiskit_adapter.py",
+      "ari-skill-tool-registry/tests/test_qiskit_worker.py",
+      "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_timeout_reaps_the_provider_process_group",
+      "-q"
+    ],
+    "exit_code": 0,
+    "output_sha256": "sha256:dc2e126ed9de0136fa1a1d435942453b8b3ae06975156a94aedafd13fd54bc35",
+    "test_ids": [
+      "ari-skill-tool-registry/tests/test_qiskit_contracts.py",
+      "ari-skill-tool-registry/tests/test_qiskit_adapter.py",
+      "ari-skill-tool-registry/tests/test_qiskit_worker.py",
+      "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_timeout_reaps_the_provider_process_group"
+    ]
+  }
+}

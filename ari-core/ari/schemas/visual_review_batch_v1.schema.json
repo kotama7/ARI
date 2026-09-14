@@ -1,0 +1,531 @@
+{
+  "$defs": {
+    "VisualArtifactRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "review-target",
+            "raw-model-response",
+            "table-source"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.visual-artifact-ref/v1",
+          "default": "ari.visual-artifact-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "role",
+        "relative_path",
+        "digest",
+        "media_type",
+        "size_bytes"
+      ],
+      "title": "VisualArtifactRefV1",
+      "type": "object"
+    },
+    "VisualIssueV1": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "evidence": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Evidence",
+          "type": "string"
+        },
+        "issue_id": {
+          "title": "Issue Id",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisualRegionV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "minor",
+            "major",
+            "blocking"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "suggestion": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Suggestion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id",
+        "criterion_id",
+        "severity",
+        "message"
+      ],
+      "title": "VisualIssueV1",
+      "type": "object"
+    },
+    "VisualModelUsageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "cost_status": {
+          "default": "unavailable",
+          "enum": [
+            "reported",
+            "unavailable"
+          ],
+          "title": "Cost Status",
+          "type": "string"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Usd"
+        },
+        "input_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Tokens"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Tokens"
+        }
+      },
+      "title": "VisualModelUsageV1",
+      "type": "object"
+    },
+    "VisualRegionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Height",
+          "type": "number"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Width",
+          "type": "number"
+        },
+        "x": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "title": "VisualRegionV1",
+      "type": "object"
+    },
+    "VisualReviewV1": {
+      "additionalProperties": false,
+      "properties": {
+        "context_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Context Digest",
+          "type": "string"
+        },
+        "criteria_profile_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Criteria Profile Digest",
+          "type": "string"
+        },
+        "criteria_profile_id": {
+          "title": "Criteria Profile Id",
+          "type": "string"
+        },
+        "error_kind": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Kind"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Message"
+        },
+        "figure_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Figure Id"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/VisualIssueV1"
+          },
+          "maxItems": 1000,
+          "title": "Issues",
+          "type": "array"
+        },
+        "iteration": {
+          "default": 0,
+          "maximum": 2,
+          "minimum": 0,
+          "title": "Iteration",
+          "type": "integer"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "model_revision": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Revision"
+        },
+        "prompt_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Digest"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider"
+        },
+        "raw_response_artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisualArtifactRefV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "review_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Review Digest",
+          "type": "string"
+        },
+        "sampling": {
+          "additionalProperties": true,
+          "maxProperties": 64,
+          "title": "Sampling",
+          "type": "object"
+        },
+        "schema_version": {
+          "const": "ari.visual-review/v1",
+          "default": "ari.visual-review/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "source_manifest_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Manifest Digest"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "artifact-error",
+            "limit-error",
+            "model-error",
+            "schema-error"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Summary",
+          "type": "string"
+        },
+        "target_artifact": {
+          "$ref": "#/$defs/VisualArtifactRefV1"
+        },
+        "target_id": {
+          "title": "Target Id",
+          "type": "string"
+        },
+        "target_kind": {
+          "enum": [
+            "figure",
+            "table"
+          ],
+          "title": "Target Kind",
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/VisualModelUsageV1"
+        }
+      },
+      "required": [
+        "target_kind",
+        "target_id",
+        "target_artifact",
+        "context_digest",
+        "criteria_profile_id",
+        "criteria_profile_digest",
+        "status",
+        "review_digest"
+      ],
+      "title": "VisualReviewV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/visual-review-batch-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "aggregation": {
+      "const": "minimum-fail-closed",
+      "default": "minimum-fail-closed",
+      "title": "Aggregation",
+      "type": "string"
+    },
+    "batch_review_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Batch Review Digest",
+      "type": "string"
+    },
+    "failure_count": {
+      "minimum": 0,
+      "title": "Failure Count",
+      "type": "integer"
+    },
+    "issues": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10000,
+      "title": "Issues",
+      "type": "array"
+    },
+    "iteration": {
+      "maximum": 2,
+      "minimum": 0,
+      "title": "Iteration",
+      "type": "integer"
+    },
+    "review_text": {
+      "default": "",
+      "maxLength": 100000,
+      "title": "Review Text",
+      "type": "string"
+    },
+    "reviews": {
+      "items": {
+        "$ref": "#/$defs/VisualReviewV1"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Reviews",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "ari.visual-review-batch/v1",
+      "default": "ari.visual-review-batch/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "score": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Score",
+      "type": "number"
+    },
+    "source_batch_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Batch Digest",
+      "type": "string"
+    },
+    "suggestions": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10000,
+      "title": "Suggestions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "source_batch_digest",
+    "iteration",
+    "reviews",
+    "score",
+    "failure_count",
+    "batch_review_digest"
+  ],
+  "title": "ARI Visual Review Batch v1",
+  "type": "object"
+}

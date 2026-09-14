@@ -1,0 +1,308 @@
+{
+  "artifact": {
+    "inventory_probe_digest": "sha256:6227c7f3102fb6cdcf190c0e394143548814f6e3d2e9d1f9b891ce256a4ab18e",
+    "job_contract_digest": "sha256:41be34324dcb3adb99163b0a78075dd8f42813e0b5bf6a7d50c198194dbdca4f",
+    "remote_nvcc_digest": "sha256:a074451d6d9f410c1bedf3cb95ce9cc1f8a17105e08d518a1448646b4d9493d0",
+    "remote_nvidia_smi_digest": "sha256:f710912ce2f73dabf228d61dcf6b665e0ca0f667410d3c8eca42621a4aa8a0d9",
+    "scheduler_digest": "sha256:b9cfbd441d48fc585b6c39b14ba7c1ff4835f2cc0853961e5f6050d98c8b65b4",
+    "source_base_commit": "f274841b1bd1e6b3fe00085f89e4cced74e8d5fa",
+    "source_digest": "sha256:428bd2d262987c9fb612dd3d2d57babbd02ffc82576b0cb92ee18a0a7f097c7e",
+    "source_overlay_digest": "sha256:4b2d0127694e80eb97caaf24504e2fbdf547d8f9df7290716dc896b1f0acab5a",
+    "source_repository": "https://github.com/kotama7/ARI.git",
+    "worker_digest": "sha256:4897f3be4f09447a95b9e0d99a9461b3baebd93c925d6cc41d35bb25d8aef6ab",
+    "worker_python_digest": "sha256:6242e0e8650d7dbdebbc25e08bf4c9359ddaf65f54fcae0e57fa99395fa5357a"
+  },
+  "bundle_digest": "sha256:92ef6cd5def239e37ba6150ed32be0c53d3ab8cd57e376fbc81a81a948d1beb0",
+  "capability_scope": {
+    "capability_contract_digest": "sha256:a4d85372bf1d6274699005b27628be9ec3d1a488031225092d3c4eddb131bd59",
+    "capability_ref": "ari.environment.cuda.validate/v1",
+    "context_requirement": "run",
+    "credential_scope_ids": [],
+    "determinism": "conditional",
+    "environment_requirements": [
+      "cuda-toolkit",
+      "nvidia-gpu",
+      "slurm-controller"
+    ],
+    "input_schema_digest": "sha256:0b5a8b5e86c1f8c006dceb2f6252532aec7567284f917e03a3f4f02d3710b227",
+    "output_schema_digest": "sha256:02ea8f485a6237d7838d39e1eedd01bd25a29017a74d05554dcba3ac6e0ec8eb",
+    "permissions": [
+      "scheduler-submit",
+      "workspace-read",
+      "workspace-write"
+    ],
+    "resource_type": "gpu-slurm",
+    "side_effects": "scheduler-submit",
+    "tool_names": [
+      "ari_cuda_validate__exclusive_node_sm121"
+    ]
+  },
+  "captured_date": "2026-08-08",
+  "gate_evidence": {
+    "capability_contract_conformance": {
+      "capability_ref": "ari.environment.cuda.validate/v1",
+      "self_test": {
+        "all_negative_controls_detected": true,
+        "all_repeats_equal": true,
+        "architecture": "sm_121",
+        "case_count_per_device": [
+          4
+        ],
+        "compiler_digest": "sha256:a074451d6d9f410c1bedf3cb95ce9cc1f8a17105e08d518a1448646b4d9493d0",
+        "device_classes": [
+          {
+            "compute_capability": "12.1",
+            "memory_bytes": 130596102144,
+            "name": "NVIDIA GB10"
+          }
+        ],
+        "device_count": 1,
+        "maximum_absolute_error": 0.0,
+        "source_digest": "sha256:428bd2d262987c9fb612dd3d2d57babbd02ffc82576b0cb92ee18a0a7f097c7e",
+        "verdict": "pass"
+      }
+    },
+    "credential_scope": {
+      "credential_scope_ids": []
+    },
+    "environment_allowlist": {
+      "accelerator_count": 1,
+      "accelerator_model": "NVIDIA GB10",
+      "compute_capability": "12.1",
+      "cuda_compiler_version": "13.2.78",
+      "driver_version": "580.159.03",
+      "identity_disclosure": "salted-digest-only",
+      "inventory_identity_digest": "sha256:ad9a6834a72bf1263d24573ac8a76e92b4de38dfa22d6182bf86e3429fe21b9d",
+      "memory_bytes_per_device": 130596102144,
+      "site_identity_digest": "sha256:96c136f760deae8bb23195f0e1beed66236a591686a7298e23091bbfdec5f8e9"
+    },
+    "live_tools_list_parity": {
+      "fixed_local_process_tool": [
+        "ari_cuda_validate__exclusive_node_sm121"
+      ],
+      "input_schema_digest": "sha256:0b5a8b5e86c1f8c006dceb2f6252532aec7567284f917e03a3f4f02d3710b227"
+    },
+    "malicious_description_boundary": {
+      "authority_source": "fixed typed request and verified lock",
+      "test_output_sha256": "sha256:86434419f30ee817ff8abe50dc4f03fa26c5e04ccb5b4d5ad367b941fe2769a3"
+    },
+    "manifest_schema": {
+      "schema": "ari.cuda-environment-provider-manifest/v1",
+      "test_output_sha256": "sha256:86434419f30ee817ff8abe50dc4f03fa26c5e04ccb5b4d5ad367b941fe2769a3"
+    },
+    "result_schema": {
+      "all_negative_controls_detected": true,
+      "all_repeats_equal": true,
+      "architecture": "sm_121",
+      "case_count_per_device": [
+        4
+      ],
+      "compiler_digest": "sha256:a074451d6d9f410c1bedf3cb95ce9cc1f8a17105e08d518a1448646b4d9493d0",
+      "device_classes": [
+        {
+          "compute_capability": "12.1",
+          "memory_bytes": 130596102144,
+          "name": "NVIDIA GB10"
+        }
+      ],
+      "device_count": 1,
+      "maximum_absolute_error": 0.0,
+      "source_digest": "sha256:428bd2d262987c9fb612dd3d2d57babbd02ffc82576b0cb92ee18a0a7f097c7e",
+      "verdict": "pass"
+    },
+    "revocation_behavior": {
+      "rule": "non-verified status is ineligible for enforce binding"
+    },
+    "schema_digest_pin": {
+      "input": "sha256:0b5a8b5e86c1f8c006dceb2f6252532aec7567284f917e03a3f4f02d3710b227",
+      "output": "sha256:02ea8f485a6237d7838d39e1eedd01bd25a29017a74d05554dcba3ac6e0ec8eb"
+    },
+    "schema_drift_detection": {
+      "inventory_identity_digest": "sha256:ad9a6834a72bf1263d24573ac8a76e92b4de38dfa22d6182bf86e3429fe21b9d",
+      "remote_tool_identity": {
+        "cuda_compiler_version": "13.2.78",
+        "cuda_release": "13.2",
+        "nvcc_digest": "sha256:a074451d6d9f410c1bedf3cb95ce9cc1f8a17105e08d518a1448646b4d9493d0",
+        "nvcc_path": "/usr/local/cuda-13.2/bin/nvcc",
+        "nvidia_smi_digest": "sha256:f710912ce2f73dabf228d61dcf6b665e0ca0f667410d3c8eca42621a4aa8a0d9",
+        "nvidia_smi_path": "/usr/bin/nvidia-smi",
+        "worker_python_digest": "sha256:6242e0e8650d7dbdebbc25e08bf4c9359ddaf65f54fcae0e57fa99395fa5357a",
+        "worker_python_path": "/usr/bin/python3"
+      }
+    },
+    "side_effect_declaration": {
+      "permissions": [
+        "scheduler-submit",
+        "workspace-read",
+        "workspace-write"
+      ],
+      "side_effects": "scheduler-submit"
+    },
+    "source_package_digest_pin": {
+      "artifact": {
+        "inventory_probe_digest": "sha256:6227c7f3102fb6cdcf190c0e394143548814f6e3d2e9d1f9b891ce256a4ab18e",
+        "job_contract_digest": "sha256:41be34324dcb3adb99163b0a78075dd8f42813e0b5bf6a7d50c198194dbdca4f",
+        "remote_nvcc_digest": "sha256:a074451d6d9f410c1bedf3cb95ce9cc1f8a17105e08d518a1448646b4d9493d0",
+        "remote_nvidia_smi_digest": "sha256:f710912ce2f73dabf228d61dcf6b665e0ca0f667410d3c8eca42621a4aa8a0d9",
+        "scheduler_digest": "sha256:b9cfbd441d48fc585b6c39b14ba7c1ff4835f2cc0853961e5f6050d98c8b65b4",
+        "source_base_commit": "f274841b1bd1e6b3fe00085f89e4cced74e8d5fa",
+        "source_digest": "sha256:428bd2d262987c9fb612dd3d2d57babbd02ffc82576b0cb92ee18a0a7f097c7e",
+        "source_overlay_digest": "sha256:4b2d0127694e80eb97caaf24504e2fbdf547d8f9df7290716dc896b1f0acab5a",
+        "source_repository": "https://github.com/kotama7/ARI.git",
+        "worker_digest": "sha256:4897f3be4f09447a95b9e0d99a9461b3baebd93c925d6cc41d35bb25d8aef6ab",
+        "worker_python_digest": "sha256:6242e0e8650d7dbdebbc25e08bf4c9359ddaf65f54fcae0e57fa99395fa5357a"
+      }
+    },
+    "timeout_cancellation_process_group": {
+      "terminal_evidence_policy": "fixed-wrapper-marker",
+      "test_output_sha256": "sha256:86434419f30ee817ff8abe50dc4f03fa26c5e04ccb5b4d5ad367b941fe2769a3",
+      "timeout_seconds": 1200
+    },
+    "unbound_invocation_rejection": {
+      "surface": "one fixed self-test leaf; no arbitrary command input"
+    },
+    "workspace_isolation": {
+      "inventory_identity_digest": "sha256:ad9a6834a72bf1263d24573ac8a76e92b4de38dfa22d6182bf86e3429fe21b9d",
+      "output_digests": {
+        "cuda-self-test-build-log": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "cuda-self-test-result": "sha256:8139a799be5843dd75bac7837cb2a02173412f23423685858fba0bfa785f2f1e"
+      },
+      "provenance": [
+        {
+          "digest": "sha256:fe54b6b3176f399423d2f1e31383ad1a7576ba05dae3d515539da7b3964fd0e1",
+          "logical_name": "submission-record",
+          "size_bytes": 5037
+        },
+        {
+          "digest": "sha256:48d59e5fcfe1aa899a475947dcc263ac48cc9f005d73970302c8c4441bdd0d5e",
+          "logical_name": "wrapper-completion",
+          "size_bytes": 353
+        },
+        {
+          "digest": "sha256:ec4023526398fb03eeb0a39e01604b753f7029e64d16a170eb01c4c42f4b8bc8",
+          "logical_name": "execution-environment",
+          "size_bytes": 486
+        },
+        {
+          "digest": "sha256:7c485f8f41e65880980fad740ba66a72c657a0d77cabfb77a79179b5acb0c914",
+          "logical_name": "exclusive-allocation-witness",
+          "size_bytes": 143
+        },
+        {
+          "digest": "sha256:c05b3587b700096354871940a377e70a1138a334098519259863e5d7fa0ea738",
+          "logical_name": "expected-accelerator-inventory",
+          "size_bytes": 79
+        },
+        {
+          "digest": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "logical_name": "exit-code",
+          "size_bytes": 2
+        }
+      ],
+      "request_digest": "sha256:3171cc8f3a74ca2b0944e61f06a45a05b16f3837d49ee72c7cbcfa8e1745496a",
+      "result_digest": "sha256:05baddf1ef2583db7f16dc2cd69b9e13be29cdf4c25092b54d5a9164b4e4c12e",
+      "site_identity_digest": "sha256:96c136f760deae8bb23195f0e1beed66236a591686a7298e23091bbfdec5f8e9",
+      "terminal_reason": null,
+      "terminal_state": "succeeded"
+    }
+  },
+  "observations": {
+    "cuda_self_test": {
+      "all_negative_controls_detected": true,
+      "all_repeats_equal": true,
+      "architecture": "sm_121",
+      "case_count_per_device": [
+        4
+      ],
+      "compiler_digest": "sha256:a074451d6d9f410c1bedf3cb95ce9cc1f8a17105e08d518a1448646b4d9493d0",
+      "device_classes": [
+        {
+          "compute_capability": "12.1",
+          "memory_bytes": 130596102144,
+          "name": "NVIDIA GB10"
+        }
+      ],
+      "device_count": 1,
+      "maximum_absolute_error": 0.0,
+      "source_digest": "sha256:428bd2d262987c9fb612dd3d2d57babbd02ffc82576b0cb92ee18a0a7f097c7e",
+      "verdict": "pass"
+    },
+    "execution": {
+      "inventory_identity_digest": "sha256:ad9a6834a72bf1263d24573ac8a76e92b4de38dfa22d6182bf86e3429fe21b9d",
+      "output_digests": {
+        "cuda-self-test-build-log": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "cuda-self-test-result": "sha256:8139a799be5843dd75bac7837cb2a02173412f23423685858fba0bfa785f2f1e"
+      },
+      "provenance": [
+        {
+          "digest": "sha256:fe54b6b3176f399423d2f1e31383ad1a7576ba05dae3d515539da7b3964fd0e1",
+          "logical_name": "submission-record",
+          "size_bytes": 5037
+        },
+        {
+          "digest": "sha256:48d59e5fcfe1aa899a475947dcc263ac48cc9f005d73970302c8c4441bdd0d5e",
+          "logical_name": "wrapper-completion",
+          "size_bytes": 353
+        },
+        {
+          "digest": "sha256:ec4023526398fb03eeb0a39e01604b753f7029e64d16a170eb01c4c42f4b8bc8",
+          "logical_name": "execution-environment",
+          "size_bytes": 486
+        },
+        {
+          "digest": "sha256:7c485f8f41e65880980fad740ba66a72c657a0d77cabfb77a79179b5acb0c914",
+          "logical_name": "exclusive-allocation-witness",
+          "size_bytes": 143
+        },
+        {
+          "digest": "sha256:c05b3587b700096354871940a377e70a1138a334098519259863e5d7fa0ea738",
+          "logical_name": "expected-accelerator-inventory",
+          "size_bytes": 79
+        },
+        {
+          "digest": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "logical_name": "exit-code",
+          "size_bytes": 2
+        }
+      ],
+      "request_digest": "sha256:3171cc8f3a74ca2b0944e61f06a45a05b16f3837d49ee72c7cbcfa8e1745496a",
+      "result_digest": "sha256:05baddf1ef2583db7f16dc2cd69b9e13be29cdf4c25092b54d5a9164b4e4c12e",
+      "site_identity_digest": "sha256:96c136f760deae8bb23195f0e1beed66236a591686a7298e23091bbfdec5f8e9",
+      "terminal_reason": null,
+      "terminal_state": "succeeded"
+    },
+    "remote_tool_identity": {
+      "cuda_compiler_version": "13.2.78",
+      "cuda_release": "13.2",
+      "nvcc_digest": "sha256:a074451d6d9f410c1bedf3cb95ce9cc1f8a17105e08d518a1448646b4d9493d0",
+      "nvcc_path": "/usr/local/cuda-13.2/bin/nvcc",
+      "nvidia_smi_digest": "sha256:f710912ce2f73dabf228d61dcf6b665e0ca0f667410d3c8eca42621a4aa8a0d9",
+      "nvidia_smi_path": "/usr/bin/nvidia-smi",
+      "worker_python_digest": "sha256:6242e0e8650d7dbdebbc25e08bf4c9359ddaf65f54fcae0e57fa99395fa5357a",
+      "worker_python_path": "/usr/bin/python3"
+    }
+  },
+  "provider_id": "ari-cuda-environment-validator",
+  "provider_version": "1.0.0+cuda13.2-sm121",
+  "schema_version": "ari.cuda-environment-registration-evidence/v1",
+  "test_run": {
+    "command": [
+      "<test-python>",
+      "-m",
+      "pytest",
+      "ari-skill-hpc/tests/test_contracts.py",
+      "ari-skill-hpc/tests/test_slurm_local.py",
+      "ari-skill-tool-registry/tests/test_cuda_validation.py",
+      "ari-skill-tool-registry/tests/test_site_privacy.py",
+      "-q"
+    ],
+    "exit_code": 0,
+    "output_sha256": "sha256:86434419f30ee817ff8abe50dc4f03fa26c5e04ccb5b4d5ad367b941fe2769a3",
+    "test_ids": [
+      "ari-skill-hpc/tests/test_contracts.py",
+      "ari-skill-hpc/tests/test_slurm_local.py",
+      "ari-skill-tool-registry/tests/test_cuda_validation.py",
+      "ari-skill-tool-registry/tests/test_site_privacy.py"
+    ]
+  }
+}

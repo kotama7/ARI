@@ -5,7 +5,6 @@ Covers:
 - T-A10: contributes_code branches on files_changed
 - T-A11: is_narrative_step branches on status
 - T-A12: filter_nodes(always_include={best_id}) keeps best
-- T-A13: migration_source="auto" -> contributes_code keeps node (conservative)
 - T-A14: select_source_files_for_publication is deterministic and file-I/O-free
 - T-A15: load_selected_sources(size_budget=N) skips when budget would overflow
 """
@@ -47,8 +46,7 @@ def _node(id_: str, *, parent: str | None = None, depth: int = 0,
 
 def _report(*, files_added: list[str] | None = None,
             files_modified: list[str] | None = None,
-            succeeded: bool = True,
-            migration_source: str = "fresh") -> dict:
+            succeeded: bool = True) -> dict:
     return {
         "schema_version": 1,
         "files_changed": {
@@ -59,7 +57,6 @@ def _report(*, files_added: list[str] | None = None,
             "inherited_unchanged": [],
         },
         "self_assessment": {"succeeded": succeeded, "headline": "", "concerns": []},
-        "migration_source": migration_source,
     }
 
 
@@ -145,16 +142,6 @@ def test_collect_excluded_records_reason() -> None:
     assert "files_changed" in excluded[0]["reason"]
 
 
-# ── T-A13 ───────────────────────────────────────────────────────────────
-
-def test_migration_source_auto_keeps_for_code() -> None:
-    """`migration_source=auto` reports must not exclude nodes for `for_code`
-    even if files_changed is empty (the diff couldn't be reconstructed)."""
-    auto_rep = _report(migration_source="auto")
-    # Empty files_changed but still included due to conservative fallback.
-    assert contributes_code(_node("a"), auto_rep) is True
-
-
 # ── T-A14 ───────────────────────────────────────────────────────────────
 
 def test_select_source_files_for_publication_is_deterministic_and_io_free(
@@ -220,7 +207,6 @@ def test_select_source_files_honors_chain_deletion() -> None:
                 "inherited_unchanged": [],
             },
             "self_assessment": {"succeeded": True, "headline": "", "concerns": []},
-            "migration_source": "fresh",
         },
     }
     sel = select_source_files_for_publication(nodes, reports, "best")

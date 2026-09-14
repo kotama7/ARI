@@ -12,5 +12,8 @@ export function StatusBadge({ status }: { status: string }) {
   if (s === 'failed') {
     return <Badge variant="red">{'✗'} Failed</Badge>;
   }
+  if (s === 'blocked') {
+    return <Badge variant="red">{'✗'} Blocked</Badge>;
+  }
   return <Badge variant="muted">{status}</Badge>;
 }

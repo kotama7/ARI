@@ -1,0 +1,155 @@
+{
+  "$defs": {
+    "SectionBriefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Allowed Evidence Ids",
+          "type": "array"
+        },
+        "brief_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Brief Digest",
+          "type": "string"
+        },
+        "character_budget": {
+          "maximum": 2000000,
+          "minimum": 1,
+          "title": "Character Budget",
+          "type": "integer"
+        },
+        "content_items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 100000,
+          "title": "Content Items",
+          "type": "array"
+        },
+        "context_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Context Digest",
+          "type": "string"
+        },
+        "contextual_negative_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Contextual Negative Ids",
+          "type": "array"
+        },
+        "forbidden_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Forbidden Evidence Ids",
+          "type": "array"
+        },
+        "omitted_item_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Omitted Item Ids",
+          "type": "array"
+        },
+        "readiness_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Readiness Digest",
+          "type": "string"
+        },
+        "required_disclosures": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Required Disclosures",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "ari.manuscript-section-brief/v1",
+          "default": "ari.manuscript-section-brief/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "section_id": {
+          "title": "Section Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "section_id",
+        "context_digest",
+        "readiness_digest",
+        "character_budget",
+        "brief_digest"
+      ],
+      "title": "SectionBriefV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "briefs": {
+      "items": {
+        "$ref": "#/$defs/SectionBriefV1"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Briefs",
+      "type": "array"
+    },
+    "bundle_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Bundle Digest",
+      "type": "string"
+    },
+    "context_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Context Digest",
+      "type": "string"
+    },
+    "profile_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Profile Digest",
+      "type": "string"
+    },
+    "readiness_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Readiness Digest",
+      "type": "string"
+    },
+    "renderer_version": {
+      "title": "Renderer Version",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-section-brief-bundle/v1",
+      "default": "ari.manuscript-section-brief-bundle/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "profile_digest",
+    "context_digest",
+    "readiness_digest",
+    "renderer_version",
+    "briefs",
+    "bundle_digest"
+  ],
+  "title": "SectionBriefBundleV1",
+  "type": "object"
+}

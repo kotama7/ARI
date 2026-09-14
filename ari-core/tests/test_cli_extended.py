@@ -77,6 +77,36 @@ def test_cli_run_with_minimal_md(tmp_path):
     assert result.exit_code == 0
 
 
+def test_cli_run_closes_mcp_when_bfts_raises(tmp_path):
+    """A pre-paper failure must not leak MCP asyncio loops or subprocesses."""
+
+    exp = tmp_path / "experiment.md"
+    exp.write_text("## Research Goal\nExercise failure cleanup.\n")
+    cfg = tmp_path / "config.yaml"
+    checkpoint = str(tmp_path / "ckpts/{run_id}")
+    cfg.write_text(
+        "llm:\n  model: fake-model\n"
+        f"checkpoint:\n  dir: {checkpoint}\n"
+        f"logging:\n  dir: {checkpoint}\n"
+    )
+    mcp = mock.MagicMock()
+    with mock.patch("ari.cli.build_runtime") as mock_rt, mock.patch(
+        "ari.cli._run_loop", side_effect=RuntimeError("bfts failed")
+    ):
+        mock_rt.return_value = (
+            None,
+            None,
+            mcp,
+            mock.MagicMock(),
+            mock.MagicMock(),
+            None,
+        )
+        result = runner.invoke(app, ["run", str(exp), "--config", str(cfg)])
+
+    assert result.exit_code != 0
+    mcp.close_all.assert_called_once_with()
+
+
 def test_checkpoint_name_from_research_goal(tmp_path):
     """Checkpoint run_id must be a valid timestamp-prefixed slug (LLM or fallback from content)."""
     exp = tmp_path / "experiment.md"
@@ -187,3 +217,65 @@ def test_checkpoint_slug_allows_long_descriptive_name(tmp_path):
     assert len(slug) > 40, (
         f"descriptive slug should extend past old 40-char cap, got {len(slug)} chars: {slug!r}"
     )
+
+
+def test_llm_run_title_call_matches_the_client_signature():
+    """The run-title call used to pass ``temperature=`` (which ``complete`` does
+    not accept) and then read ``.strip()`` off the returned ``LLMResponse``. Both
+    raised, and a bare ``except Exception`` swallowed it — so the LLM title was
+    dead on every run and only the heuristic fallback ever produced a slug.
+
+    Pin the two shapes so the same silent regression cannot return.
+    """
+    import inspect
+
+    from ari.llm.client import LLMClient, LLMResponse
+
+    sig = inspect.signature(LLMClient.complete)
+    # The exact call ari/cli/run.py makes must bind.
+    sig.bind(None, [{"role": "user", "content": "goal"}], max_tokens=20)
+    # And the rejected shape must still be rejected, so this test fails loudly
+    # if someone "fixes" it by silently accepting **kwargs.
+    with pytest.raises(TypeError):
+        sig.bind(None, [{"role": "user", "content": "goal"}],
+                 max_tokens=20, temperature=0.3)
+
+    # The reply is an LLMResponse; the title comes off .content, not the object.
+    resp = LLMResponse(content="sparse_attention_tuning\ntrailing", tool_calls=[], usage={})
+    assert not hasattr(resp, "strip")
+    assert (resp.content or "").strip().splitlines()[0].strip() == "sparse_attention_tuning"
+
+
+def test_llm_run_title_is_used_when_the_model_answers(tmp_path):
+    """With a working client the LLM title — not the experiment's first line —
+    becomes the run slug. This is the path that never executed before."""
+    from typer.testing import CliRunner
+
+    from ari.cli import app
+
+    runner = CliRunner()
+    exp = tmp_path / "experiment.md"
+    exp.write_text("# Research Goal\nA very long first line that would otherwise become the slug\n")
+    _ckpt = str(tmp_path / "ckpt")
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(f"checkpoint:\n  dir: {_ckpt}\nlogging:\n  dir: {_ckpt}\n")
+
+    captured = {}
+
+    def fake_run_loop(cfg_, bfts, agent, pending, nodes, exp_data, ckpt_dir, run_id):
+        captured["run_id"] = run_id
+        captured["topic"] = exp_data.get("topic")
+        return 0
+
+    class _Resp:
+        content = "sparse_attention_kernel_tuning"
+
+    with mock.patch("ari.cli.build_runtime") as mock_rt, \
+         mock.patch("ari.cli._run_loop", side_effect=fake_run_loop), \
+         mock.patch("ari.llm.client.LLMClient") as mock_llm:
+        mock_llm.return_value.complete.return_value = _Resp()
+        mock_rt.return_value = (None, None, None, mock.MagicMock(), mock.MagicMock(), None)
+        runner.invoke(app, ["run", str(exp), "--config", str(cfg)])
+
+    assert "sparse_attention_kernel_tuning" in captured.get("run_id", "")
+    assert captured.get("topic") == "sparse_attention_kernel_tuning"

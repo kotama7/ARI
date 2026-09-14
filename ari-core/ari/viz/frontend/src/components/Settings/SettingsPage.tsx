@@ -9,14 +9,15 @@ import {
   fetchPartitions,
   fetchCheckpoints,
   deleteCheckpoint,
+  requestConfirmationChallenge,
   testSSH as apiTestSSH,
   generateConfig,
   fetchContainerInfo,
 } from '../../services/api';
 import type { Checkpoint } from '../../types';
+import { useModelCatalog } from '../../hooks/useModelCatalog';
 import {
   DEFAULT_PROVIDER,
-  PROVIDER_MODELS,
   LETTA_EMBEDDING_BY_PROVIDER,
   CUSTOM_HANDLE_VALUE,
   _splitHandle,
@@ -54,6 +55,7 @@ export default function SettingsPage() {
   const { state: appState, refreshCheckpoints } = useAppContext();
 
   // LLM
+  const catalog = useModelCatalog();
   const [provider, setProvider] = useState(DEFAULT_PROVIDER);
   const [modelSelect, setModelSelect] = useState('');
   const [modelCustom, setModelCustom] = useState('');
@@ -193,11 +195,20 @@ export default function SettingsPage() {
     loadProjects();
   }, [loadSettings, loadSkills, loadProjects]);
 
+  // Fall back to the default provider's models for one the catalog does not
+  // describe — the same shape the local table had. An empty list before the
+  // fetch lands is not a missing provider, so it falls back too, and the
+  // options appear when the catalog arrives.
+  function modelsWithFallback(prov: string): string[] {
+    const models = catalog.modelsFor(prov);
+    return models.length ? models : catalog.modelsFor(DEFAULT_PROVIDER);
+  }
+
   // ── Provider change ────────────────────
 
   function handleProviderChange(newProv: string) {
     setProvider(newProv);
-    const models = PROVIDER_MODELS[newProv] || PROVIDER_MODELS[DEFAULT_PROVIDER];
+    const models = modelsWithFallback(newProv);
     if (models.length) {
       setModelSelect(models[0]);
       setModelCustom(models[0]);
@@ -214,7 +225,7 @@ export default function SettingsPage() {
   }
 
   // ── Available models for current provider
-  const currentModels = PROVIDER_MODELS[provider] || PROVIDER_MODELS[DEFAULT_PROVIDER];
+  const currentModels = modelsWithFallback(provider);
 
   // ── Partition detection ────────────────
 
@@ -306,9 +317,18 @@ export default function SettingsPage() {
   // ── Delete project ─────────────────────
 
   async function handleDeleteProject(id: string, path: string) {
-    if (!confirm(`Delete project "${id}"? This cannot be undone.`)) return;
     try {
-      const r = await deleteCheckpoint(id, path);
+      // MN-6 two-step (RR-P0-6/RR-P0-9): fetch a server-issued challenge
+      // bound to this exact path first; the confirm dialog shows the
+      // server's target echo as the impact preview.
+      const ch = await requestConfirmationChallenge('delete-checkpoint', path);
+      if (
+        !confirm(
+          `Delete project "${id}"?\nServer will remove: ${ch.target}\nThis cannot be undone.`,
+        )
+      )
+        return;
+      const r = await deleteCheckpoint(id, path, ch.challenge_id);
       if (r.ok) {
         loadProjects();
         refreshCheckpoints();

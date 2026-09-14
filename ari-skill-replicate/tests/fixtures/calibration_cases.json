@@ -1,0 +1,23 @@
+{
+  "paper_text": "A deterministic solver writes results.json. The solver reports latency in milliseconds.",
+  "cases": [
+    {
+      "id": "clean",
+      "requirements": "The deterministic solver writes results.json.",
+      "quote": "A deterministic solver writes results.json.",
+      "expected_flags": []
+    },
+    {
+      "id": "vague",
+      "requirements": "The solver output is appropriate and clear.",
+      "quote": "A deterministic solver writes results.json.",
+      "expected_flags": ["vague_qualifier"]
+    },
+    {
+      "id": "unsupported",
+      "requirements": "The solver uses a proprietary accelerator.",
+      "quote": "This sentence does not occur in the paper.",
+      "expected_flags": ["no_paper_evidence"]
+    }
+  ]
+}

@@ -7,30 +7,28 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useI18n } from '../../i18n';
 import * as api from '../../services/api';
+import { useModelCatalog } from '../../hooks/useModelCatalog';
 
 type OrsProvider = 'openai' | 'anthropic' | 'google' | 'ollama' | 'custom';
 
-const ORS_PROVIDER_MODELS: Record<OrsProvider, string[]> = {
-  openai: [
-    'gpt-5.4',
-    'gpt-5.2',
-    'gpt-5.4-mini',
-    'gpt-4o-2024-11-20',
-    'gpt-4o-2024-08-06',
-    'gpt-4o',
-    'gpt-4o-mini',
-    'o3',
-    'o1-mini',
-  ],
-  anthropic: [
-    'claude-opus-4-7',
-    'claude-opus-4-5',
-    'claude-sonnet-4-5',
-    'claude-haiku-3-5',
-  ],
-  google: ['gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'],
-  ollama: ['qwen3:8b', 'qwen3:32b', 'llama3.3', 'gemma3:27b', 'mistral'],
-  custom: [],
+// ORS keeps its own provider vocabulary -- `google` rather than the catalog's
+// `gemini`, plus a `custom` free-entry mode -- so the picker maps its labels
+// onto catalog ids and takes the models from there.
+//
+// The table that used to sit here was the fourth copy of the model list, and
+// it was not merely stale but wrong about how the models are dispatched. ORS
+// model strings are handed to litellm, which reads the provider off the prefix:
+// the bare `gemini-2.5-pro` offered here resolves to *vertex_ai*, not gemini,
+// so picking it silently changed both the backend and the credentials it needs
+// (GCP project auth instead of GOOGLE_API_KEY) while the label still said
+// Google. The five bare ollama ids (`qwen3:8b` and friends) resolved to no
+// provider at all and raised `LLM Provider NOT provided`. The catalog carries
+// the prefixed forms -- `gemini/…`, `ollama_chat/…` -- which route as labelled.
+const ORS_PROVIDER_TO_CATALOG: Record<Exclude<OrsProvider, 'custom'>, string> = {
+  openai: 'openai',
+  anthropic: 'anthropic',
+  google: 'gemini',
+  ollama: 'ollama',
 };
 
 const ORS_PROVIDER_LABELS: Record<OrsProvider, string> = {
@@ -41,19 +39,23 @@ const ORS_PROVIDER_LABELS: Record<OrsProvider, string> = {
   custom: 'Custom',
 };
 
-function inferOrsProvider(model: string): OrsProvider {
+function inferOrsProvider(
+  model: string,
+  modelsFor: (providerId: string) => string[],
+): OrsProvider {
   if (!model) return 'custom';
-  for (const provider of [
-    'openai',
-    'anthropic',
-    'google',
-    'ollama',
-  ] as const) {
-    if (ORS_PROVIDER_MODELS[provider].includes(model)) return provider;
+  for (const provider of ['openai', 'anthropic', 'google', 'ollama'] as const) {
+    if (modelsFor(ORS_PROVIDER_TO_CATALOG[provider]).includes(model)) {
+      return provider;
+    }
   }
+  // Prefix fallbacks, for a saved model the catalog has since stopped listing.
+  // The provider-prefixed forms come first: `gemini/gemini-2.5-pro` must read
+  // as Google, and it does not start with `gemini-`.
+  if (model.startsWith('gemini/') || model.startsWith('gemini-')) return 'google';
+  if (model.startsWith('ollama/') || model.startsWith('ollama_chat/')) return 'ollama';
   if (model.startsWith('claude-')) return 'anthropic';
   if (model.startsWith('gpt-') || /^o[1-9]/.test(model)) return 'openai';
-  if (model.startsWith('gemini-')) return 'google';
   return 'custom';
 }
 
@@ -68,17 +70,18 @@ export function OrsModelPicker({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const { modelsFor } = useModelCatalog();
   const [provider, setProvider] = useState<OrsProvider>(() =>
-    inferOrsProvider(value),
+    inferOrsProvider(value, modelsFor),
   );
-  const list = ORS_PROVIDER_MODELS[provider];
+  const list = provider === 'custom' ? [] : modelsFor(ORS_PROVIDER_TO_CATALOG[provider]);
   const inList = list.includes(value);
   const customMode = provider === 'custom' || !inList;
 
   const handleProviderChange = (p: OrsProvider) => {
     setProvider(p);
     if (p !== 'custom') {
-      const models = ORS_PROVIDER_MODELS[p];
+      const models = modelsFor(ORS_PROVIDER_TO_CATALOG[p]);
       if (models.length > 0) onChange(models[0]);
     }
   };

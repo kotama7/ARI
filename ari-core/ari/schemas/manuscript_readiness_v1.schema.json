@@ -1,0 +1,200 @@
+{
+  "$defs": {
+    "RequirementResultV1": {
+      "additionalProperties": false,
+      "properties": {
+        "applicability_trace": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Applicability Trace",
+          "type": "array"
+        },
+        "applicable": {
+          "title": "Applicable",
+          "type": "boolean"
+        },
+        "authoring_blocking": {
+          "title": "Authoring Blocking",
+          "type": "boolean"
+        },
+        "evaluator_version": {
+          "title": "Evaluator Version",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100000,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "explanation": {
+          "default": "",
+          "maxLength": 4000,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "publication_blocking": {
+          "title": "Publication Blocking",
+          "type": "boolean"
+        },
+        "reason_code": {
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "repair_request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repair Request Id"
+        },
+        "requirement_id": {
+          "title": "Requirement Id",
+          "type": "string"
+        },
+        "resolver_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "artifact_recovery",
+                "projection_rebuild",
+                "literature_search",
+                "baseline_comparison",
+                "repetition_or_uncertainty",
+                "ablation",
+                "validation_experiment",
+                "assurance_certification",
+                "method_clarification",
+                "limitation_disclosure",
+                "human_decision"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolver Kind"
+        },
+        "status": {
+          "enum": [
+            "satisfied",
+            "not_applicable",
+            "unavailable",
+            "missing"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "requirement_id",
+        "applicable",
+        "status",
+        "reason_code",
+        "authoring_blocking",
+        "publication_blocking",
+        "evaluator_version"
+      ],
+      "title": "RequirementResultV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "authoring_verdict": {
+      "enum": [
+        "ready",
+        "ready_with_disclosures",
+        "repair_required",
+        "blocked"
+      ],
+      "title": "Authoring Verdict",
+      "type": "string"
+    },
+    "context_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Context Digest",
+      "type": "string"
+    },
+    "counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "propertyNames": {
+        "enum": [
+          "satisfied",
+          "not_applicable",
+          "unavailable",
+          "missing"
+        ]
+      },
+      "title": "Counts",
+      "type": "object"
+    },
+    "evaluator_version": {
+      "title": "Evaluator Version",
+      "type": "string"
+    },
+    "profile_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Profile Digest",
+      "type": "string"
+    },
+    "publication_verdict": {
+      "enum": [
+        "ready",
+        "blocked"
+      ],
+      "title": "Publication Verdict",
+      "type": "string"
+    },
+    "readiness_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Readiness Digest",
+      "type": "string"
+    },
+    "requirement_results": {
+      "items": {
+        "$ref": "#/$defs/RequirementResultV1"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Requirement Results",
+      "type": "array"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-readiness/v1",
+      "default": "ari.manuscript-readiness/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "profile_digest",
+    "context_digest",
+    "evaluator_version",
+    "requirement_results",
+    "authoring_verdict",
+    "publication_verdict",
+    "counts",
+    "readiness_digest"
+  ],
+  "title": "ManuscriptReadinessReportV1",
+  "type": "object"
+}

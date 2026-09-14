@@ -1,0 +1,63 @@
+schema_version: 1
+version: ari.assurance-properties/v1
+properties:
+  artifact-correctness: [contract-defined-check]
+  claim-evidence-consistency: [claim-gate]
+  interface-conformance: [interface-check]
+  memory-safety: [sanitizer]
+  numerical-equivalence: [differential-testing]
+  performance-regression: [benchmark-comparison]
+  reproduction: [isolated-rerun]
+  reproducibility: [repeated-execution]
+  retrieval-provenance: [snapshot-replay]
+  source-integrity: [digest-validation]
+  structural-validity: [structural-validation]
+  trajectory-equivalence: [differential-testing]
+
+# WHAT KIND OF THING EACH PROPERTY IS VERIFIED ON.
+#
+# ``build_verification_contract`` used to stamp ONE target kind onto every
+# requirement in a run -- the caller's parameter, defaulting to
+# ``workspace-artifact``. But a single run carries a correctness obligation over
+# a compiled library AND a performance obligation over a kernel submitted to a
+# benchmark, and those are not the same kind of thing. One value for all of them
+# means at most one can ever resolve: measured, the three registered correctness
+# harnesses declare ``shared-library`` and the default said
+# ``workspace-artifact``, so none of them resolved in the default path.
+#
+# Only the two that are settled by evidence appear here. A property with no
+# entry keeps the caller's parameter, so nothing else moves: this is not a place
+# to guess the other ten.
+target_kinds:
+  # What the three registered correctness harnesses declare they verify.
+  artifact-correctness: shared-library
+  # A benchmark scores a SUBMISSION. The resolver confines a non-external
+  # benchmark to {model, agent, benchmark-submission}, and the manifest model
+  # forbids a benchmark from claiming external target coverage -- both rules are
+  # coherent, and a candidate kernel handed to a benchmark IS a submission. This
+  # is the label that lets a performance harness resolve without relaxing
+  # either.
+  performance-regression: benchmark-submission
+  # The concrete properties correctness is established BY, below.
+  numerical-equivalence: shared-library
+  interface-conformance: shared-library
+
+# WHAT "CORRECTNESS IS REQUIRED" ASKS FOR.
+#
+# The contract used to emit one hardcoded property, ``artifact-correctness``,
+# whenever a research contract required correctness. No shipped manifest
+# declares that property -- the three registered harnesses declare
+# numerical-equivalence, interface-conformance and reproducibility -- so the
+# requirement matched nothing and correctness resolved to no harness at all.
+# Verified against the real catalog: artifact-correctness selected 0 manifests,
+# numerical-equivalence selected 1.
+#
+# So the abstract obligation names the concrete properties it is established by,
+# as data. reproducibility is deliberately absent: the shipped manifests offer
+# it at validate and certify only, and a correctness requirement is raised at
+# screen, so demanding it would make every screen run unsatisfiable.
+#
+# Unset falls back to ["artifact-correctness"], the previous behaviour.
+correctness_properties:
+  - numerical-equivalence
+  - interface-conformance

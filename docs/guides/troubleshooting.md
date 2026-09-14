@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-22
 ---
 
 # Troubleshooting
@@ -35,8 +35,10 @@ shell rc file — so sub-experiments can override it.
 
 ### `DeprecationWarning: $HOME/.ari/...`
 
-**Cause:** Legacy fallback path is being touched.  v1.0 will hard-
-fail on this; v0.5–v0.8 emit a warning.
+**Cause:** Legacy fallback path is being touched.  Every release
+from v0.5 onward emits a `DeprecationWarning` naming the replacement
+(`ari/_deprecation.py`, `removal_version="v1.0"`); v1.0 removes the
+fallback.
 
 **Fix:** Set the explicit env var.  Mapping table:
 
@@ -80,13 +82,21 @@ rejected.
 
 ### `exit_code=127` from a build step
 
-**Cause:** Almost always a missing compiler.  The HPC skill
-restricts you to `gcc`; `mpicc` / `icc` / `aocc` are not in the
-default PATH on most clusters.
+**Cause:** The command is not on `PATH`.  The `slurm_submit` script
+bridge submits with `#SBATCH --export=NIL` and then sets
+`PATH=/usr/local/bin:/usr/bin:/bin`, so only the base system toolchain
+(typically `gcc`) is reachable — a compiler your site publishes through
+environment modules (`mpicc` / `icc` / `aocc`) is not.
 
-**Fix:** Replace `mpicc` with `gcc -fopenmp` (and link OpenMPI
-explicitly if needed).  Update the experiment.md `Hardware Limits`
-section to declare the constraint upfront.
+**Fix:** Load the module the toolchain lives in.  The bridge sources
+the module system's own init on the node (`/etc/profile.d/modules.sh`,
+`/etc/profile.d/lmod.sh`, `$MODULESHOME/init/bash`) before your body
+runs, so a `module load` written inside the script works; passing
+`modules=` to the tool instead gets a `module --force purge` first, and
+exits `86` when no module system is present at all.  Otherwise replace
+`mpicc` with `gcc -fopenmp` (and link OpenMPI explicitly if needed),
+and declare the constraint in the experiment.md `Hardware Limits`
+section.
 
 ### `--account` rejected
 
@@ -110,31 +120,41 @@ the wrong endpoint.
 curl -fsS http://127.0.0.1:8283/healthz   # Should return 200
 
 # If it fails, restart per docs/guides/hpc_setup.md#6
-docker compose -f containers/letta/docker-compose.yml up -d
+docker compose -f scripts/letta/docker-compose.yml up -d
 # or
-apptainer run containers/letta.sif &
+scripts/letta/start_singularity.sh
 ```
 
 The dashboard `/api/memory/health` route is the same probe, so if
 the UI says "Letta unhealthy", the cluster has no Letta service
 running.
 
-### `LETTA_EMBEDDING_CONFIG is required`
+### `Letta agent embedding mismatch`
 
-**Cause:** Letta needs an embedding model config to build the
-archival collections.
+**Cause:** `LETTA_EMBEDDING_CONFIG` is an embedding *handle*, not a
+path to a config file, and Letta freezes an agent's `embedding_config`
+at creation time.  If the checkpoint's agent was created against a
+different handle — most often the hosted `letta/letta-free` →
+`embeddings.memgpt.ai` endpoint, which returns 522 with an empty body
+when its upstream is down — the frozen handle keeps being used whatever
+the env var says, and `add_memory` fails with an opaque 400.
 
-**Fix:** Point `LETTA_EMBEDDING_CONFIG` at a JSON file describing
-the embedding endpoint.  An OpenAI-compatible example:
+**Fix:** Set the handle, then purge the checkpoint's agent so the next
+`add_memory` recreates it against that handle
+(`LettaBackend.purge_checkpoint`; note this deletes the existing
+archival passages):
 
-```json
-{
-  "embedding_endpoint_type": "openai",
-  "embedding_model": "text-embedding-3-small",
-  "embedding_dim": 1536,
-  "embedding_endpoint": "https://api.openai.com/v1"
-}
+```bash
+export LETTA_EMBEDDING_CONFIG=openai/text-embedding-3-small
 ```
+
+Left unset it defaults to `letta-default`. ARI treats an empty value,
+`letta-default` and `letta/letta-free` as the same thing — "no explicit
+choice" — so on the flaky MemGPT-hosted endpoint the backend only logs a
+warning. The hard error above is raised only when you asked for a
+*different* handle than the one the agent was frozen with. What
+`letta-default` expands to on the server is Letta's own decision, not
+ARI's.
 
 ### `archival memory search returned 0 results`
 
@@ -155,7 +175,7 @@ on the `passages.search` route (see
 **Cause:** Provider rate limit.
 
 **Fix:** ARI records every LLM call in
-`$ARI_CHECKPOINT_DIR/cost_log.jsonl`.  Check the per-minute call
+`$ARI_CHECKPOINT_DIR/cost_trace.jsonl`.  Check the per-minute call
 rate; if it exceeds the provider quota, lower `ARI_PARALLEL` or
 move the BFTS judge to a cheaper / local model
 (`ARI_MODEL_JUDGE=ollama/qwen3:32b`).
@@ -168,18 +188,58 @@ move the BFTS judge to a cheaper / local model
 python - <<'PY'
 import json, collections
 costs = collections.Counter()
-with open(f"{__import__('os').environ['ARI_CHECKPOINT_DIR']}/cost_log.jsonl") as fh:
+with open(f"{__import__('os').environ['ARI_CHECKPOINT_DIR']}/cost_trace.jsonl") as fh:
     for line in fh:
         rec = json.loads(line)
-        costs[rec["metadata"].get("skill", "?")] += rec["cost_usd"]
+        costs[rec.get("skill") or "?"] += rec["estimated_cost_usd"]
 for skill, c in costs.most_common():
     print(f"{c:7.3f}  {skill}")
 PY
 ```
 
+Each line is a flat `CallRecord` (`timestamp`, `node_id`, `phase`,
+`skill`, `model`, `*_tokens`, `estimated_cost_usd`, …); there is no
+nested `metadata` object.  The additive `epoch` field is written only
+by `ari_rqgm` runs, so it is absent on a default run.
+
+Under `ari_rqgm` that field is still stamped only on calls issued from the
+ARI **core** process: `RQGMRuntime` sets it at epoch open via
+`cost_tracker.set_default_metadata(epoch=...)`, and that default lives in the
+memory of the process that set it.  Each MCP skill server is a separate
+process whose `bootstrap_skill(...)` registers `skill` (and sometimes
+`phase`) only, and no environment variable carries the epoch across that
+boundary — so every skill-issued call is recorded with no `epoch`.  Summing
+`cost_trace.jsonl` by `epoch` therefore gives core-process spend, not the
+run's whole spend; group by `skill` for that.  Attributing skill calls to an
+epoch exactly would need per-call metadata plumbed through MCP, which ARI
+does not do.
+
 The biggest spend is usually the BFTS judge (`ari-skill-evaluator`)
 or the rubric review (`ari-skill-paper`).  Cap their models with
 `ARI_MODEL_EVAL` / `ARI_MODEL_JUDGE`.
+
+### Every call is booked at `$0.00`
+
+**Cause:** The price table (`ari/configs/model_prices.yaml`) could not
+be loaded — usually a malformed appended row, or PyYAML missing in a
+skill venv.  With an empty table every call is estimated at 0.
+
+**Diagnosis:** `cost_summary.json` states this explicitly:
+
+```bash
+python - <<'PY'
+import json, os
+s = json.load(open(f"{os.environ['ARI_CHECKPOINT_DIR']}/cost_summary.json"))
+print("pricing_table_unavailable:", s["pricing_table_unavailable"])
+print("dropped_records:", s["dropped_records"], "/ call_count:", s["call_count"])
+PY
+```
+
+`pricing_table_unavailable: true` means the table failed to load (the
+loader also logs `model_prices table unavailable`).  A non-zero
+`dropped_records` means `call_count` is an **undercount** — that many
+calls had usage but their recording raised; each one logs
+`cost record dropped`.
 
 ## VLM (figure / table review)
 
@@ -212,13 +272,18 @@ execution.
 
 ### `RLIMIT_NPROC: resource temporarily unavailable`
 
-**Cause:** The coding sandbox capped fork() at
-`ARI_MAX_CHILD_PROCS` (default 1024) and a child blew through it.
+**Cause:** `ARI_MAX_CHILD_PROCS` is set, so the coding sandbox capped
+fork() with `RLIMIT_NPROC` and a child blew through it.  There is **no
+default cap** — unset, neither `ari.container` nor the coding skill
+applies one.
 
 **Fix:** Either trim the offending command (the agent often loops
 into a fork bomb if the grading prompt is ambiguous) or raise
-`ARI_MAX_CHILD_PROCS`.  The default is intentionally generous —
-running into it usually means a real bug, not a budget shortage.
+`ARI_MAX_CHILD_PROCS`.  Note that `RLIMIT_NPROC` is enforced per real
+uid, not per process tree: the cap counts every task your user already
+has anywhere on the host, which is why an explicit small cap fires
+`EAGAIN` on an otherwise idle build.  Unsetting it is usually the right
+answer.
 
 ## Dashboard / viz
 
@@ -230,10 +295,11 @@ SSH'd into a remote host, you need to forward the port.
 **Fix:**
 
 ```bash
-# From your laptop:
-ssh -L 8000:127.0.0.1:8000 user@remote-host
-# Then on the remote:
-ari viz --port 8000
+# From your laptop — the WebSocket rides port+1, so forward both:
+ssh -L 8765:127.0.0.1:8765 -L 8766:127.0.0.1:8766 user@remote-host
+# Then on the remote (the checkpoint dir is a required argument;
+# --port defaults to 8765):
+ari viz /abs/path/to/checkpoints/<run_id>
 ```
 
 ### Frontend shows stale state
@@ -246,12 +312,14 @@ connect.
 ## Where to look next
 
 - `$ARI_CHECKPOINT_DIR/ari.log` — application log.
-- `$ARI_CHECKPOINT_DIR/cost_log.jsonl` — LLM cost trail.
+- `$ARI_CHECKPOINT_DIR/cost_trace.jsonl` — LLM cost trail
+  (rollup: `cost_summary.json`).
 - `$ARI_CHECKPOINT_DIR/lineage_decisions.jsonl` — stagnation
   decisions (v0.7+).
 - `docs/reference/file_formats.md` — what every file in a
   checkpoint means.
-- `docs/_archive/refactor_audit.md` — known migration debt.
+- `docs/guides/migration.md` — the version-to-version migration
+  recipes (v0.5 → v0.6 onward) and the GUI-refresh notes.
 
 ## See also
 

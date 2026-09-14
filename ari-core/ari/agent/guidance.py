@@ -85,7 +85,13 @@ def guidance(
         return (
             f"Execution output:\n{summary}\n\n"
             "Now return the final JSON with REAL measured values.\n"
-            'Format: {"status":"success","artifacts":[...],"summary":"..."}\n'
+            'Format: {"status":"success","artifacts":[...],"summary":"...",'
+            '"next_steps":["<what you would try next to improve this>", ...],'
+            '"concerns":["<caveat/risk about this result>", ...],'
+            '"environment":"<toolchain/hardware you actually used, from real '
+            'tool output; \\"\\" if unverified>",'
+            '"file_notes":{"<filename>":"<one short phrase: what this file is / '
+            'what you changed>"}}\n'
             "Use ONLY values from actual tool outputs."
         )
 

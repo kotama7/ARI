@@ -1,0 +1,214 @@
+{
+  "$defs": {
+    "AnalysisArtifactTargetV1": {
+      "additionalProperties": false,
+      "description": "Optional closed-workspace destination for deterministic result artifacts.",
+      "properties": {
+        "relative_directory": {
+          "default": "analysis",
+          "title": "Relative Directory",
+          "type": "string"
+        },
+        "workspace": {
+          "$ref": "#/$defs/WorkspaceRefV1"
+        }
+      },
+      "required": [
+        "workspace"
+      ],
+      "title": "AnalysisArtifactTargetV1",
+      "type": "object"
+    },
+    "RunRecordV1": {
+      "additionalProperties": false,
+      "description": "One scalar run outcome with environment and provenance identity.",
+      "properties": {
+        "backend_id": {
+          "title": "Backend Id",
+          "type": "string"
+        },
+        "environment_digest": {
+          "title": "Environment Digest",
+          "type": "string"
+        },
+        "execution_attempt_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Attempt Id"
+        },
+        "input_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Digest"
+        },
+        "library_versions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 256,
+          "title": "Library Versions",
+          "type": "object"
+        },
+        "metric_id": {
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "provenance_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provenance Digest"
+        },
+        "replicate_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replicate Id"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "run_id",
+        "metric_id",
+        "unit",
+        "value",
+        "backend_id",
+        "environment_digest"
+      ],
+      "title": "RunRecordV1",
+      "type": "object"
+    },
+    "WorkspaceRefV1": {
+      "additionalProperties": false,
+      "description": "One canonical writable root with no caller-controlled escape path.",
+      "properties": {
+        "root": {
+          "title": "Root",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.workspace-ref/v1",
+          "default": "ari.workspace-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "root"
+      ],
+      "title": "WorkspaceRefV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/run-comparison-request-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Rank runs while retaining compatibility and independence caveats.",
+  "properties": {
+    "analysis_plan_digest": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Analysis Plan Digest"
+    },
+    "artifact_target": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AnalysisArtifactTargetV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "baseline_run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Baseline Run Id"
+    },
+    "direction": {
+      "enum": [
+        "higher",
+        "lower"
+      ],
+      "title": "Direction",
+      "type": "string"
+    },
+    "require_compatible_environment": {
+      "default": true,
+      "title": "Require Compatible Environment",
+      "type": "boolean"
+    },
+    "runs": {
+      "items": {
+        "$ref": "#/$defs/RunRecordV1"
+      },
+      "maxItems": 100000,
+      "minItems": 2,
+      "title": "Runs",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "ari.run-comparison-request/v1",
+      "default": "ari.run-comparison-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "runs",
+    "direction"
+  ],
+  "title": "ARI Run Comparison Request v1",
+  "type": "object"
+}

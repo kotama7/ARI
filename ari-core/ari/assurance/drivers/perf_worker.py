@@ -1,0 +1,88 @@
+"""Performance verifier worker: prints one typed report on stdout.
+
+Mirrors ``native_worker`` deliberately. A scientifically slow or wrong candidate
+is a SUCCESSFULLY COMPLETED verifier execution whose typed report says ``fail``;
+a non-zero process status is reserved for verifier or substrate failure, so
+infrastructure accounting never conflates the two.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+
+from ari.assurance.native_perf import (DEFAULT_REGRESSION_THRESHOLD,
+                                       verify_native_perf)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--problem", required=True,
+                        help="the PINNED problem revision to measure. Not a "
+                             "choice out of a fixed list: a problem is a "
+                             "registered directory, so adding a research theme "
+                             "is not an ARI edit.")
+    parser.add_argument("--candidate", required=True,
+                        help="path to the candidate kernel source")
+    parser.add_argument("--tier", choices=("screen", "validate", "certify"),
+                        required=True)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--dataset-revision", default=None,
+                        help="the PINNED case set to measure on. A size is chosen "
+                             "by naming a registered set, never by passing shapes: "
+                             "registration evidence is established at a size and "
+                             "does not transfer.")
+    parser.add_argument("--compiler", default=None,
+                        help="compiler the candidate declared, if any")
+    parser.add_argument("--flags", default=None,
+                        help="flags the candidate declared, screened before use. "
+                             "PASS IT AS --flags=<value>, ALWAYS. A value that "
+                             "starts with '-' and contains no space is read by "
+                             "argparse as an option, so ['--flags', '-O3'] is "
+                             "REJECTED while ['--flags', '-O3 -ffast-math'] is "
+                             "accepted -- a candidate declaring exactly one flag "
+                             "would fail as a verifier crash rather than as a "
+                             "candidate. Measured, not reasoned about.")
+    # THE GOVERNED PATH NEVER PASSES THIS. ``_worker_argv`` builds the perf
+    # branch without it, so this default IS the threshold a registered manifest
+    # is judged at -- and it read 1.0 while the parity probe beside it earned
+    # its evidence at 0.95. One figure, imported, so a default here cannot drift
+    # from the one the registration evidence was established at.
+    parser.add_argument("--regression-threshold", type=float,
+                        default=DEFAULT_REGRESSION_THRESHOLD)
+    #: THE THREAD BUDGET, CARRIED RATHER THAN AMBIENT.
+    #:
+    #: measurement_thread_regime() reads ARI_PERF_THREADS from the environment,
+    #: and PinnedContainerExecutor launches with --cleanenv, passing only
+    #: PYTHONPATH. So a budget set beside a governed run never reached the timed
+    #: child: it used the whole machine while the manifest's registered
+    #: placement recorded the host-side number, and the pin described something
+    #: the run did not do.
+    #:
+    #: MEASURED, the same clean control on one exclusive node: the pinned 8
+    #: threads gave 18.2 ms and a spread of 0.024 when the budget reached the
+    #: worker, and 3.2 ms with a spread of 0.164 when it did not -- the second
+    #: being the machine's full width, at which this case is too short to
+    #: resolve. Passed here, it is in the reviewed argv like the network flags.
+    parser.add_argument("--threads", default=None,
+                        help="OMP team size for the timed child; the placement "
+                             "the manifest pins, carried into the container")
+    parser.add_argument("--run-timeout", type=float, default=300.0)
+    parser.add_argument("--negative-control", action="store_true")
+    args = parser.parse_args(argv)
+    if args.threads:
+        os.environ["ARI_PERF_THREADS"] = str(args.threads)
+    report = verify_native_perf(
+        args.problem, args.candidate, tier=args.tier, seed=args.seed,
+        candidate_compiler=args.compiler, candidate_flags=args.flags,
+        **({"dataset_revision": args.dataset_revision}
+           if args.dataset_revision else {}),
+        regression_threshold=args.regression_threshold,
+        run_timeout=args.run_timeout, negative_control=args.negative_control)
+    sys.stdout.write(report.model_dump_json() + "\n")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - subprocess entry point
+    raise SystemExit(main())

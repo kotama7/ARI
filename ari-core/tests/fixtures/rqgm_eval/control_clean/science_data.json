@@ -1,0 +1,61 @@
+{
+  "claims": [
+    {
+      "id": "C_CTL",
+      "numeric_assertions": [
+        {
+          "formula": "identity",
+          "id": "NC_CTL",
+          "metric": "GFlops",
+          "operands": {
+            "value": {
+              "metric_path": "measurements.GFlops",
+              "node_id": "n_ctl"
+            }
+          },
+          "tolerance": {
+            "absolute": 0.0,
+            "relative": 0.02
+          },
+          "unit": "",
+          "value": 200.0
+        }
+      ],
+      "section": "results",
+      "status": "supported",
+      "supported_by": {
+        "artifacts": [],
+        "figures": [],
+        "nodes": [
+          "n_ctl"
+        ],
+        "results": [
+          {
+            "metric_path": "measurements.GFlops",
+            "node_id": "n_ctl"
+          }
+        ]
+      },
+      "text": "200 GFlops sustained"
+    }
+  ],
+  "numeric_assertions": [
+    {
+      "claim_id": "C_CTL",
+      "formula": "identity",
+      "id": "NC_CTL",
+      "metric": "GFlops",
+      "operands": {
+        "value": {
+          "metric_path": "measurements.GFlops",
+          "node_id": "n_ctl"
+        }
+      },
+      "tolerance": {
+        "absolute": 0.0,
+        "relative": 0.02
+      },
+      "value": 200.0
+    }
+  ]
+}

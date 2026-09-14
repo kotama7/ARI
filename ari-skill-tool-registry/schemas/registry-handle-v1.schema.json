@@ -1,0 +1,159 @@
+{
+  "$defs": {
+    "ProviderAsyncLifecycleV1": {
+      "additionalProperties": false,
+      "description": "Provider-native asynchronous operations bound into a descriptor.",
+      "properties": {
+        "cancel_tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cancel Tool"
+        },
+        "cancelled_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cancelled States",
+          "type": "array"
+        },
+        "failed_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Failed States",
+          "type": "array"
+        },
+        "handle_argument": {
+          "default": "handle_id",
+          "title": "Handle Argument",
+          "type": "string"
+        },
+        "handle_field": {
+          "default": "handle_id",
+          "title": "Handle Field",
+          "type": "string"
+        },
+        "result_tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Tool"
+        },
+        "running_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Running States",
+          "type": "array"
+        },
+        "state_field": {
+          "default": "status",
+          "title": "State Field",
+          "type": "string"
+        },
+        "status_tool": {
+          "title": "Status Tool",
+          "type": "string"
+        },
+        "submitted_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Submitted States",
+          "type": "array"
+        },
+        "succeeded_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Succeeded States",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status_tool"
+      ],
+      "title": "ProviderAsyncLifecycleV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/tool-registry/registry-handle-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Portable provider handle bound to one immutable descriptor and source.",
+  "properties": {
+    "cassette_key": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cassette Key"
+    },
+    "handle_ref": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Handle Ref",
+      "type": "string"
+    },
+    "lifecycle": {
+      "$ref": "#/$defs/ProviderAsyncLifecycleV1"
+    },
+    "mode": {
+      "enum": [
+        "live",
+        "record",
+        "replay"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "provider_handle": {
+      "maxLength": 1024,
+      "minLength": 1,
+      "title": "Provider Handle",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.registry-handle/v1",
+      "default": "ari.registry-handle/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_id": {
+      "title": "Source Id",
+      "type": "string"
+    },
+    "tool_ref": {
+      "title": "Tool Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "handle_ref",
+    "tool_ref",
+    "source_id",
+    "provider_handle",
+    "lifecycle",
+    "mode"
+  ],
+  "title": "ARI Registry Handle v1",
+  "type": "object"
+}

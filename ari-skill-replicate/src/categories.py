@@ -169,7 +169,9 @@ def normalize_rubric_node(node: dict) -> list[str]:
         if tc_in is not None:
             n["task_category"] = tc_out
         fg_in = n.get("finegrained_task_category")
-        fg_out, why_fg = normalize_finegrained(fg_in, tc_out if tc_in is not None else tc_in)
+        fg_out, why_fg = normalize_finegrained(
+            fg_in, tc_out if tc_in is not None else tc_in
+        )
         if why_fg:
             warnings.append(why_fg)
         if fg_in is not None:

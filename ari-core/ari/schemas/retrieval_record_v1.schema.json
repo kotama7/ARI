@@ -1,0 +1,178 @@
+{
+  "$id": "https://ari.dev/schemas/retrieval-record-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Provider-neutral, content-addressed literature or web record.",
+  "properties": {
+    "abstract": {
+      "default": "",
+      "maxLength": 100000,
+      "title": "Abstract",
+      "type": "string"
+    },
+    "aliases": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10000,
+      "title": "Aliases",
+      "type": "array"
+    },
+    "authors": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10000,
+      "title": "Authors",
+      "type": "array"
+    },
+    "canonical_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Canonical Id",
+      "type": "string"
+    },
+    "citation_count": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Citation Count"
+    },
+    "license": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "License"
+    },
+    "payload_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Payload Digest",
+      "type": "string"
+    },
+    "provider": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Provider",
+      "type": "string"
+    },
+    "provider_record_id": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Record Id"
+    },
+    "provider_version": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Version"
+    },
+    "query": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    },
+    "retrieved_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Retrieved At"
+    },
+    "schema_version": {
+      "const": "ari.retrieval-record/v1",
+      "default": "ari.retrieval-record/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_url": {
+      "anyOf": [
+        {
+          "maxLength": 8192,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Url"
+    },
+    "title": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "use_restriction": {
+      "anyOf": [
+        {
+          "maxLength": 2048,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Use Restriction"
+    },
+    "year": {
+      "anyOf": [
+        {
+          "maximum": 9999,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Year"
+    }
+  },
+  "required": [
+    "canonical_id",
+    "provider",
+    "query",
+    "title",
+    "payload_digest"
+  ],
+  "title": "ARI Retrieval Record v1",
+  "type": "object"
+}

@@ -62,7 +62,7 @@ def test_should_prune_below_max_depth(bfts):
 
 def test_should_prune_when_sterile(bfts):
     """metrics._sterile=True retires the node from frontier (B-4)."""
-    node = Node(id="n1", parent_id=None, depth=0, has_real_data=False,
+    node = Node(id="n1", parent_id=None, depth=0, has_real_data=True,
                 metrics={"_sterile": True})
     assert bfts.should_prune(node, current_total=0) is True
 
@@ -76,6 +76,60 @@ def test_should_not_prune_normal_node(bfts):
 def test_expand_does_not_set_bfts_counter(bfts, mock_llm):
     """B-1: BFTS no longer carries a ``total_nodes`` integer."""
     assert not hasattr(bfts, "total_nodes")
+
+
+# ── B-6 Rule A: sterile children never retire their parent ───────────
+
+
+def test_child_retires_parent_on_genuine_win():
+    """A non-sterile child that beats the parent retires it (normal B-6 Rule A)."""
+    from ari.cli.bfts_loop import _child_retires_parent
+    assert _child_retires_parent(0.72, 0.66, child_sterile=False) is True
+
+
+def test_sterile_child_never_retires_parent():
+    """A ``_sterile`` child is a verbatim copy — its score win is evaluator
+    noise, so it must NOT retire the parent (else the frontier collapses to a
+    single pruned copy and the search stops after two nodes). Regression for the
+    full-log handoff arms that stalled at 2 nodes."""
+    from ari.cli.bfts_loop import _child_retires_parent
+    # Even with a (noise) higher score, a sterile copy keeps the parent alive.
+    assert _child_retires_parent(41.56, 39.15, child_sterile=True) is False
+
+
+def test_sterile_flag_preserves_objective_evaluation(tmp_path):
+    from ari.cli.bfts_loop import _flag_sterile_node
+
+    parent = tmp_path / "parent"
+    child = tmp_path / "child"
+    parent.mkdir()
+    child.mkdir()
+    (parent / "candidate.c").write_text("int x = 1;\n")
+    (child / "candidate.c").write_text("int x = 1;\n")
+    node = Node(
+        id="child",
+        parent_id="parent",
+        depth=1,
+        has_real_data=True,
+        metrics={
+            "_scientific_score": 7.5,
+            "valid_geomean_speedup": 7.5,
+        },
+        evaluation_status="valid",
+    )
+
+    assert _flag_sterile_node(
+        node, parent, child, copy_workdir=True
+    ) is True
+    assert node.metrics["_sterile"] is True
+    assert node.metrics["_scientific_score"] == 7.5
+    assert node.has_real_data is True
+    assert node.evaluation_status == "valid"
+
+
+def test_child_does_not_retire_parent_when_not_better():
+    from ari.cli.bfts_loop import _child_retires_parent
+    assert _child_retires_parent(0.60, 0.66, child_sterile=False) is False
 
 
 def test_expansion_count_tracks_expand_calls(bfts, mock_llm):
@@ -152,7 +206,7 @@ def test_expand_non_json_response(bfts, mock_llm):
 
 def test_expand_enriches_prompt_with_parent_node_report(bfts, mock_llm, tmp_path, monkeypatch):
     """When the parent's `node_report.json` exists, expand() should fold its
-    delta_vs_parent / concerns / next_steps_hints into the LLM prompt so the
+    file changes / concerns / next_steps_hints into the LLM prompt so the
     planner can target weaknesses concretely."""
     workspace = tmp_path / "ws"
     run_id = "myexp"
@@ -171,9 +225,8 @@ def test_expand_enriches_prompt_with_parent_node_report(bfts, mock_llm, tmp_path
         "files_changed": {
             "added": [{"path": "tiling.h", "sha256": "x"}],
             "modified": [{"path": "main.cpp", "sha256_before": "a", "sha256_after": "b"}],
-            "deleted": [], "inherited_unchanged": [],
+            "deleted": [{"path": "old_kernel.cpp"}], "inherited_unchanged": [],
         },
-        "delta_vs_parent": "Introduced tile-blocking with TILE=32",
         "self_assessment": {
             "succeeded": True, "headline": "+75% throughput",
             "concerns": ["comparative_rigor: no MKL baseline"],
@@ -192,11 +245,11 @@ def test_expand_enriches_prompt_with_parent_node_report(bfts, mock_llm, tmp_path
     bfts.expand(parent)
     text = captured["prompt"]
     assert "Parent node_report" in text
-    assert "Introduced tile-blocking with TILE=32" in text
     assert "no MKL baseline" in text
     assert "TILE=64 + AVX-512 prefetch" in text
     assert "tiling.h" in text  # files added surfaced
     assert "main.cpp" in text  # files modified surfaced
+    assert "old_kernel.cpp" in text  # files deleted surfaced
 
 
 def test_expand_sibling_dedup_uses_files_changed(bfts, mock_llm, tmp_path, monkeypatch):
@@ -418,12 +471,11 @@ def test_make_node_name_collapses_whitespace():
     assert "x with gaps" in name
 
 
-# ── L-2: prompt budget defaults match legacy magic numbers ──────────
+# ── L-2: prompt budget defaults ─────────────────────────────────────
 
 
-def test_prompt_budget_defaults_match_legacy_values():
+def test_prompt_budget_defaults():
     b = bfts_mod._BUDGET
-    assert b.parent_delta_chars == 240
     assert b.parent_concern_chars == 200
     assert b.parent_hint_chars == 200
     assert b.candidate_summary_select_chars == 120

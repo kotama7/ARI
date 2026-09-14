@@ -14,8 +14,8 @@ document plus a ``last_verified`` date::
     ---
 
 Two gates already cover the docs<->source relationship, in both directions, and
-this checker MUST NOT re-implement either of them (see
-``docs/refactoring/009_quality_scripts_plan.md`` §5.3 and subtask 027 §7.1):
+this checker MUST NOT re-implement either of them (see refactoring plan 009,
+quality scripts, §5.3 and subtask 027 §7.1):
 
   * ``scripts/docs/check_doc_sources.py`` -- FORWARD: every declared
     ``sources[].path`` resolves on disk; ``role`` vocabulary; ``--require-all``
@@ -36,8 +36,9 @@ To avoid forking front-matter parsing, it REUSES ``parse_doc`` /
 ``is_translation`` from ``scripts/docs/check_ref_coupling.py`` rather than
 re-deriving them.
 
-Design refs: ``docs/refactoring/subtasks/027_add_docs_source_sync_checker_script.md``
-§7.2 (Outcome A), ``docs/refactoring/009_quality_scripts_plan.md`` §5.3.
+Design refs (retired planning documents; numbers kept as provenance): subtask 027
+(add docs-source-sync checker script) §7.2 (Outcome A), refactoring plan 009
+(quality scripts) §5.3.
 
 Determinism (ARI design principle P2): stdlib + PyYAML only, no LLM, no network;
 findings are sorted, so two runs on the same tree are byte-identical. Git is

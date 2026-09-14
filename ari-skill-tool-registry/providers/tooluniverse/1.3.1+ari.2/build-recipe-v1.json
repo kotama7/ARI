@@ -1,0 +1,60 @@
+{
+  "artifact_filename": "tooluniverse-1.3.1+ari.2-py3-none-any.whl",
+  "artifact_kind": "ari-patched-wheel",
+  "build_backend": "setuptools.build_meta",
+  "build_environment": {
+    "python_implementation": "CPython",
+    "python_minor": "3.13",
+    "setuptools": "80.9.0",
+    "source_date_epoch": 1782958478,
+    "uv": "0.10.9",
+    "wheel": "0.45.1"
+  },
+  "build_steps": [
+    "checkout the exact upstream repository_commit in detached state",
+    "verify the clean source tree and apply metadata.patch with git apply --check followed by git apply",
+    "copy runtime.uv.lock over the upstream uv.lock and require uv lock --check to succeed",
+    "set SOURCE_DATE_EPOCH=1782958478 and PYTHONHASHSEED=0",
+    "run uv build --wheel against the patched source"
+  ],
+  "distribution_name": "tooluniverse",
+  "expected_package_tree_sha256": "sha256:db0f71805b5d50109656876085e426dd17fed5821d765dd8e91e93b6955322ef",
+  "expected_wheel_sha256": "sha256:5c2e9a254e353e5941d59f8e279dd7c55777eb46c84457f1eefcaef7aa4a60c9",
+  "patch": {
+    "path": "metadata.patch",
+    "sha256": "sha256:3ce99e933b0b762e35ad372364bc0314dac5d38c369131ca0a678d054cdbe97c"
+  },
+  "patch_semantics": {
+    "dependency_replacement": "fitz>=0.0.1.dev2 -> PyMuPDF==1.26.4",
+    "rationale": "Carries the 1.3.1+ari.1 fitz/PyMuPDF metadata fix unchanged, and additionally raises the SMCP response ceiling. Upstream smcp.py caps every compact MCP response at 100,000 characters and, when structural trimming cannot fit, falls back to raw string truncation that emits invalid JSON. That makes whole-collection enumeration impossible: get_tool_info(detail_level=full) exceeds the ceiling for the largest leaves even at batch size one. Measured over all 2,601 loaded leaves, the largest single response is 510,904 characters and only two exceed 100,000, so 2,000,000 admits the worst observed batch with roughly threefold headroom while staying well under the 7,103,230-character full-collection dump.",
+    "response_ceiling_replacement": "smcp.SMCP response max_chars 100_000 -> 2_000_000 at both serialization sites",
+    "source_code_changes": true,
+    "version_replacement": "1.3.1 -> 1.3.1+ari.2"
+  },
+  "provider_version": "1.3.1+ari.2",
+  "runtime_lock": {
+    "path": "runtime.uv.lock",
+    "sha256": "sha256:e3386fe42be8ee56f8d738f49178a59763a34233c6c707fcdded5c7d1f189a61"
+  },
+  "runtime_target": {
+    "architecture": "x86_64",
+    "operating_system": "linux",
+    "python_implementation": "CPython",
+    "python_minor": "3.13"
+  },
+  "schema_version": "ari.tooluniverse-build-recipe/v1",
+  "upstream": {
+    "repository": "https://github.com/mims-harvard/ToolUniverse",
+    "repository_commit": "9b7ff91ddb45b567cac2fa8ea31b82851e877617",
+    "repository_tag": "v1.3.1",
+    "sdist_sha256": "sha256:0ab0de3e20e9eb4d01f211130ad1a3ca984e4b7c3ec9558ce11e4cd206e24e6f",
+    "version": "1.3.1",
+    "wheel_sha256": "sha256:a201a8793a0eaa30a085417b07ec4bffaccc4d955f9754dd122914991d0d59c0"
+  },
+  "wheel_only": true,
+  "wheel_reproducibility": {
+    "build_count": 2,
+    "byte_identical": true,
+    "observed_sha256": "sha256:5c2e9a254e353e5941d59f8e279dd7c55777eb46c84457f1eefcaef7aa4a60c9"
+  }
+}

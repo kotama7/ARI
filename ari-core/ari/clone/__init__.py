@@ -53,10 +53,8 @@ def _sha256_file(p: Path) -> str:
 def _recompute_manifest_digest(extracted_dir: Path, manifest_path: Path) -> str:
     """Re-derive the bundle digest from the extracted tree.
 
-    Mirrors the curator's logic in ari-skill-transform/src/curate.py:
-    canonical JSON of {"version":1,"files":[{"path","sha256","size"}, ...]}
-    sorted by path, hashed with sha256. This is what we compare against
-    `manifest.lock`'s `bundle_sha256` field after extraction.
+    Mirrors both supported curator formats.  v2 also binds each file's logical
+    role; v1 remains a read-only published-bundle compatibility format.
     """
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     files = manifest.get("files") or []
@@ -71,8 +69,20 @@ def _recompute_manifest_digest(extracted_dir: Path, manifest_path: Path) -> str:
             raise CloneError(
                 f"sha256 mismatch for {rel}: expected {entry.get('sha256')[:16]}…, got {h[:16]}…"
             )
-        rebuilt.append({"path": rel, "sha256": h, "size": p.stat().st_size})
-    canonical_payload = {"version": 1, "files": sorted(rebuilt, key=lambda r: r["path"])}
+        record = {"path": rel, "sha256": h, "size": p.stat().st_size}
+        if int(manifest.get("version") or 1) == 2:
+            role = entry.get("role")
+            if not isinstance(role, str) or not role:
+                raise CloneError(f"v2 manifest lacks role for {rel}")
+            record["role"] = role
+        rebuilt.append(record)
+    version = int(manifest.get("version") or 1)
+    if version not in {1, 2}:
+        raise CloneError(f"unsupported manifest version: {version}")
+    canonical_payload = {
+        "version": version,
+        "files": sorted(rebuilt, key=lambda r: r["path"]),
+    }
     canonical = json.dumps(canonical_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

@@ -7,13 +7,14 @@ import json
 import uuid
 from pathlib import Path
 
-import jsonschema
 import pytest
 from jsonschema import Draft202012Validator
 
 import manifest as M
 
-SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "replication_rubric.schema.json"
+SCHEMA_PATH = (
+    Path(__file__).resolve().parents[1] / "schemas" / "replication_rubric.schema.json"
+)
 
 
 @pytest.fixture(scope="module")
@@ -27,6 +28,7 @@ def validator(schema) -> Draft202012Validator:
 
 
 def _leaf(text: str = "The MaskNetwork class outputs 0 for critical states.") -> dict:
+    quote = "the mask network outputs 0 for critical steps"
     return {
         "id": str(uuid.uuid4()),
         "requirements": text,
@@ -34,7 +36,16 @@ def _leaf(text: str = "The MaskNetwork class outputs 0 for critical states.") ->
         "sub_tasks": [],
         "task_category": "Code Development",
         "finegrained_task_category": "Method Implementation",
-        "rationale_from_paper": {"section": "§3.1", "quote": "the mask network outputs 0 for critical steps"},
+        "rationale_from_paper": {"section": "§3.1", "quote": quote},
+        "evidence_span": {
+            "kind": "paper-span",
+            "section": "§3.1",
+            "quote": quote,
+            "start_char": 0,
+            "end_char": len(quote),
+            "paper_sha256": "a" * 64,
+        },
+        "verification": {"kind": "artifact", "relative_path": "reproduce.sh"},
     }
 
 
@@ -56,6 +67,7 @@ def _bare_envelope() -> dict:
 
 # ── compute_paper_sha256 / prompt_sha256 ──
 
+
 def test_paper_sha256_deterministic():
     a = M.compute_paper_sha256("hello paper")
     b = M.compute_paper_sha256("hello paper")
@@ -68,6 +80,7 @@ def test_paper_sha256_changes_on_text_change():
 
 
 # ── freeze ──
+
 
 def test_freeze_produces_schema_valid_envelope(validator):
     env = _bare_envelope()
@@ -90,14 +103,19 @@ def test_freeze_produces_schema_valid_envelope(validator):
 def test_freeze_is_deterministic_for_same_input():
     env1 = _bare_envelope()
     env2 = copy.deepcopy(env1)
-    f1 = M.freeze(env1, generator_model="m", prompt="p", paper_text="t", temperature=0.0)
-    f2 = M.freeze(env2, generator_model="m", prompt="p", paper_text="t", temperature=0.0)
+    f1 = M.freeze(
+        env1, generator_model="m", prompt="p", paper_text="t", temperature=0.0
+    )
+    f2 = M.freeze(
+        env2, generator_model="m", prompt="p", paper_text="t", temperature=0.0
+    )
     # rubric_sha256 must match because rubric content + reproduce_contract are
     # identical and the sha excludes generator (which has a wall-clock timestamp).
     assert f1["rubric_sha256"] == f2["rubric_sha256"]
 
 
 # ── verify ──
+
 
 def test_verify_round_trip():
     env = _bare_envelope()
@@ -112,14 +130,15 @@ def test_verify_detects_tampering():
     assert M.verify(frozen) is False
 
 
-def test_verify_ignores_audit_field():
+def test_verify_rejects_post_freeze_mutation():
     env = _bare_envelope()
     frozen = M.freeze(env, generator_model="m", prompt="p", paper_text="t")
-    M.add_audit_metadata(frozen, auditor_model="claude-opus", flags_count=5)
-    assert M.verify(frozen) is True
+    frozen["audit"] = {"legacy": True}
+    assert M.verify(frozen) is False
 
 
 # ── to_paperbench_format ──
+
 
 def test_to_paperbench_strips_metadata():
     env = _bare_envelope()
@@ -136,14 +155,14 @@ def test_to_paperbench_strips_metadata():
     assert len(pb["sub_tasks"]) == 2
 
 
-def test_to_paperbench_strips_rationale_and_flags():
+def test_to_paperbench_strips_v2_leaf_metadata():
     env = _bare_envelope()
-    env["rubric"]["sub_tasks"][0]["flags"] = ["vague_qualifier"]
     frozen = M.freeze(env, generator_model="m", prompt="p", paper_text="t")
     pb = M.to_paperbench_format(frozen)
     leaf = pb["sub_tasks"][0]
     assert "rationale_from_paper" not in leaf
-    assert "flags" not in leaf
+    assert "evidence_span" not in leaf
+    assert "verification" not in leaf
 
 
 def test_to_paperbench_coerces_weight_to_int():
@@ -175,13 +194,3 @@ def test_to_paperbench_recursive():
     pb = M.to_paperbench_format(frozen)
     assert len(pb["sub_tasks"]) == 1
     assert len(pb["sub_tasks"][0]["sub_tasks"]) == 1
-
-
-# ── audit metadata ──
-
-def test_add_audit_metadata():
-    env = _bare_envelope()
-    frozen = M.freeze(env, generator_model="m", prompt="p", paper_text="t")
-    M.add_audit_metadata(frozen, auditor_model="claude-opus-4-7", flags_count=3)
-    assert frozen["audit"]["auditor_model"] == "claude-opus-4-7"
-    assert frozen["audit"]["flags_count"] == 3

@@ -1,0 +1,99 @@
+{
+  "decision": "eligible-for-verified",
+  "gates": [
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:ffaa390c49f399f0cc51f993856c060552cff6499d9f7665c97a937ad9560f77",
+      "gate_id": "manifest_schema",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:11e609d0c532adcfd42d0548e9386ed4e289482f38cd61f6ac4961c6f816a1f6",
+      "gate_id": "source_package_digest_pin",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:1e457d59cf33576f7dba6116d250f9b84f008c4ebc95ce705decaf84fddcd1e7",
+      "gate_id": "live_tools_list_parity",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:64addc96ac94d1179935773ae5c42e8b1367ce8f77f09e649f58c5244cb6f111",
+      "gate_id": "schema_digest_pin",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:a66065c87b34df04e7f15119587f3d3fa80173c8439cc8d4794996f17b858045",
+      "gate_id": "capability_contract_conformance",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:9fff203455485d84ff7b189a4efbb632a25ee67cd25ae7548e226c47e3aaa6e4",
+      "gate_id": "side_effect_declaration",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:8c76de4a546bb834d280949581500b1ab030e75f91b811543efab5997c040527",
+      "gate_id": "credential_scope",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:131442b57c0bcc2c43e1845edb16e9dc7a44fc8157180286b3f389ec3820be99",
+      "gate_id": "environment_allowlist",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:f90e777255e96f7486b8ccbd205433fe004fc68bc1320e62e32678b999592be3",
+      "gate_id": "timeout_cancellation_process_group",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:d9f105b1b5a33df6463e2a93a1bc659bef5b0c676ea9c887f5061ff69562c869",
+      "gate_id": "result_schema",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:314b13932ed43889fc957de0a3f4fa2896c6be82cc7e076d1e9bcebdda72dfb7",
+      "gate_id": "malicious_description_boundary",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:d1f41ebb2f1670b8068f13cff033ace25166ba15ab170dfa25be736d7dd2626b",
+      "gate_id": "workspace_isolation",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:b226da069f1e3f9ab7115b291e88521c7ec8dd17b0f892ad7fd7a6c6459c78fd",
+      "gate_id": "revocation_behavior",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:24ba6671fadcb33cb103960a8858469cb509e100771107da856f8fbe9400e362",
+      "gate_id": "schema_drift_detection",
+      "passed": true
+    },
+    {
+      "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
+      "evidence_digest": "sha256:38cccc5faa9d1e0a5ed1ffc437038aa18b5563b17dcb12a8024a2f2b5b9b0080",
+      "gate_id": "unbound_invocation_rejection",
+      "passed": true
+    }
+  ],
+  "manifest_sha256": "sha256:b0d06dc0b60237a36deca0fa97bcbf14ea2f98002cc1ce3511016d8fc11c0c51",
+  "provider_id": "openroad-mcp",
+  "report_digest": "sha256:d9c883f1cd4b0c1002f4e7c4cd20efbc27d78db00b458d63afe1e7aeda99e5e1",
+  "schema_version": "ari.capability-provider-registration-report/v1"
+}

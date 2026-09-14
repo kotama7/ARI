@@ -1,0 +1,33 @@
+{
+  "metrics": [
+    {
+      "corner": "typical",
+      "expected_max": 0.0,
+      "expected_min": 0.0,
+      "metric_id": "route-drc-errors",
+      "mode": "functional",
+      "stage": "routing",
+      "unit": "count"
+    },
+    {
+      "corner": "typical",
+      "expected_max": 3700.0,
+      "expected_min": 3500.0,
+      "metric_id": "route-wirelength",
+      "mode": "functional",
+      "stage": "routing",
+      "unit": "um"
+    },
+    {
+      "corner": "typical",
+      "expected_max": 3500.0,
+      "expected_min": 3200.0,
+      "metric_id": "route-vias",
+      "mode": "functional",
+      "stage": "routing",
+      "unit": "count"
+    }
+  ],
+  "profile_id": "gcd-nangate45-26q3",
+  "schema_version": "ari.openroad-golden/v1"
+}

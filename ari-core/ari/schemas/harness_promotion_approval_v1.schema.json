@@ -1,0 +1,93 @@
+{
+  "$id": "https://ari.dev/schemas/harness-promotion-approval-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Human/admin authorization for one exact verified Harness manifest.",
+  "properties": {
+    "actor_id": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Actor Id",
+      "type": "string"
+    },
+    "actor_kind": {
+      "enum": [
+        "human-maintainer",
+        "authenticated-admin-cli"
+      ],
+      "title": "Actor Kind",
+      "type": "string"
+    },
+    "approval_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Approval Digest",
+      "type": "string"
+    },
+    "approved_date": {
+      "maxLength": 64,
+      "minLength": 10,
+      "title": "Approved Date",
+      "type": "string"
+    },
+    "authorization_basis": {
+      "maxLength": 1024,
+      "minLength": 1,
+      "title": "Authorization Basis",
+      "type": "string"
+    },
+    "evidence_bundle_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Bundle Digest",
+      "type": "string"
+    },
+    "from_status": {
+      "const": "candidate",
+      "default": "candidate",
+      "title": "From Status",
+      "type": "string"
+    },
+    "harness_id": {
+      "title": "Harness Id",
+      "type": "string"
+    },
+    "harness_manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Harness Manifest Digest",
+      "type": "string"
+    },
+    "harness_version": {
+      "title": "Harness Version",
+      "type": "string"
+    },
+    "registration_report_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Registration Report Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.harness-promotion-approval/v1",
+      "default": "ari.harness-promotion-approval/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "to_status": {
+      "const": "verified",
+      "default": "verified",
+      "title": "To Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "harness_id",
+    "harness_version",
+    "actor_kind",
+    "actor_id",
+    "authorization_basis",
+    "approved_date",
+    "harness_manifest_digest",
+    "registration_report_digest",
+    "evidence_bundle_digest",
+    "approval_digest"
+  ],
+  "title": "ARI Harness Promotion Approval v1",
+  "type": "object"
+}

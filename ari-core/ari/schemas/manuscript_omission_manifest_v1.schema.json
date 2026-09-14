@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "OmissionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "creates_readiness_failure": {
+          "default": false,
+          "title": "Creates Readiness Failure",
+          "type": "boolean"
+        },
+        "detail": {
+          "default": "",
+          "title": "Detail",
+          "type": "string"
+        },
+        "item_id": {
+          "title": "Item Id",
+          "type": "string"
+        },
+        "projection": {
+          "title": "Projection",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "budget_exceeded",
+            "not_relevant_by_profile",
+            "duplicate",
+            "missing_on_disk",
+            "digest_mismatch",
+            "parse_failure",
+            "stale",
+            "policy_excluded",
+            "unsafe_path"
+          ],
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "reason",
+        "projection"
+      ],
+      "title": "OmissionV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "included_item_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 200000,
+      "title": "Included Item Ids",
+      "type": "array"
+    },
+    "inventory_item_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 200000,
+      "title": "Inventory Item Ids",
+      "type": "array"
+    },
+    "manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Manifest Digest",
+      "type": "string"
+    },
+    "omissions": {
+      "items": {
+        "$ref": "#/$defs/OmissionV1"
+      },
+      "maxItems": 200000,
+      "title": "Omissions",
+      "type": "array"
+    },
+    "projection": {
+      "title": "Projection",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-omission-manifest/v1",
+      "default": "ari.manuscript-omission-manifest/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Snapshot Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source_snapshot_digest",
+    "projection",
+    "manifest_digest"
+  ],
+  "title": "OmissionManifestV1",
+  "type": "object"
+}

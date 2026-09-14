@@ -1,0 +1,11 @@
+{
+  "attempt_id": "mca-67e5042a0db556d3-6639e048",
+  "authoring_binding_digest": "sha256:536b6edd8799994a0e249ae8a0e8aad6b2d438009ecea7677210a7c9448605b5",
+  "decision_digest": "sha256:dd11b31dddf2888713703b16a59df9d947d9199114f4cb7f263bb00784059273",
+  "freshness_verified": true,
+  "lock_digest": "sha256:e579b936148b64393300f3586acfeae2c7e0268f7af712d551ee42409f1b99fe",
+  "paper_build_digest": "sha256:4d4deeaa87c5eead8d4d215e8505597a2a1f68db8895077c342345a09370179e",
+  "pdf_digest": "sha256:8899dec630298e50a79514ed553d7c6b6812502e84e1ea9aab5015a9775d2fc1",
+  "run_id": "native-certify-publication-e2e",
+  "schema_version": "ari.manuscript-publication-lock/v1"
+}

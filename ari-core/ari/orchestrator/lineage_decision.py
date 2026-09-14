@@ -424,6 +424,13 @@ def _node_metric(node: Any, key: str) -> Any:
     return metrics.get(key)
 
 
+def _node_valid(node: Any) -> bool:
+    """RQGM selective erasure: ``_valid_for_frontier is False`` nodes must
+    not feed lineage decisions (their scores were produced under a retired
+    policy/prompt). Key absent ⇒ valid — inert outside RQGM."""
+    return _node_metric(node, "_valid_for_frontier") is not False
+
+
 def build_lineage_state(
     *,
     all_nodes: list,
@@ -453,6 +460,8 @@ def build_lineage_state(
     recent_descs: list[dict] = []
     _label_seen: dict[str, int] = {}
     for n in all_nodes[-10:]:
+        if not _node_valid(n):
+            continue
         s = _node_metric(n, "_scientific_score")
         if not isinstance(s, (int, float)):
             continue
@@ -478,6 +487,8 @@ def build_lineage_state(
 
     best_axes: dict[str, float] = {}
     for n in all_nodes:
+        if not _node_valid(n):
+            continue
         ax = _node_metric(n, "_axis_scores") or {}
         if not isinstance(ax, dict):
             continue

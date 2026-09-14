@@ -7,6 +7,7 @@
 // tunnel without the extra port), polling in AppContext still covers updates.
 
 import { useEffect, useRef, useState } from 'react';
+import { withTokenParam } from '../services/api/client';
 import type { TreeNode } from '../types';
 
 interface TreeMessage {
@@ -40,7 +41,10 @@ export function useWebSocket(): { nodesData: TreeNode[]; connected: boolean } {
         10,
       );
       const wsPort = httpPort + 1;
-      const url = `${proto}//${host}:${wsPort}/`;
+      // MN-8 (ADR-13): the browser WebSocket API cannot set headers, so the
+      // remote-mode token rides the query string; no-op in the loopback
+      // default (no token configured).
+      const url = withTokenParam(`${proto}//${host}:${wsPort}/`);
 
       let ws: WebSocket;
       try {

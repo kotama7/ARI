@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly expected_image_sha256="b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c"
+readonly runtime_dir="$(cd -- "$(dirname -- "$0")" && pwd -P)"
+readonly image_path="${runtime_dir}/openroad-orfs-26q3.sif"
+
+if [[ ! -f "${image_path}" || -L "${image_path}" ]]; then
+  echo "pinned OpenROAD ORFS image is not materialized" >&2
+  exit 78
+fi
+actual_image_sha256="$(/usr/bin/sha256sum -- "${image_path}")"
+actual_image_sha256="${actual_image_sha256%% *}"
+if [[ "${actual_image_sha256}" != "${expected_image_sha256}" ]]; then
+  echo "pinned OpenROAD ORFS image digest mismatch" >&2
+  exit 78
+fi
+if [[ "${PWD}" == *:* || "${PWD}" == *$'\n'* || "${PWD}" == *$'\r'* ]]; then
+  echo "OpenROAD workspace path is not inert" >&2
+  exit 78
+fi
+
+exec /usr/bin/singularity exec \
+  --containall \
+  --cleanenv \
+  --net \
+  --network none \
+  --pwd "${PWD}" \
+  --bind "${PWD}:${PWD}" \
+  "${image_path}" \
+  /OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad \
+  "$@"

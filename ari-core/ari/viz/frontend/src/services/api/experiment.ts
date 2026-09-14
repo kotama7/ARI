@@ -8,8 +8,12 @@ export async function runStage(
   return post('/api/run-stage', { stage });
 }
 
-export async function stopExperiment(): Promise<any> {
-  return post('/api/stop');
+// MN-6 (RR-P0-6/RR-P0-9): stopping is two-step — request a confirmation
+// challenge for action 'stop-all' + target '*' first (see ./challenges),
+// then pass its challenge_id here. Without a valid unexpired single-use
+// challenge the server refuses with HTTP 428.
+export async function stopExperiment(challengeId: string): Promise<any> {
+  return post('/api/stop', { challenge_id: challengeId });
 }
 
 export async function launchExperiment(

@@ -79,8 +79,8 @@ class Rubric:
     score_dimensions: list[ScoreDimension]
     text_sections: list[TextSection]
     decision: Decision
-    system_hint: str = ""    # reviewer-side framing (used by review_engine)
-    author_hint: str = ""    # author-side framing (used by paper-writing)
+    system_hint: str = ""  # reviewer-side framing (used by review_engine)
+    author_hint: str = ""  # author-side framing (used by paper-writing)
     description: str = ""
     source_path: str = ""
     hash: str = ""
@@ -155,13 +155,9 @@ def _find_rubric_file(rubric_id: str) -> Path:
 def _parse_rubric(data: dict, source_path: Path) -> Rubric:
     if not isinstance(data, dict):
         raise RubricError(f"Rubric root must be a mapping ({source_path})")
-    missing = [
-        k for k in ("id", "venue", "score_dimensions") if k not in data
-    ]
+    missing = [k for k in ("id", "venue", "score_dimensions") if k not in data]
     if missing:
-        raise RubricError(
-            f"Rubric {source_path.name} missing required keys: {missing}"
-        )
+        raise RubricError(f"Rubric {source_path.name} missing required keys: {missing}")
 
     # Score dimensions
     dims: list[ScoreDimension] = []
@@ -245,19 +241,14 @@ def _parse_rubric(data: dict, source_path: Path) -> Rubric:
             f"(got {params.fewshot_mode!r})"
         )
     if params.num_reviews_ensemble < 1:
-        raise RubricError(
-            f"Rubric {data['id']}: num_reviews_ensemble must be >= 1"
-        )
+        raise RubricError(f"Rubric {data['id']}: num_reviews_ensemble must be >= 1")
     if params.num_reflections < 0:
-        raise RubricError(
-            f"Rubric {data['id']}: num_reflections must be >= 0"
-        )
+        raise RubricError(f"Rubric {data['id']}: num_reflections must be >= 0")
 
     # Prompt overrides — both reviewer-side (system_hint) and author-side
     # (author_hint) live under the same prompt_overrides block. Reviewer
-    # hint is injected by review_engine.py; author hint is injected by
-    # server.py::generate_section so paper drafting is venue-conditioned
-    # at the same strength as peer review.
+    # hint is injected by review_engine.py; author hint is injected by the
+    # whole-document writer so drafting and review use the same venue contract.
     overrides = data.get("prompt_overrides", {}) or {}
     system_hint = str(overrides.get("system_hint", "") or "")
     author_hint = str(overrides.get("author_hint", "") or "")

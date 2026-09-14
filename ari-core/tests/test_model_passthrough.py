@@ -114,6 +114,23 @@ class TestSettingsToEnv:
             launch_body={"experiment_md": "test"})
         assert env.get("ARI_BACKEND") == "openai"
 
+    def test_gui_evaluator_model_routes_to_independent_skill_policies(
+        self, setup_state, monkeypatch
+    ):
+        env = _capture_launch_env(
+            setup_state,
+            monkeypatch,
+            settings_dict={
+                "llm_model": "gpt-5.4",
+                "llm_provider": "openai",
+                "model_eval": "review-model/revision",
+            },
+            launch_body={"experiment_md": "test"},
+        )
+        assert env["ARI_MODEL_EVAL"] == "review-model/revision"
+        assert env["ARI_MODEL_METRIC_PROPOSAL"] == "review-model/revision"
+        assert env["ARI_MODEL_SEMANTIC_REVIEW"] == "review-model/revision"
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 2. Wizard → ARI_MODEL / ARI_BACKEND (overrides settings)
@@ -165,11 +182,13 @@ class TestWizardOverride:
 class TestApiKeyInjection:
     def test_key_present_after_launch(self, setup_state, monkeypatch):
         """OPENAI_API_KEY must be set after launch (from settings or .env)."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        fake_key = "sk-openai-" + "x" * 40
         env = _capture_launch_env(setup_state, monkeypatch,
             settings_dict={"llm_model": "gpt-4o", "llm_provider": "openai",
-                           "api_key": "sk-settings-key"},
+                           "api_key": fake_key},
             launch_body={"experiment_md": "test"})
-        assert env.get("OPENAI_API_KEY"), "OPENAI_API_KEY not set at all"
+        assert env.get("OPENAI_API_KEY") == fake_key
 
     def test_anthropic_key_injected_when_env_empty(self, setup_state, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -557,29 +576,73 @@ class TestSettingsModelListStatic:
     """Verify that the React Settings model dropdown is populated dynamically
     per provider, not hardcoded with a mixed list."""
 
+    def test_served_models_carry_the_prefix_their_provider_routes_on(self):
+        """Gemini and Ollama ids must be prefixed, because litellm routes on it.
+
+        These model strings are handed to litellm, which reads the provider off
+        the prefix. A bare `gemini-2.5-pro` is not "the same id, tidier": it
+        resolves to *vertex_ai*, a different backend needing GCP project
+        credentials instead of GOOGLE_API_KEY. A bare `qwen3:8b` resolves to no
+        provider at all and raises `LLM Provider NOT provided`. Both shipped in
+        the Wizard's ORS picker, labelled Google and Ollama, until this rule
+        existed. OpenAI and Anthropic ids route bare, so they are not covered.
+        """
+        from ari.viz.checkpoint_api import _api_models
+
+        served = {p["id"]: p["models"] for p in _api_models()["providers"]}
+        for prov in ("gemini", "ollama"):
+            assert prov in served, f"served catalog is missing {prov!r}"
+            unprefixed = [m for m in served[prov] if "/" not in m]
+            assert not unprefixed, (
+                f"{prov} models {unprefixed} carry no provider prefix; litellm "
+                f"would route them somewhere other than {prov}"
+            )
+
+    def test_ors_default_models_are_all_in_the_served_catalog(self):
+        """The ORS pickers render the catalog, so their defaults must be in it.
+
+        A default the catalog does not list drops its picker into free-text
+        mode on open -- the operator sees a text box where a chosen model was
+        supposed to be, and no dropdown entry matching what is configured.
+        """
+        from ari.viz.api_settings import _api_get_settings
+        from ari.viz.checkpoint_api import _api_models
+
+        served = {m for p in _api_models()["providers"] for m in p["models"]}
+        ors = _api_get_settings()["ors"]
+        for field in (
+            "replicator_model",
+            "rubric_gen_model",
+            "rubric_audit_model",
+            "judge_model",
+        ):
+            assert ors[field] in served, (
+                f"ORS default {field}={ors[field]!r} is not in the served "
+                f"catalog, so its picker opens in custom mode"
+            )
+
     def test_provider_models_dict_has_no_cross_contamination(self):
-        """PROVIDER_MODELS in React must not have ollama models under openai, etc."""
-        src = _settings_src()
-        import re
-        m = re.search(r'const PROVIDER_MODELS.*?=\s*\{(.*?)\};', src, re.DOTALL)
-        assert m is not None, "PROVIDER_MODELS not found"
-        block = m.group(1)
+        """No provider's model list may carry another provider's models.
 
-        # Extract openai line
-        openai_m = re.search(r"openai:\s*\[([^\]]*)\]", block)
-        if openai_m:
-            openai_models = openai_m.group(1)
-            for bad in ["qwen", "llama", "gemma", "mistral"]:
-                assert bad not in openai_models.lower(), \
-                    f"'{bad}' found in PROVIDER_MODELS.openai: {openai_models}"
+        Checked on the served catalog, which the Settings page now renders --
+        the React table this used to scan is gone. `if openai_m:` also meant
+        the whole check evaporated the moment the regex stopped matching, so
+        the served lists are looked up by id and their absence is a failure.
+        """
+        from ari.viz.checkpoint_api import _api_models
 
-        # Extract anthropic line
-        anth_m = re.search(r"anthropic:\s*\[([^\]]*)\]", block)
-        if anth_m:
-            anth_models = anth_m.group(1)
-            for bad in ["gpt", "qwen", "llama", "gemma", "mistral"]:
-                assert bad not in anth_models.lower(), \
-                    f"'{bad}' found in PROVIDER_MODELS.anthropic: {anth_models}"
+        served = {p["id"]: p["models"] for p in _api_models()["providers"]}
+        foreign = {
+            "openai": ["qwen", "llama", "gemma", "mistral", "claude"],
+            "anthropic": ["gpt", "qwen", "llama", "gemma", "mistral"],
+            "claude_code": ["gpt", "qwen", "llama", "gemma", "mistral"],
+        }
+        for prov, bad_names in foreign.items():
+            assert prov in served, f"served catalog is missing {prov!r}"
+            blob = " ".join(served[prov]).lower()
+            for bad in bad_names:
+                assert bad not in blob, \
+                    f"{bad!r} found in the served {prov} models: {served[prov]}"
 
     def test_custom_entry_option_in_settings(self):
         """SettingsPage must include __custom__ option in dropdown."""

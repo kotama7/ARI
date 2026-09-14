@@ -1,9 +1,21 @@
 ---
 sources:
-  - path: ari-skill-hpc/src/server.py
+  - path: ari-skill-hpc/ari_skill_hpc/server.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/contracts.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/scheduler.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/slurm.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/counters.py
     role: implementation
   - path: ari-skill-hpc/mcp.json
     role: config
+  - path: ari-skill-hpc/skill.yaml
+    role: config
+  - path: ari-skill-hpc/tests/test_server.py
+    role: test
   - path: ari-skill-coding/src/server.py
     role: implementation
   - path: ari-skill-coding/mcp.json
@@ -12,76 +24,347 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-06-10
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+  - path: ari-skill-benchmark/src/server.py
+    role: implementation
+  - path: ari-skill-evaluator/src/server.py
+    role: implementation
+  - path: ari-skill-memory/src/server.py
+    role: implementation
+  - path: ari-skill-orchestrator/src/server.py
+    role: implementation
+  - path: ari-skill-paper/src/server.py
+    role: implementation
+  - path: ari-skill-plot/src/server.py
+    role: implementation
+  - path: ari-skill-replicate/src/server.py
+    role: implementation
+  - path: ari-skill-transform/src/server.py
+    role: implementation
+  - path: ari-skill-vlm/src/server.py
+    role: implementation
+  - path: ari-skill-web/src/server.py
+    role: implementation
+last_verified: 2026-08-17
 ---
 
-# MCP 技能参考
+# Capability Provider 包（`ari-skill-*` 为兼容名称）
 
-技能是为 ARI 智能体提供工具的 MCP 服务器。工具尽可能保持确定性；使用 LLM 的工具会明确标注。**共 14 个技能**（13 个默认，1 个附加）。v0.7.0 新增 `ari-skill-replicate`，用于 PaperBench 形式的可复现性流程。
+历史上被称为「Skills」的这些包，是通过 MCP 连接的可执行 **Capability Provider**，
+不是 Knowledge Skill。MCP 是 Provider 的 transport / discovery protocol，本页列出的
+每个工具都是 Provider 的一个原子 operation。工具尽可能保持确定性，使用 LLM 的
+operation 会明确标注。磁盘上的 `skill.yaml`、`SkillManifestV1` 与 `SKILLS.lock`
+仍是 Provider manifest 与 run snapshot 的兼容名称；不存在并行的 `provider.yaml`
+或 `PROVIDERS.lock`。
+
+不可执行的 Knowledge Skill 与独立的 Harness 记录在
+[Knowledge、Capability 与 Scientific Assurance](knowledge_capability_assurance.md)。
+默认关闭的 `ari-skill-knowledge` 与 `ari-skill-harness` 只暴露 read / query 以及
+非权威的 request operation，两者都不授予目录管理权限，也不授予固定解析权限。这两个
+连同 `ari-skill-tool-registry` 在本页没有叙述章节——它们的工具清单见
+[mcp_tools.md](mcp_tools.md)，registry 的目录 identity 与 provider adapter 见
+[tool_registry.md](tool_registry.md)。
+
+本页覆盖 **14 个包**——`ari-core/config/workflow.yaml` 的 `skills:` 默认注册的 13 个，
+加上作为独立进程为外部客户端启动的 `ari-skill-orchestrator`。v0.7.0 新增
+`ari-skill-replicate`，用于 PaperBench 形式的可复现性流程。
 
 ## ari-skill-hpc
 
-通过 SLURM 和 Singularity 进行 HPC 作业管理。**LLM：否**（完全确定性）。
+typed 的 SLURM 生命周期、严格的 SSH transport、能力探测，以及 digest 钉定的容器。
+**LLM：否**（完全确定性）。
+
+十个工具分三组：两个 typed 提交器（`job_submit`、`container_submit`）与保留下来的
+批处理脚本兼容桥（`slurm_submit`）；四个共用同一份句柄选择器的生命周期操作
+（`job_status`、`job_result`、`job_logs`、`job_cancel`）；以及三个探测器
+（`probe_platform_capabilities`、`counter_support`、`measure_counters`）。是否以容器
+运行由请求所携带的 digest 钉定 `ContainerRequestV1` 决定，而不取决于选用哪个工具：
+`container_submit` 只是把该字段设为必填的同一次提交，而声明了完全相同输入 schema 的
+`job_submit` 同样接受带容器声明的请求并走完全相同的路径执行，只是不强制要求。本包
+不提供任何镜像的构建、拉取或运行命令。
 
 ### 工具
 
-#### `slurm_submit(script, job_name, partition, nodes=1, walltime="01:00:00", work_dir)`
+#### `job_submit(request)`
+
+提交一份不可变的 `JobRequestV1`，并立即返回幂等的 `JobHandleV1`。命令是 `argv`
+数组，绝不经过登录节点的 shell。工具只接受一个 `request` 对象——`JobSubmitArgumentsV1`
+这层包装的存在，是为了把 JSON Schema 的全部 `$ref` 都收在输入 schema 的根上。
+必填项为 `request_id` / `job_name` / `work_dir`（已存在、且不是符号链接的绝对目录）/
+`argv` / `resources`，可选项为 `environment` / `container` /
+`accelerator_allocation` / `inputs` / `outputs` / `metadata`。
+
+`resources`（`ResourceRequestV1`）声明 `partition`、`nodes=1`、`tasks=1`、
+`tasks_per_node=None`、`cpus_per_task=1`、`walltime="01:00:00"`，以及与
+`slurm_submit` 同名的 `launcher`（`auto` / `srun` / `none`，默认 `auto`）；
+`memory_mb_per_node` / `memory_mb_per_cpu` / `gpus_per_node` / `gpus_per_task` /
+`gpu_type` / `nodelist` / `exclude_nodes` / `exclusive` / `constraint` / `hint` /
+`account` / `qos` / `reservation` 也在这里给出。
+
+`environment`（`EnvironmentPolicyV1`）的 `export_mode` 固定为 `NIL`：作业环境
+只包含此处显式列出的非机密字面量与 `modules`，名字看起来像凭据的变量
+（`*_TOKEN`、`*_PASSWORD`、`*_API_KEY` 等）会被直接拒绝，无法藏进作业请求里。
+
+提交按请求 digest 幂等。请求由 `request_digest`（其正规化 JSON 的 sha256）标识，
+而这个 digest 在 `sbatch` 之前就已记进持久 ledger：同一份 `JobRequestV1` 再次提交
+拿回的是既有的 `JobHandleV1`，而不是第二个作业；transport 在结果未知时断掉，占位
+也照样留着，重试因此不会变成重复投入。`sbatch` 始终以 `--parsable --export=NIL`
+调用。
+
+`inputs` 的每一份 pin 都必须在提交时对上声明的 sha256 与字节数，并在负载启动前于
+节点上再核对一次；声明的 `outputs` 必须落在 `work_dir` 之下，符号链接一律拒绝。
+每个作业的产物放在 `{work_dir}/.ari-hpc/{去掉 sha256: 前缀的 request_digest}/`
+下，这就是句柄的 `artifact_scope`。
+
+core 智能体的批处理脚本工作流仍走下面的 `slurm_submit` 兼容桥；新的程序化
+调用方应使用 `job_submit`。
+
+```python
+result = job_submit(request={
+    "request_id": "bench_001",
+    "job_name": "bench_test",
+    "work_dir": "/abs/path/to/workdir",
+    "argv": ["./bench", "--threads", "32"],
+    "resources": {"partition": "your_partition", "cpus_per_task": 32},
+})
+# Returns: {"schema_version": "ari.hpc.job-handle/v1", "handle_id": "hpc-...",
+#           "request_digest": "sha256:...", "job_id": "12345",
+#           "state": "submitted", ...}
+```
+
+#### `container_submit(request)`
+
+与 `job_submit` 完全相同的生命周期、完全相同的参数 schema，但请求必须自带
+`container` 声明，缺了就以 validation 错误拒绝提交。容器（`ContainerRequestV1`）的
+`runtime` 为 `apptainer`（默认）或 `singularity`，`image` 是一份 `ArtifactPinV1`
+——即 digest 钉定的镜像（绝对路径 + `sha256:…` + 字节数）。默认 `contain_all` 与
+`clean_environment` 为 `true`、`network` 为 `host`、`gpu` 为 `false`；`binds` 默认
+只读，且 target 不得重复。
+
+镜像按 digest 钉定，因此字节被换掉的镜像在作业开跑前会被核对拒绝，上了节点还会
+再核对一次。声明了容器时，`inputs` 的每一份 pin 还必须落在 `work_dir` 或某个已声明
+的 bind 之下；`work_dir` 本身若未被请求声明，会以读写方式 bind 挂载进去。
+
+#### `slurm_submit(script, job_name, partition, nodes=1, tasks=1, tasks_per_node=None, cpus_per_task=1, launcher="auto", walltime="01:00:00", work_dir, modules=[])`
 
 提交 SLURM 批处理作业。
+
+**仅仅申请多个节点，本身并不会用到多个节点。** 批处理主体只在第一个节点上运行；
+除非有什么东西启动并行步骤，其余节点都处于空闲。由谁来启动，由 `launcher` 决定：
+
+| `launcher` | 脚本的启动方式 | 适用场景 |
+|---|---|---|
+| `auto`（默认） | 完全按写法原样启动 | 脚本自己调用 `srun` / `mpirun`，或本身是串行的 |
+| `srun` | 按声明的 `nodes` / `tasks` / `cpus_per_task`（若已声明还包括 `--ntasks-per-node`）以 `srun` 启动 `bash -c <script>` | 脚本本身就是并行程序（MPI / SPMD） |
+| `none` | 完全按写法原样启动 | 负载必须看到未经改动的批处理步骤 |
+
+因此在这里 `auto` 与 `none` 抵达节点的方式完全一致：bridge 的主体是一段脚本，
+只有 `srun` 会对它加包装。`auto` 所做的 CPU 绑定属于 typed 的 `job_submit` /
+`container_submit` 路径——那里的负载是 `argv`，单节点单任务的请求会以
+`srun --ntasks=1 --cpus-per-task=N` 启动。之所以要这样绑定，是因为批处理步骤会
+继承整个节点的 affinity mask：否则多线程负载会散布到整台机器上，甚至可能输给
+它自己的串行基线，读起来像是 kernel 慢，而不是 allocation 未绑定。
+
+**不要**把 `launcher="srun"` 与你自己的 launcher 叠加：
+`srun --ntasks=8 mpirun -np 8 ./x` 是六十四个 rank，而下游没有任何环节能把它与
+一次正确的 run 区分开。这正是该选择必须显式声明、而不是从 `tasks > 1` 推断的
+原因——这两类多任务请求对 scheduler 来说无法区分。
+
+启动模式与 allocation 形状都属于请求 digest，因此同一个脚本在不同形状或不同
+launcher 下提交是另一个作业，而不是对第一次提交的 cache hit。
 
 ```python
 result = slurm_submit(
     script="""
 #!/bin/bash
-#SBATCH --cpus-per-task=32
 gcc -O3 -fopenmp -o ./bench ./bench.c
 OMP_NUM_THREADS=32 ./bench
 """,
     job_name="bench_test",
     partition="your_partition",
+    cpus_per_task=32,
     work_dir="/abs/path/to/workdir"
 )
-# Returns: {"job_id": "12345", "status": "submitted"}
+# Returns: {"schema_version": "ari.hpc.job-handle/v1", "handle_id": "hpc-...",
+#           "job_id": "12345", "state": "submitted", "status": "submitted",
+#           "message": "Job 12345 submitted successfully",
+#           "request_digest": "sha256:...", "submission_digest": "sha256:..."}
 ```
 
 **注意事项：**
-- `--account` 和 `-A` 头信息会被静默移除（在此集群上无效）
-- 空的 `job_id` 会立即返回错误
-- 脚本中不要使用 `~`（在 SBATCH 中不会展开）
+- 写在 `script` 里的 `#SBATCH` 指示行不起作用。生成的头部之后紧接着就是可执行
+  内容，`sbatch` 在读到脚本主体之前就已停止解析指示行——形状要用参数
+  （`nodes`、`tasks`、`cpus_per_task`、`walltime`）来声明
+- 被拒绝的提交不会抛异常，而是返回
+  `{"job_id": "", "status": "error", "message": ..., "partition": ...}`
+- 脚本主体在 `set -euo pipefail` 下运行，`PATH=/usr/local/bin:/usr/bin:/bin`、
+  `LANG` / `LC_ALL=C.UTF-8`，并 unset 掉 `BASH_ENV ENV CDPATH GLOBIGNORE
+  PYTHONHOME PYTHONPATH VIRTUAL_ENV`：提交端 shell 的任何东西都不会被继承，
+  所以请写绝对路径，并通过 `modules` 取用工具链
 
-#### `job_status(job_id)`
+#### `job_status(handle_id)`
 
-轮询 SLURM 作业状态。
+对一个 ARI 句柄或一个原始 SLURM 作业 ID，返回与供应商无关的 `JobStatusV1`。
+
+`job_status` / `job_result` / `job_logs` / `job_cancel` 共用同一份选择器 schema：
+`handle_id`（`JobHandleV1` 的句柄 ID，首选）与 `job_id`（原始 SLURM 作业 ID，
+遗留兼容）二选一。“恰好一个”写在 schema 的 description 里，由服务端的 `_selector`
+强制执行，**并非**顶层 `oneOf`：OpenAI 的 function-calling schema 子集会拒绝带
+`oneOf` 的工具，那会让这四个工具都无法被 advertise。两个都不给会被拒绝；实现优先读
+`handle_id`，所以两个都给时按句柄解析。
+既不是已知句柄、也不是纯数字 SLURM ID 的选择器是 validation 错误。
+
+状态取自 `sacct -j <id> --noheader --parsable2 --allocations
+--format=JobID,State,ExitCode,Start,End,Reason`；accounting 尚无记录时回退到
+`squeue -j <id> --noheader --format=%T|%R`。
 
 ```python
-result = job_status("12345")
-# Returns: {"status": "COMPLETED", "exit_code": 0, "stdout": "MFLOPS: 284172"}
-# 状态值：PENDING、RUNNING、COMPLETED、FAILED、ERROR
+result = job_status(handle_id="hpc-...")
+# Returns: {"schema_version": "ari.hpc.job-status/v1", "handle_id": "hpc-...",
+#           "job_id": "12345", "state": "succeeded",
+#           "scheduler_state": "COMPLETED", "exit_code": 0,
+#           "start_time": ..., "end_time": ..., "reason": None}
 ```
 
-#### `job_cancel(job_id)`
+`state` 是归一化后、与供应商无关的值——`submitted` / `running` / `succeeded` /
+`failed` / `cancelled` / `unknown` 之一——而 `scheduler_state` 保留 SLURM 自己的
+措辞。`PENDING` / `CONFIGURING` / `REQUEUED` / `RESIZING` / `SPECIAL_EXIT` 归一
+为 `submitted`；`RUNNING` / `COMPLETING` / `SUSPENDED` / `STAGE_OUT` 归一为
+`running`；`COMPLETED` 归一为 `succeeded`；`CANCELLED`（两种拼法）/ `DEADLINE` /
+`REVOKED` 归一为 `cancelled`；`BOOT_FAIL` / `FAILED` / `NODE_FAIL` /
+`OUT_OF_MEMORY` / `PREEMPTED` / `TIMEOUT` 归一为 `failed`。scheduler 不肯作答的
+作业读作 `state: "unknown"`、`scheduler_state: "UNKNOWN"`——那是被记录下来的
+「没有证据」，不是错误。
 
-取消正在运行或等待的 SLURM 作业。
+没有 `ERROR` 这个状态。调用失败返回的是错误信封
+`{"error": {"kind": ..., "message": ..., "retryable": ...}}`，其中 `kind` 取
+`validation` / `transport` / `scheduler` / `unknown`；message 在离开工具前会先被
+清洗掉形似凭据的文本。
 
-#### `singularity_build(definition_file, output_path, partition)`
+#### `job_result(handle_id)`
 
-从定义文件构建 Singularity 容器。
+收集终态的 `JobResultV1`：重新哈希声明的 inputs / outputs 与日志，并把结果原子
+写入 `{artifact_scope}/result-v1.json`。选择器与 `job_status` 相同。
 
-#### `singularity_run(image_path, command, work_dir, partition, nodes=1, walltime="01:00:00")`
+作业必须是经 ARI 投入的（要有 ledger 记录和句柄），并且带 typed 请求：
+`slurm_submit` 兼容桥投入的作业能取到 status 与 logs，但取不到 typed 的
+`JobResultV1`。在作业进入终态（`succeeded` / `failed` / `cancelled`）之前调用是
+validation 错误。
 
-作为 SLURM 作业运行 Singularity 容器。
+声明的每一份 input 按其 pin 重新验证，声明的每一份 output 从磁盘上的实际文件重新
+哈希成 `ArtifactPinV1`，日志与 provenance pin 一并附上——submission record、执行
+环境快照、module 清单、容器 runtime 版本、退出码，以及请求声明了独占分配时的
+exclusive-allocation 与 accelerator-inventory 见证。缺少 `required: true` 的 output
+不是异常，而是以 `error.kind = "artifact"` 落进结果里。以任何非 `succeeded` 终态
+结束的作业得到 `error.kind = "execution"`，其中 `NODE_FAIL` / `PREEMPTED` /
+`REQUEUED` 标记为 `retryable`。
 
-#### `singularity_pull(source, output_path, partition)`
+返回值带 `request_digest` / `environment_digest` / `module_digest`，以及存在时的
+`module_snapshot_digest` / `container_digest` / `accelerator_allocation_digest` /
+`accelerator_inventory_digest`，最后由覆盖其余部分的 `result_digest` 把整份结果
+封口。
 
-从远程仓库拉取 Singularity 镜像。
+#### `job_logs(handle_id)`
 
-#### `singularity_build_fakeroot(definition_content, output_path, partition, walltime)`
+读取 ARI 作业句柄的有界、带 digest 的 stdout / stderr。选择器与 `job_status`
+相同，同样只对经 ARI 投入的作业可用。
 
-使用 fakeroot 模式构建 Singularity 容器。
+```python
+result = job_logs(handle_id="hpc-...")
+# Returns: {"schema_version": "ari.hpc.job-logs/v1", "logs": [...]}
+```
 
-#### `singularity_run_gpu(image_path, command, work_dir, partition, gres="gpu:1", cpus_per_task=8, walltime="01:00:00", bind_paths=[])`
+每条日志给出 `stream`（`stdout` / `stderr`）/ `path` / `digest` / `size_bytes` /
+`text` / `truncated`。`text` 在 1 MiB（1,048,576 字节）处打住并置
+`truncated: true`——截断是看得见的，不会被当成完整输出。`digest` 与 `size_bytes`
+在共享文件系统上直接读取日志时是对整个文件而言的；若走的是非共享的 transport，
+日志经该 transport 取回，`digest` 与 `size_bytes` 便也只覆盖同样这 1 MiB。
+日志从句柄 `artifact_scope` 下的 `slurm-{job_id}.out` / `.err` 读取；
+没有对应文件的那一路直接略去，而共享文件系统上日志必须是普通文件，符号链接会被
+拒绝。
 
-使用 GPU 访问运行 Singularity 容器（`--nv` 标志）。
+#### `job_cancel(handle_id)`
+
+请求取消一个 ARI 或 SLURM 作业。选择器与 `job_status` 相同，内部执行
+`scancel <job_id>`。
+
+```python
+result = job_cancel(handle_id="hpc-...")
+# Returns: {"schema_version": "ari.hpc.job-cancel/v1", "handle_id": "hpc-...",
+#           "job_id": "12345", "status": "cancel_requested"}
+```
+
+名字是精确的：返回的是 `scancel` 受理了这个请求，而不是作业已经停下。作业本身的
+情况要靠轮询 `job_status` 去看——被取消的作业读作 `state: "cancelled"`。`scancel`
+自身被拒绝时，调用返回 `kind: "scheduler"` 的错误信封。
+
+#### `probe_platform_capabilities(checkpoint_dir, partition="", tools="")`
+
+在**计算分区上**探测工具可用性（`command -v`），并将结果缓存到
+`{checkpoint_dir}/platform_capabilities.json`。`tools` 是逗号分隔的清单，默认取
+`ARI_PROBE_TOOLS`，再没有则是 `perf,numactl,papi_avail,likwid-perfctr,valgrind`；
+`partition` 为空时回退到 `ARI_SLURM_PARTITION`。
+
+真正跑完的探测返回 `{"status": "probed", "partition": ..., "arch": ...,
+"available": {"perf": true, ...}}`，其中 `available` 把每个被探测的名字映到一个
+布尔值。探测跑了但缓存写不下去时，同一份记录以
+`{"status": "unsaved", "reason": ..., ...}` 返回；已有有效缓存则直接返回
+`{"status": "cached", ...}`，不再重新探测。设计上尽力而为：任何失败（无分区、
+缺少 `srun`、排队超时）都返回 `{"status": "skipped", "reason": ...}` 且不写任何
+文件。claims 抽取器会读取该缓存，从而不会声明依赖平台上确实缺失的工具的证据。
+
+#### `counter_support()`
+
+报告本节点是否授予硬件计数器——靠真的打开一个来确定，而不是去找 profiler
+二进制文件。无参数。`perf` 在某些允许计数的节点上并不存在，在某些拒绝计数的
+节点上反而装着，厂商 profiler 的路径又依站点而异；只有打开计数器，才能观察到
+真正会生效的 kernel 策略，而且是在该节点实际运行的容器内部观察到的。
+
+```python
+result = counter_support()
+# Returns: {"schema_version": "ari.hpc.counter-support/v1", "architecture": "...",
+#           "perf_event_paranoid": ..., "reviewed_events": [...],
+#           "status": "ready", "detail": None}
+```
+
+`status` 取 `ready`；自探测被 `EACCES` 或 `EPERM` 拒绝时取 `denied`；该架构没有
+经审查的 `perf_event_open` 调用号、或自探测因其他原因失败时取 `unsupported`；
+非 Linux 主机上取 `unavailable`。
+
+#### `measure_counters(pid, window_ms=1000, events=["cycles", "instructions"])`
+
+在有界窗口内，对一个**已经在运行的**进程计数经审查的硬件事件。这是 profiling
+而不是执行：不创建进程、不写任何文件、也不索取凭据。
+
+- `pid` 必填，必须指向一个在跑的进程。
+- `window_ms` 取 1 … 60000（`MAX_WINDOW_MS`），默认 1000。
+- `events` 只能取经审查集合中的名字：`branch-instructions`、`branch-misses`、
+  `cache-misses`、`cache-references`、`cycles`、`instructions`。集合之外的一律
+  拒绝，调用方无法借此触达任意 raw event 编码。默认
+  `["cycles", "instructions"]`。
+
+计数器以最小权限打开（`exclude_kernel` + `exclude_hv`），因此被拒绝时反映的是
+策略本身，而不是一个过宽的请求；返回值里的 `excluded: ["kernel", "hypervisor"]`
+把这一点记下来。
+
+```python
+result = measure_counters(pid=12345, window_ms=2000)
+# Returns: {"schema_version": "ari.hpc.counter-measurement/v1", "status": "measured",
+#           "support": {...}, "pid": 12345, "window_seconds": 2.000123,
+#           "counters": {"cycles": ..., "instructions": ...},
+#           "excluded": ["kernel", "hypervisor"]}
+```
+
+`counter_support()` 不是 `ready`，或者对目标 pid 打不开计数器时，`counters` 为空，
+`status` 带回 `denied` / `unavailable` / `unsupported`，并附上那份 support 记录。
+
+这是唯一在 `skill.yaml` 中声明 `context_requirement: node` 的 HPC 工具，因此它的
+输入 schema 必须声明一个 `ari_context` 对象属性：transport 会以这个名字为任何带
+context 要求的工具注入已授权的节点 context，而该 schema 又设了
+`additionalProperties: false`——不声明它，就会拒绝掉每一次已授权的调用。proxy 会
+在 `tools/list` 里把这个属性剥掉，并在 `tools/call` 时改写它，所以它绝不会是智能体
+自己传的参数。
 
 ---
 
@@ -91,22 +374,51 @@ result = job_status("12345")
 
 ### 工具
 
-#### `survey(topic, max_papers=8)`
+#### `survey(topic, max_papers=8, mode="record", snapshot_path="survey_snapshot_v1.json", provider="semantic-scholar")`
 
-搜索 Semantic Scholar 获取相关论文。确定性（无 LLM）。
+先前工作调研。确定性（无 LLM）。provider 是**钉住的，不是链式回退的**：
+`provider` 只接受 `semantic-scholar` 和 `virsci-snapshot`，其它取值一律
+raise，因此 `record` / `live` 调用不会在故障中途切换后端，语料库也不会悄悄
+变成另一份。`virsci-snapshot`（或 `mode="frozen"`）在冻结语料库缺失时抛出
+`FileNotFoundError`，不会退回网络；Semantic Scholar 遇到 HTTP 错误时直接
+抛出，不会退到别的 provider。**没有 arXiv 回退**。`mode` 为 `record` /
+`live` / `replay` / `frozen`，其中 `replay` 完全不访问网络，且当
+`snapshot_path` 指向的 checkpoint artifact 缺失或摘要校验不通过时失败。
+Semantic Scholar 路径只对前 3 条结果各取至多 3 篇被引论文做一跳扩充，并且
+只保留留存记录之间的边。返回 `papers`（旧版投影）、`survey_snapshot`
+（`SurveySnapshotV1`）、`survey_snapshot_digest` 和 `execution_mode`。
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")
 # Returns: {"papers": [{"title": "...", "abstract": "...", "url": "..."}]}
 ```
 
-需要 `S2_API_KEY` 环境变量以获得更高的 Semantic Scholar 速率限制。
+设置 `S2_API_KEY` 可获得更高的 Semantic Scholar 速率限制。`max_papers`
+上限为 15。
 
-#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
+该技能已注册的 MCP 工具是 `survey`、`generate_ideas` 与
+`mint_contract_for_proposal` 三个 —— `mcp.json` 也恰好只列这三个；
+`_load_virsci_snapshot_papers` 只是 `survey` 直接调用的普通辅助函数，绝不
+能对 agent 可见。`tests/test_server.py` 通过 `mcp.list_tools()` 钉住
+`survey` / `generate_ideas` 的注册以及该辅助函数不是工具这一点
+（`@mcp.tool()` 装饰器丢失/错位的问题曾经上线过）。
 
-使用 VirSci 多智能体 LLM 讨论生成研究假设。多个 AI 角色（研究者、批评者、专家、综合者）就研究问题进行辩论。仅在 BFTS 启动前调用**一次**（仅限 pre-BFTS）。
+#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0, survey_snapshot=None, survey_snapshot_ref="", seed=None, generation_mode="auto")`
+
+使用 VirSci 多智能体 LLM 讨论生成研究假设。多个 AI 角色（研究者、批评者、专家、综合者）就研究问题进行辩论。在默认的 `simple_bfts` 模式下，仅在 BFTS 启动前调用**一次**（仅限 pre-BFTS）。在可选启用的 `ari_rqgm` 模式下且 `proposal_router.generators.virsci.enabled: true` 时，core 侧的 `VirSciAdapter` 会额外通过 ProposalRouter 的事件触发、预算封顶的调度调用 `survey` + `generate_ideas` —— 见 [VirSci 集成](../guides/virsci_integration.md)。
 
 模型：`ARI_LLM_MODEL` 环境变量 > `LLM_MODEL` 环境变量 > `ollama_chat/qwen3:32b`。
+
+文献输入在第一次模型调用之前就被冻结。可以传入 `survey` 返回的那份
+`SurveySnapshotV1` 对象本身（`survey_snapshot`）、指向已验证快照的
+checkpoint 相对引用（`survey_snapshot_ref`，需要 `ARI_CHECKPOINT_DIR`，且不
+可与内联文献同时给出，否则 raise），或旧版的内联 `papers` 列表。三者都为空
+时，只会执行一次钉住的 Semantic Scholar record 操作，不会回退到别的
+provider。`seed` 记录进 generation lock。`generation_mode` 为 `auto` /
+`default` / `virsci`，其它取值 raise，且显式的 `virsci` 是 fail closed，不会
+降级回再实现循环。`n_ideas` 被夹到 1–5，`n_agents` 夹到 2–4，
+`max_discussion_rounds` 夹到 0–3，`max_recursion_depth` 是为递归编排预留的
+（目前未使用）。
 
 #### VirSci-live (vendor-wrap) — 可选的真实引擎
 
@@ -153,43 +465,92 @@ result = survey("OpenMP compiler optimization HPC benchmarks")
 `ari run` 上的 CLI 标志：`--virsci-live` / `--no-virsci-live`、`--virsci-k`、
 `--virsci-team-size`、`--virsci-n-authors`、`--virsci-n-papers`。
 
+#### `mint_contract_for_proposal(topic, proposal, survey_snapshot_ref="survey_snapshot_v1.json", experiment_context="")`
+
+为一份**不是**本技能生成的提案铸造类型化的 Research Contract。把铸造与生成拆开，
+是因为在 `ari.mode: ari_rqgm` 下由 proposal router 拥有根部 ideation，而它的任何
+generator 都不铸造契约，KCA 准入却需要一份。提案给出 title / description /
+hypothesis / plan；本步骤从本次 run 已验证的文献快照中给出证伪条件、limitations、
+引用与 metric contract——并且宁可拒绝也不凭空编造，所以缺少 `ARI_CHECKPOINT_DIR`、
+快照不可用、或提案没有 title 时，返回 `{"contract_status": "rejected", "reason": ...}`。
+成功时返回 `typed_schema_version`、`contract_status: "admitted"`、
+`research_contract` 及其 `research_contract_digest`、`idea_set_digest`，以及
+`rejections`。
+
 ---
 
 ## ari-skill-evaluator
 
-从实验文件中提取指标规格。**LLM：条件性**（仅在文本中未找到 metric_keyword 时回退使用 LLM）。
+指标契约的物化、确定性的声明门，以及以证据为基础的语义评审。**LLM：分离** ——
+两个与契约相关的工具被刻意拆开，让*做决定*的那个完全确定，让*做猜测*的那个
+无法准入自己的猜测。
 
 ### 工具
 
-#### `make_metric_spec(experiment_text)`
+#### `make_metric_spec(experiment_text, checkpoint_dir="", proposal_json=None, reviewer="")`
 
-解析实验 Markdown 以提取评估标准。当文本中包含 `metric_keyword` 和 `min_expected_metric` 时为确定性操作；未找到时回退使用 LLM。
+确定性地把**一份**不可变契约物化成 MetricSpec。**无 LLM**。解析顺序：
+
+1. 想法所有的 `ResearchContractV1`（`idea.json`）——其 `metric_contract` 的
+   `admission_status` 不是 `admitted` 时直接报错；
+2. 传入的 `proposal_json`——只有同时给出 `reviewer` 才会被准入并写下准入决定，
+   否则原样返回 `admission_status: "human-review-required"`；
+3. 已持久化的 `{checkpoint}/metric_contract.json`（旧 schema 走迁移读取器）。
+
+三者都没有时，工具只把确定性 parser 的结果作为**证据**返回，并附
+`metric_contract: null` / `contract_frozen: false` /
+`proposal_tool: "propose_metric_contract"` —— parser 的输出永远不会被自动提升为
+科学契约。
 
 ```python
-result = make_metric_spec(open("experiment.md").read())
+result = make_metric_spec(open("experiment.md").read(), checkpoint_dir=ckpt)
 # Returns: {
 #   "metric_keyword": "MFLOPS",
 #   "min_expected_metric": 50000.0,
-#   "scoring_guide": "..."
+#   "scoring_guide": "...",
+#   "metric_contract": {...}, "metric_contract_digest": "...",
+#   "contract_frozen": True, "contract_source": "idea.research-contract/v1",
+#   "admission_status": "admitted"
 # }
 ```
 
-`make_metric_spec` 还会从想法的 `primary_metric`、其结构化的 `falsifiable_claims`，以及
-`correctness_required` / `ceiling_must_be_measured` 要求标志，构建一份 **想法所有的 run 级
-`metric_contract`**，并持久化到 `{checkpoint}/metric_contract.json`（位于 `idea.json` / `tree.json`
-旁边）。该契约由想法所有，因此智能体无法删除某个 claim 或要求来规避检查；它由
-`transform-skill::nodes_to_science_data` 读回并 graft 到 `science_data.metric_contract`，再由确定性的
-硬门强制执行。
+`parser_result` 在每条路径上都会一并带回，读者因此能分清「文本说了什么」与
+「契约准入了什么」。冻结路径上的 `expected_metrics` 是契约自身的 `name` 加上它的
+`required_evidence` 去重后的结果，而不是第二次抽取；`expected_params` 在**每条
+路径上都是 `[]`**——抵达 `transform-skill::nodes_to_science_data` 的类型化
+`params` / `measurements` 分离来自 `coding-skill::emit_results`（D 契约）。
 
-模型（回退）：`ARI_MODEL` 环境变量 > `gpt-4o-mini`。
+契约由想法所有——它由想法的 `metric_contract`、其 `falsification_conditions`
+（每个条件连同 `required_evidence` 变成一条 claim），以及 `correctness_required` /
+`ceiling_must_be_measured` 这两个要求标志构建——因此智能体无法删除某个 claim 或
+要求来规避检查；投影会持久化到 `{checkpoint}/metric_contract.json`（位于
+`idea.json` / `tree.json` 旁边）。持久化是 mint-once：若要写入的投影其
+`projection_digest` 与已存在的那份不同，会直接抛错而不是覆盖。该投影由
+`transform-skill::nodes_to_science_data` 读回并 graft 到
+`science_data.metric_contract`，再由确定性的硬门强制执行。
+
+#### `propose_metric_contract(idea_json=None, checkpoint_dir="", model="", model_revision="")`
+
+显式的 LLM 提案步骤——把「猜一份契约」这件事从 `make_metric_spec` 里分了出来，
+使它绝不会在物化路径上悄悄发生。**LLM：是**。读取 `idea_json`（省略时取
+`{checkpoint_dir}/idea.json`），产出一份带
+`source_idea_digest` / `evidence_digest` / `prompt_digest` / `confidence` 的
+`MetricContractProposalV1`，写到 `{checkpoint}/metric_contract_proposal.json`。
+
+输出**始终**带 `requires_human_review: true`：它必须再经 `make_metric_spec` 携
+`reviewer` 准入才能成为契约。想法已经拥有 typed 契约
+（`typed_schema_version: "ari.research-contract/v1"`）时调用会被拒绝。
+
+模型：`model` 参数 > `ARI_MODEL_METRIC_PROPOSAL` 环境变量 > `ARI_LLM_MODEL` 环境变量 >
+`gpt-4o-mini`。
 
 #### `claim_evidence_hard_gate(checkpoint_dir, paper_path, science_data_json="", paper_claim_links_path="", figures_manifest_json="", policy=None, phase="draft")`
 
 确定性的声明/证据硬门（执行数据保真度）。**无 LLM**。验证 science_data 声明所引用的节点确已执行，从 `results.json` 重新计算 `numeric_assertions` 并在容差内核对论文报告的数值，按章节策略检测未覆盖的结果数值，并检查图表是否存在。它是 ari-core `run_hard_gate`（`ari.public.claim_gate`）之上的 MCP 薄包装。在 strict 模式下，当存在阻塞性错误时 `final` 阶段返回 `{"error": ...}`，使阶段运行器抛出异常并跳过 `finalize_paper`；`draft` 阶段以及 warn/off 模式从不阻塞。写出 `evaluation/claim_evidence_hard_gate_{phase}.json`。
 
-#### `evidence_grounded_semantic_review(checkpoint_dir, paper_path, science_data_json="", hard_gate_path="", paper_claim_links_path="", phase="initial")`
+#### `evidence_grounded_semantic_review(checkpoint_dir, paper_path, science_data_json="", hard_gate_path="", paper_claim_links_path="", phase="initial", model="", model_revision="")`
 
-非阻塞的、以证据为基础的语义评审。**LLM：是**。LLM 基于硬门证据检测过度声明 / 解释性问题 / 未注册的强声明，而**不**触碰独立的文本审稿人；它不重新核对数值。输出供 `paper_refine` 消费的 `suggested_revisions` 以及评分。写出 `evaluation/evidence_grounded_semantic_review.json`。从不阻塞。
+非阻塞的、以证据为基础的语义评审。**LLM：是**。LLM 基于硬门证据检测过度声明 / 解释性问题 / 未注册的强声明，而**不**触碰独立的文本审稿人；它不重新核对数值。输出供 `paper_refine` 消费的 `suggested_revisions` 以及评分。写出 `evaluation/evidence_grounded_semantic_review.json`。从不阻塞。必填参数只有 `checkpoint_dir` 和 `paper_path`。`model` 为本次调用钉住评审模型（未指定时为 `ARI_MODEL_SEMANTIC_REVIEW` > `ARI_LLM_MODEL` > `gpt-4o-mini`），`model_revision` 记录跑的是哪个 revision；两者连同 prompt / evidence / 硬门摘要一起写进报告，使每次评审都可归属到确切的模型 identity。
 
 ---
 
@@ -209,31 +570,76 @@ LaTeX 论文生成、编译和审阅（仅限 Post-BFTS）。**LLM：是**。
 
 返回指定场所的 LaTeX 模板。
 
-#### `generate_section(section, context, venue="arxiv", nodes_json_path="", refs_json="")`
+#### `compile_paper(tex_dir, main_file="main.tex", figures_manifest_path="")`
 
-使用 LLM 生成 LaTeX 章节。章节类型：`introduction`、`related_work`、`method`、`experiment`、`conclusion`。
-
-#### `compile_paper(tex_dir, main_file="main.tex")`
-
-运行 pdflatex 编译。返回成功状态和错误信息。
+运行 pdflatex 编译。把 `tex_dir` 作为封闭的 `WorkspaceRefV1` 打开，存在 `refs.bib`
+时作为 bib 传入；给了 `figures_manifest_path` 就先按 `FigureBatchV1` 校验再交给编译
+（清单不合法时不抛异常，而是返回 `{"success": false, "log": "invalid FigureBatchV1: …"}`）。
+编译记录写到 `.ari-paper/compile/final.json`，返回值是
+`{success, pdf_path, log, compile}`。目录或 main 文件不存在时同样不抛异常，而是把
+原因放进 `log` 并返回 `success: False`。
 
 #### `check_format(venue, pdf_path)`
 
-根据场所要求验证论文格式（页数等）。
+根据场所要求验证论文格式（页数等）。未知的 `venue` 会抛错并附上有效清单。页数无法
+判定时不会跳过检查，而是记下「页数上限未被验证」这条 issue，因此「未验证」不会以
+`ok: true` 蒙混过关。
 
-#### `review_section(latex, context, venue="arxiv")`
+#### `finalize_paper_build(workspace_root, draft_build_path, tex_path, bib_path, pdf_path, compile_record_path, figures_manifest_path, claim_links_path, hard_gate_path, text_review_path, visual_review_path, semantic_review_path, refinement_call_path="", visual_passing_score=0.7, output_path="paper_build.json")`
 
-审阅 LaTeX 章节。返回优点、缺点和建议。
+fail-closed 地把一次论文 build 封口。**确定性、无 LLM**。它把确切的证据——
+tex / bib / pdf、编译记录、图表清单、claim 链接、claim 硬门，以及文本 / 视觉 /
+语义三份评审——锁进一份 `PaperBuildV1` 并写到 `output_path`。所有输入都是封闭
+workspace 下的相对路径。
 
-#### `revise_section(section, latex, feedback, context, venue="arxiv")`
+草稿声明过的每一份产物——它的输入、每次记录在案的 revision 的 TeX 与文献、每一次
+记录在案的模型调用——都要先按 digest 重新校验，才会去读任何新东西；claim 链接文档
+必须是 `link_paper_claims` 阶段产出的 `ari.paper-claim-links/v1`。
 
-根据审阅反馈修改 LaTeX 章节。
+`blocking_reasons` 逐条累积失败：终稿 revision 丢掉了规范图 ID 或改动了数学内容、
+硬门被关闭或报出阻塞性发现、存在未解析的 claim 锚点、存在未覆盖的数值结果提及、
+编译没有跑完、PDF 的 digest 与编译记录不符、视觉评审有失败目标或分数低于
+`visual_passing_score`。只要有任何一条，status 就是 `blocked`（其中含编译原因时为
+`compile-error`）而不是 `finalized`，MCP 工具随即把这些原因拼进消息并抛错。
+产物照常写出，所以被阻塞的 build 是可审计的，而不是丢失的：finalize 是一道结论性的
+门，而不是一次汇总。
 
-#### `write_paper_iterative(experiment_summary="", context="", nodes_json_path="", refs_json="", figures_manifest_json="", science_data_json="", venue="arxiv", max_revision_rounds=2, author_name="")`
+#### `write_paper_iterative(workspace_root, science_data_path, figures_manifest_path, references_path, ear_manifest_path, rubric_id, experiment_summary="", context="", verified_context_path="", venue="arxiv", max_revision_rounds=2, author_name="", writer_prompt_override="", decode_seed=0)`
 
-完整论文生成，包含迭代式草稿 -> 审阅 -> 修改循环。主要流水线工具。
+完整论文生成。主要流水线工具，全部输入都以封闭 workspace 下的产物路径给出。
+先由一次 LLM 调用填满模板里所有 `FILL_*_START … FILL_*_END` 占位块，再进行
+`max(1, max_revision_rounds)` 轮保留对话历史的反思（自我批评）修订，每轮之后编译，
+并把编译错误、BibTeX 状态、可用但未被引用的图、指不到文件的图引用以及 chktex 输出
+回灌给同一段消息历史，直到模型回答 `I am done`。反思至少跑一轮：
+`max_revision_rounds=0` 并不会跳过它。起草、评审与改写都是本工具**内部**的步骤，
+没有对应的单章节 MCP 工具；成稿后的修订走 `paper_refine`，成稿后的评审走
+`review_compiled_paper`。
 
-#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, experiment_summary, rubric_id="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
+返回 `latex` / `sections` / `reviews` / `revision_counts` / `bib` / `key_list`
+以及草稿的 `paper_build`（其中 `sections` / `reviews` / `revision_counts` 是为下游
+兼容而放的空 dict）。
+
+`writer_prompt_override` 与 `decode_seed` 是后加的接缝，它们的默认值是冻结的
+兼容契约，而不是推荐配置：`""` 与 `0` 必须逐字节复现这两个参数存在之前的工具行为
+（`paper_refine` 取同一对参数、同样的默认值）。
+
+`writer_prompt_override=""` 加载内置的 `paper_writer.md`；非空值会把反思阶段的
+system 提示词**整个替换**掉。首次填充模板的调用无论如何都使用它自己的
+`fill_in_writer` 提示词，因此 override 只到达反思循环。它是一段纯指令字符串而非
+治理机制 —— `tests/test_writer_prompt_override.py` 断言：默认的反思提示词恰好是
+加载到的 `paper_writer.md` 加语言指令；非空 override 下该次调用里不再残留
+`paper_writer.md` 的正文；以及 import 这个技能不会拖进任何 `ari.rqgm` 模块。
+
+`decode_seed=0` 完全不向 payload 写入 `seed` 键，保持 linear（无 seed）行为。非 0
+时它会被传给 litellm——首次写作调用和每一轮反思调用都会带上——使需要生成一**批**
+草稿的调用方拿到不同样本而不是 K 份副本；litellm 的 `seed` 是尽力而为且依赖供应商
+的，它给的是多样性，不是 bit-exact 重放。这个参数之所以存在，是因为反方向的失败：
+按 `tests/test_server.py::test_a_non_zero_decode_seed_reaches_the_payload` 的回归
+注记，调用方记录了一个 payload 从未携带的 seed，正是这一点「让 8 个 seed 塌成了
+1 份草稿」。被记录的 seed 只有真正进入 payload 才有意义。本工具的 seed 走线没有
+对应的技能测试；payload 层面的断言在下文的 `paper_refine` 上。
+
+#### `review_compiled_paper(rubric_id, tex_path="", pdf_path="", figures_manifest_json="", experiment_summary="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
 
 **AI Scientist v1/v2 兼容** 的基于评审规范的论文审阅（遵循 Nature /
 arXiv:2408.06292 附录 A.4）。从 `ari-core/config/reviewer_rubrics/<rubric_id>.yaml`
@@ -241,7 +647,7 @@ arXiv:2408.06292 附录 A.4）。从 `ari-core/config/reviewer_rubrics/<rubric_i
 提示。VLM 的逐图反馈（分数 / 问题 / 建议）作为审稿人备注注入，并附加
 Few-shot 示例，经 Self-reflection 循环自我批评修订后输出符合评审规范的 JSON。
 
-已内置评审规范（`ari-core/config/reviewer_rubrics/` 下 16 个 YAML）：
+已内置评审规范（`ari-core/config/reviewer_rubrics/` 下 23 个 YAML）：
 
 | 类别 | rubric_id |
 |---|---|
@@ -249,14 +655,41 @@ Few-shot 示例，经 Self-reflection 循环自我批评修订后输出符合评
 | 系统 / HPC | `sc` / `osdi` / `usenix_security` |
 | 理论 / 图形学 | `stoc` / `siggraph` |
 | HCI / 机器人 | `chi` / `icra` |
+| 经济学 / 人文期刊 | `aer` / `qje` / `econometrica` / `apsr` / `ahr` / `pmla` / `philreview` |
 | 期刊 / 通用 | `nature` / `journal_generic` / `workshop` / `generic_conference` |
 
 在 `reviewer_rubrics/` 目录放一份 YAML 即可扩展新的会议，无需修改代码。
 每个评审规范声明 `score_dimensions` / `text_sections` / `decision` 规则、
 执行参数及用于 P2 确定性的 SHA256 哈希。
 
-解析顺序：显式 `rubric_id` 参数 → `ARI_RUBRIC` 环境变量 → `neurips` →
-内置 `legacy` 回退（v0.5 schema，当 `rubric_id` 与 YAML 都解析不到时使用）。
+评审规范解析：`rubric_id` 是第一个且必填的参数，没有环境变量回退、没有默认
+venue、也没有内置 `legacy` 回退——`resolve_rubric` 对空值直接拒绝
+（`rubric_id is required; migrate legacy ARI_RUBRIC/default config to an
+explicit workflow input`）。被搜索的只是「读哪个 YAML」：依次为
+`ARI_RUBRIC_DIR` → `./ari-core/config/reviewer_rubrics/` →
+`./config/reviewer_rubrics/` → 仓库根下的同名目录，先命中者胜。因此某篇论文
+是被哪份评审规范打分的，永远记录在发起该调用的那次调用里。
+
+依赖过那条回退链的旧 launch / workflow 文档改为离线转换：
+`src/rubric_migration.py::migrate_legacy_rubric_selection` 依次走 `paper_rubric` →
+`rubric_id` → `ARI_RUBRIC` → v1 之前的 `neurips` 默认值，校验结果，并返回一个显式的
+`paper_rubric` 字段以及一份注明由哪个 `source` 提供该值的记录
+（`ari.paper-rubric-migration/v1`）。它是一次性的迁移助手，不是运行时回退。
+
+#### 对称的作者 / 审稿人 venue 条件化（未发布）
+
+`prompt_overrides` 携带两个平行字段：
+
+- `system_hint` —— 由 `review_engine` 注入同行评审提示词（既有行为）。
+- `author_hint` —— 由 `write_paper_iterative` 作为
+  `VENUE RUBRIC AUTHOR GUIDANCE: … END VENUE RUBRIC AUTHOR GUIDANCE`
+  块注入论文起草的 system 提示词。告诉起草者审稿人会关注什么，从而在
+  写作阶段就让这些信号易于呈现。
+
+`author_hint` 为空时该块整块省略，提示词只保留 `Target venue: X.` 这一句
+弱提示。内置的 23 份评审规范里目前有 9 份带经校准的 `author_hint`——`sc`、
+`neurips`，以及七份经济学 / 人文期刊（`aer` / `qje` / `econometrica` / `apsr` /
+`ahr` / `pmla` / `philreview`）；其余 venue 为空，可在不改代码的情况下逐步补齐。
 
 Nature Ablation 默认值：
 
@@ -283,9 +716,11 @@ viz API `/api/rubrics` 和 New Experiment 向导下拉菜单会用到。
 
 作为 `finalize_paper` 阶段运行。从 `ear_published/manifest.lock` 与 `publish_record.json` 自动加载 `ref` / `bundle_sha256` / `doi`，并将机器可读的 `\codeavailability{}` / `\codedigest{}` / `\coderef{}` 宏与人类可读的 Code Availability 章节注入 `full_paper.tex`。digest 是信任锚点，读者无需信任 registry 即可 `ari clone <ref> --expect-sha256 <baked-digest>` 进行验证。如果未策展 bundle 则静默跳过（保持 v0.6.0 checkpoint 兼容）。
 
-#### `merge_reviews(review_report_path, vlm_review_path="")` — v0.7.0
+#### `merge_reviews(review_report_path, vlm_review_path="", hard_gate_path="", semantic_review_path="")` — v0.7.0
 
 将 `review_report.json`（文本评审）与 `vlm_review.json`（VLM 图表评审）做事后结构合并。完全确定性、无 LLM。附加 `vlm_figure_review` 与 `_review_composition` 元数据，使 GUI / CLI 能附带来源标注同时显示两类输出。上游阶段保持独立（与 AI Scientist v2 `perform_review` 契约一致），在此处方完成对账。
+
+必填的只有 `review_report_path`，其余三个都是可选的（v0.6.0 的两参数调用仍然可用）。文本评审与 VLM 评审留在 `independent_reviews` 之下，且不被修改。`hard_gate_path`（`claim_evidence_hard_gate`）与 `semantic_review_path`（`evidence_grounded_semantic_review`）另行归入 `evidence_grounded_reviews`，并由这两者共同生成供 `paper_refine` 消费的统一 `suggested_revisions` 列表——省略它们，这份列表就没有内容可载。
 
 #### `link_paper_claims(tex_path="", science_data_json="", figures_manifest_json="", output_path="")` — v0.9.0
 
@@ -296,13 +731,30 @@ transform 阶段的 `science_data.json` 从不被改动；图表绑定记录在�
 并在 `paper_refine`（终稿）之后再运行一次。失败时降级为一份合法的空结果（绝不仅输出 error），
 因此它不会级联跳过 finalize 链。
 
-#### `paper_refine(tex_path="", suggested_revisions_json="", merged_review_path="", semantic_review_path="", venue="arxiv")` — v0.9.0
+#### `paper_refine(tex_path="", suggested_revisions_json="", merged_review_path="", semantic_review_path="", venue="arxiv", writer_prompt_override="", decode_seed=0)` — v0.9.0
 
 保留锚点的修订流程，应用（来自 `evidence_grounded_semantic_review` / 合并评审的）
 `suggested_revisions`。**LLM：是**。显式的 `replace "X" with "Y"` 替换先确定性地应用，
 随后由有界的多趟 LLM 查找/替换处理其余部分；草稿中存在的每一个 `% CLAIM` 锚点都必须存活
 （丢弃锚点的编辑会被拒绝，且当锚点净损失时保留原始论文）。数学安全的下划线转义会跳过
 `\( … \)` / `\[ … \]` 与数学环境。精修后的 LaTeX 在 `latex` 下返回（草稿保留为 `full_paper.draft.tex`）。
+`refine_passes` 报告实际跑了几趟 LLM（至多 3 趟），旧文本仍然出现的显式替换会归入
+`unaddressed_substitutions`。
+
+新增的两个参数在不设置时让默认路径逐字节保持不变，且这两个默认值是冻结的兼容契约，
+不是调参旋钮。`writer_prompt_override` 是一段纯指令字符串，非空时会被**前置拼接**到
+内置的 `global_coherence.md` 提示词之前，让传入的 paper-writer 文本领起这次精修 ——
+注意这里的不对称：同一个参数名在 `write_paper_iterative` 里是*替换*内置提示词，在
+这里只是前缀。`decode_seed` 为 `0` 时不进入 payload，非零时该次精修在其草稿的 seed
+下采样，从而继承父级的 decode identity。
+
+技能测试真正钉住的就是这两条接缝。`tests/test_server.py` 从两个方向覆盖 payload 一半：
+为 `0` 时，捕获到的每一次 `litellm.acompletion` 调用都不带 `seed` 键，且 messages 与
+完全省略该参数时完全一致；为非 0 时，捕获到的每一次调用都恰好带着那个 seed —— 正是
+这条断言阻止「被记录下来、模型却从未见过」的 seed。
+`tests/test_writer_prompt_override.py` 覆盖提示词一半：默认 system 提示词恰好是不带
+前缀的 `global_coherence.md` 加语言指令，非空 override 则产生
+`override + "\n\n" + global_coherence + 语言指令`。
 
 ##### Few-shot 语料库管理
 
@@ -333,6 +785,7 @@ v0.7.0 将 v0.6.0 的 LLM 驱动判定路径替换为以 PaperBench 为评分内
 
 ```
 ors_generate_rubric  (replicate-skill)    → ors_rubric.json + ors_rubric.meta.json
+ors_audit_rubric     (replicate-skill)    → 一份独立的审计文档；ors_rubric.json 不会被改写
 ear_publish          (transform-skill)    → bundle.tar.gz + publish_record.json (默认 local-tarball)
 ors_seed_sandbox     (paper-re-skill)     → repro_sandbox/{reproduce.sh, code/...}
                                               (确定性；fetch_code_bundle ← publish_record.json)
@@ -342,29 +795,70 @@ ors_run_reproduce    (paper-re-skill)     → ors_phase1.json   (Phase 1：在�
 ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2：用 SimpleJudge 对 rubric 叶节点评分)
 ```
 
+`ors_audit_rubric` 检查下游一切评分所依据的 rubric 本身：为每个叶节点标记
+`vague_qualifier` / `no_paper_evidence` / `duplicate`（确定性）与
+`unverifiable`（每叶一次 LLM 调用），并在超过 20% 叶节点被标记时返回
+`regen_recommended`。冻结后的 rubric **不会**被改写——结论写入一份独立的
+`ari.replication-rubric-audit/v2` 文档（默认路径 `<rubric_path>.audit.json`），
+其中绑定了 rubric 与 paper 的 digest，使两者无法各自漂移。它是信号而非闸门——
+评分照常进行。可用 `ARI_MODEL_RUBRIC_AUDIT` 指向与生成方不同的模型。
+
 EAR 开启的运行通过 `ors_seed_sandbox`（确定性）获取 reproduce.sh；LLM `ors_build_reproduce` 在 reproduce.sh 已存在时跳过，所以仅在 EAR 关闭（论文唯一复现）时触发。
 
-PaperBench 以 git submodule 形式同捆于 `ari-skill-paper-re/vendor/paperbench`。主要逐叶评分 completer 通过 LiteLLM (`_litellm_completer.py`) 路由，因此任意供应商可用（`gpt-5-mini` / `anthropic/claude-...` / `gemini/...` / `ollama/...`）；分数解析的 structured completer 仍使用 `gpt-4o-2024-08-06`（在 PaperBench 允许列表内）。
+**v0.7.2 的 HPC 补充。** `build_reproduce_sh` 与 `run_reproduce` 都会消费可选的
+`reproduce_contract.execution_profile` 块（[参考](execution_profile.md)）：
+
+- agent 提示词里会加入一段 `EXECUTION PROFILE` JSON 块、一份取自
+  `SLURM_JOB_NUM_NODES` / `SLURM_NTASKS` / `nvidia-smi` 的实时 `CLUSTER SHAPE`
+  快照，以及一段 `COMPUTE-NODE EXECUTION CONVENTIONS` 页脚（共享 FS、srun 优先、
+  conda 激活、多节点扇出、timeout 包裹）。完整附录位于
+  `ari-skill-paper-re/src/_replicator_agent.py::_format_hpc_appendix`。
+- 当 `kind ∈ {mpi, mpi_gpu}` 时，MPI 聚合骨架（`prompts/mpi_aggregate_skel.py`）
+  会被自动复制为 `submission/mpi_aggregate.py`。
+- `run_reproduce` 以类型化参数而非裸标志接收分配形状——`nodes`、`ntasks`、
+  `ntasks_per_node`、`nodelist`、`exclude_nodes`、`exclusive`、`gpus_per_task`、
+  `gpus_per_node`、`gpu_type`、`memory_gb_per_node`、`memory_gb_per_cpu`、
+  `constraint`、`hint`、`account`、`qos`、`reservation`、`module_loads`——保持默认时
+  它们会从 `execution_profile` 自动解析。`cpu_bind` / `mem_bind` 会被拒绝，并提示把
+  这些 srun job-step 设置写进 `reproduce.sh`。旧的 `extra_sbatch_args` 后门已收缩到
+  四个可翻译前缀（`--account=`、`--qos=`、`--reservation=`、`--hint=`），其余一律
+  抛错并指向对应的类型化字段。
+
+PaperBench 以 git submodule 形式同捆于 `ari-skill-paper-re/vendor/paperbench`。主要逐叶评分 completer 通过 LiteLLM (`_litellm_completer.py`) 路由，因此任意供应商可用（`gpt-5-mini` / `anthropic/claude-...` / `gemini/...` / `ollama/...`）；两个分数解析用 structured completer 也由同一个 `judge_model` 构建，与主 completer 的差别仅在于携带 `response_format`（`ParsedJudgeResponseInt` / `ParsedJudgeResponseFloat`）。
 
 ### 工具
 
 #### `fetch_code_bundle(ref="", sha256="", dest="", checkpoint_dir="", overwrite=False)`
 
-确定性地填充沙箱（无 LLM）。**v0.7.0+**: 传入 `checkpoint_dir` 可从 `{checkpoint_dir}/publish_record.json` 自动读取 ref + sha256（即 `ari ear publish` 写入的文件）。当 `dest/reproduce.sh` 已存在时返回 `populated=False, skipped_reason=...` 并跳过。
+通过 `ari.clone` 用策展后的 EAR bundle 预填可复现性沙箱——确定性、无 LLM。指向 bundle 有两种方式：
 
-#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", apptainer_image="", overwrite=False)`
+- **直接 ref**：`ref="file:///path/to/bundle.tar.gz"` / `ref="ari://0ccabb16…"` /
+  `ref="gh:owner/repo"` / `ref="https://…"`。
+- **从 publish_record.json 自动读取**（v0.7.0+）：传入 `checkpoint_dir={checkpoint}`，
+  ref + sha256 从 `{checkpoint_dir}/publish_record.json`（即 `ari ear publish` 写入的
+  文件）读取。与 `inject_code_availability` 采用同一约定。
 
-**v0.7.0+ 新增的 LLM 驱动 replicator**。`fetch_code_bundle` 的兄弟工具。读取论文（与 rubric 的 `expected_artifacts`）并将自包含的 `reproduce.sh` + 源文件写入 `output_dir`。通过 LiteLLM 路由，任意供应商可用。当 `output_dir/reproduce.sh` 已存在时跳过。模型：`model` 参数 > `ARI_MODEL_REPLICATE` > `ARI_LLM_MODEL` > `claude-opus-4-7`。
+当 `dest/reproduce.sh` 已存在时返回 `populated=False, skipped_reason=...` 并跳过
+（因此可以接在 `ear` seed 或先前的 bundle 之后合成）；除非 `overwrite=True`，否则
+拒绝覆盖非空的 dest。
 
-#### `run_reproduce(rubric_path, repo_dir, sandbox_kind="", container_image="", timeout_global_sec=0, partition="", cpus=0, walltime="", …SLURM flags)`
+#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", overwrite=False)`
+
+**v0.7.0+ 新增的 LLM 驱动 replicator**。`fetch_code_bundle` 的兄弟工具。读取论文（与 rubric 的 `expected_artifacts`）并将自包含的 `reproduce.sh` + 源文件写入 `output_dir`。其实体是 PaperBench 的 `BasicAgent` / `IterativeAgent` ReAct rollout（`_replicator_agent.run_replicator_agent`），而不是一次性产出 JSON 的调用。当 `output_dir/reproduce.sh` 已存在时跳过。模型：`model` 参数 > `ARI_MODEL_REPLICATOR` > `ARI_LLM_MODEL` > `gpt-5-mini`；OpenAI Responses 形式的 id（不含 `/` 的 `gpt-` / `o1-` / `o3-` / `o4-` / `o5-`）走 PaperBench 自带的 Responses completer，其余一律经 LiteLLM 路由，任意供应商可用。agent 写出的内容随后逐个文件从其 submission 树提升到 `output_dir`；绝对路径、含 `..` 或 `.git` 的路径段、符号链接段，或任何解析到两棵树之外的东西，都会被拒绝而不是复制。
+
+`sandbox_kind` 为 `auto` / `local` / `apptainer` / `slurm`，决定 agent rollout 本身在哪里跑。`container_image` 只被 `apptainer` rollout 采用，取值是不可变的本地 SIF 或摘要钉住的远端 URI（参数为空时读 `ARI_PHASE1_APPTAINER_IMAGE`）；`local` / `slurm` 会忽略它。**不存在**旧版的 `apptainer_image` 参数：该名字已从签名中删除，且在整个技能里再无出现，所以这里指定镜像的唯一方式就是 `container_image`。
+
+#### `run_reproduce(rubric_path, repo_dir, sandbox_kind="", container_image="", timeout_global_sec=0, network_policy="deny", network_isolation_attested=False, partition="", cpus=0, walltime="", …SLURM flags)`
 
 **Phase 1**。在沙箱中执行 `repo_dir/reproduce.sh`，捕获 `reproduce.log` 与产物列表，并对照 rubric envelope 的 `expected_artifacts` 检查缺失项 `missing`。
 
-沙箱优先级（默认 `auto`）：`slurm`（sbatch + `ARI_SLURM_PARTITION` 存在，BFTS 同分区）→ `docker`（守护可用且非 HPC 时）→ `apptainer` → `singularity` → `local`。**SLURM dispatch** 在 v0.7.0 已从 v0.5.0 恢复：使用 `sbatch --wait` 同步执行，并生成 spool relocation 包装器以保护 `$0` 相对 cd。
+沙箱优先级（默认 `auto`）：`slurm`（sbatch + `ARI_SLURM_PARTITION` 存在，BFTS 同分区）→ `docker`（守护可用且非 HPC 时）→ `apptainer` → `singularity` → `local`。容器沙箱没有默认镜像：必须给出一个摘要钉住的不可变镜像 —— `container_image`，否则 `docker` 读 `ARI_PHASE1_DOCKER_IMAGE`、`apptainer` / `singularity` 读 `ARI_PHASE1_APPTAINER_IMAGE`；为空时会被拒绝而不是回落到默认值。**SLURM dispatch** 不再是自己的 `sbatch`，而是交接给类型化的调度器生命周期：执行请求变成一个带 `ResourceRequestV1` 的 `JobRequestV1`，提交给 `ari-skill-hpc` 所用的同一个 `SlurmScheduler`（账本在 `{repo_dir}/../.ari-hpc/paper-re-jobs-v1.json`）并轮询至终态，随后把已验证的调度器日志落到 `reproduce.log`。返回值携带 `handle_id` / `job_id` / `request_digest` / `handoff_digest` / `execution_identity` / `unmapped_policies`；超时的作业会被取消并以 `timed_out: true` 报告。partition 按 参数 > `ARI_SLURM_PARTITION` > `{checkpoint_dir}/launch_config.json` 解析，`cpus` 按 参数 > `ARI_SLURM_CPUS`（默认 `8`），`walltime` 按 参数 > `ARI_SLURM_WALLTIME` > 由超时推导出的 `HH:MM:SS`。
+
+**网络默认关闭**：`network_policy` 为 `deny`，只有在使用未隔离的基底时才需要以 `network_policy="inherit"` 显式准入；`network_isolation_attested` 记录该隔离是被证实的而非假定的。源码树以只读方式快照，执行发生在私有的 attempt 树中，因此同一份成功计划会幂等重放，失败计划则获得一次带链接的 retry attempt。
 
 #### `grade_with_simplejudge(rubric_path, repo_dir, paper_path="", paper_text="", judge_model="", n_runs=0, skip_negative_control=False, code_only=False)`
 
-**Phase 2**。主评分 completer 通过 LiteLLM 运行 + 直连 OpenAI 的 structured score-parser。`n_runs`（默认 3）次按 PaperBench 加权叶节点聚合取均值，附负样本对照。
+**Phase 2**。主评分 completer 与 structured score-parser 都经 LiteLLM 使用同一个 `judge_model`。`n_runs`（参数，否则 `ARI_JUDGE_N_RUNS`，否则 1；范围 1–100）次按 PaperBench 加权叶节点聚合取均值；另跑一次**负样本对照**（空 repo + 平凡的 `reproduce.sh`）以核实 rubric 不会奖励「什么都没做」——两个对照都低于 5%（0.05）时才 `passed=true`。
 
 返回值：`{ors_score, raw_score, leaf_grades, judge_model, n_runs, rubric_sha256, elapsed_sec, negative_control: {empty, boilerplate, passed}}`。
 
@@ -380,19 +874,42 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 ### 工具
 
-#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True)`
+#### `generate_rubric(paper_path="", paper_text="", output_path="", target_leaf_count=0, model="", temperature=0.0, seed=0, paperbench_rubric_id="", max_model_calls=64, subtree_concurrency=4, provider="", model_revision="")`
 
 生成 PaperBench 兼容的 rubric。当 `target_leaf_count=0` 时按论文长度自动估算叶节点数（约 1 叶 / 75 词，限制在 [50, 400]）。
 
-`two_stage=True`（默认）使用 **两阶段生成**: ①骨架阶段定义根 + 直接子节点（每项贡献/实验一个）并分配各子树叶数预算 → ②子树阶段对每个直接子节点并行运行，递归展开 4–6 层。合并后，违反 schema `minLength=10` 的叶（`quote` / `requirements` 过短）会被自动剪除。在 PaperBench 参考论文上的实测：相比单次调用 **叶数约 4 倍、深度增加 1–2 层**，API token 消耗约 5 倍。`two_stage=False` 可回退到单次调用（`prompts/adversarial_reviewer.md`）。
+生成始终是分层的：单次调用路径已被移除，冻结后的 envelope 无条件记录 `strategy: "hierarchical-v2"` / `quality_profile: "calibrated"`。①骨架阶段（`prompts/skeleton.md`）定义根 + 直接子节点（每项贡献/实验一个）并分配各子树叶数预算 → ②子树阶段（`prompts/subtree.md`）以 `subtree_concurrency` 的并发度对每个直接子节点递归展开其子树。合并后，违反 schema `minLength=10` 的叶（`quote` / `requirements` 过短）会被自动剪除，无法绑定到论文精确 span 或显式 external prerequisite 的叶同样会被剪除。`max_model_calls` 限定整次运行的调用上限，每一对提示词/响应都保留在 `.ari-rubric/` 下并列入 `generator.calls`。
 
-#### `audit_rubric(rubric_path, paper_path, paper_text, auditor_model="")`
+`paperbench_rubric_id`（未发布）从
+`ari-core/config/paperbench_rubrics/<id>.yaml` 中选择一个 venue 条件化
+模板。空字符串 = 原样使用捆绑提示词（向后兼容）。非空值会加载该
+YAML，并通过 `{VENUE_HINT}` 占位符把 `prompt_overrides.system_hint` /
+`prompt_overrides.leaf_style` 注入骨架 + 子树提示词。这与
+`ari-skill-paper` 在同行评审中已使用的 `reviewer_rubrics/` venue 模式
+一致，因此同样的 `venue → YAML → prompt` 流程现在也适用于 rubric
+生成器。附带模板：`generic`（向后兼容）、`sc`（HPC 论文审计，6 轴）、
+`neurips`（ML 可复现性，6 轴）、`nature`（湿实验，5 轴）。YAML schema 见
+[`docs/reference/rubric_schema.md`](rubric_schema.md#venue-条件化模板-venue-conditioned-templates)。
+
+#### `audit_rubric(rubric_path, paper_path="", paper_text="", auditor_model="", output_path="", max_model_calls=400)`
 
 独立审计步骤。将问题叶节点标记为 `vague_qualifier` / `no_paper_evidence` / `duplicate` / `unverifiable`；超过 20% 时建议重新生成。
 
-#### `suggest_target_leaf_count(paper_path, paper_text)`
+冻结后的 rubric 绝不会被改写：结论进入一份独立的 `ari.replication-rubric-audit/v2` 文档，写到 `output_path`，为空时则写在 rubric 旁边的 `<rubric_path>.audit.json`。审计开始前会重新校验 rubric 自身的 digest、它的 `paper_sha256` 与传入论文文本是否一致，以及生成方的 provenance artifact。当审计方的 model/provider/revision 身份与生成方相同时，报告记录 `independence_status: "not-independent"`。
 
-返回根据论文长度自动估算的目标叶数与词数。供 GUI Wizard "Target leaves" 字段预填使用。
+#### `suggest_target_leaf_count(paper_path="", paper_text="")`
+
+返回根据论文长度自动估算的目标叶数与词数（`{target, word_count}`）。**确定性、
+无 LLM**。`paper_text` 为空时读取 `paper_path`；两者都取不到文本时返回
+`{"error": ..., "target": 0}`。供 GUI Wizard "Target leaves" 字段预填使用。
+
+### v0.7.2 — `reproduce_contract.execution_profile`
+
+当论文指明并行执行属性（MPI rank 数、GPU 型号、独占性、内存、NUMA
+绑定）时，骨架 + 子树提示词现在会指示生成器填充
+`reproduce_contract.execution_profile`。Schema：
+[`docs/reference/execution_profile.md`](execution_profile.md)。
+该字段可选且向后兼容 —— 单 CPU 论文不写该字段。
 
 ### 环境变量
 
@@ -402,9 +919,11 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 | `ARI_MODEL_RUBRIC_AUDIT` | `anthropic/claude-opus-4-7` | 审计 LLM（与生成器独立） |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | (未设置) | 覆盖目标叶数。`0` / 未设置时按论文长度自动。GUI Wizard "Target leaves" 字段。 |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | (未设置) | 覆盖生成器 temperature。GUI Wizard "Temperature" 字段。 |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | (未设置) | 强制开/关两阶段生成（`1`/`true`/`on` vs `0`/`false`/`off`）。未设置时使用 kwarg 默认（当前 `True`）。GUI Wizard "两阶段生成" 切换。 |
 
-`server.py` 按 "显式 kwarg → 环境变量 → 默认值" 的顺序解析。`workflow.yaml` 的 `ors_generate_rubric` 阶段未显式传递这三个参数，因此 GUI Wizard 的值始终生效。
+这两项在生成器运行前由 `server.py` 的 `_resolve_env_overrides` 解析：**环境变量一旦
+设置就获胜**，只有未设置时才使用 kwarg 的取值。`workflow.yaml` 的
+`ors_generate_rubric` 阶段未显式传递这两个参数，因此 GUI Wizard 的值始终是运行时
+生效的那个。
 
 ---
 
@@ -416,7 +935,7 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 #### `add_memory(node_id, text, metadata=None)`
 
-存储标记了 `node_id` 的条目。**Copy-on-Write**：若 `node_id` 与 `$ARI_CURRENT_NODE_ID` 不一致，则拒绝写入。
+存储标记了 `node_id` 的条目。**Copy-on-Write**：若 `node_id` 与签名 call context 中的节点不一致，则拒绝写入。
 
 #### `search_memory(query, ancestor_ids, limit=5)`
 
@@ -428,9 +947,17 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 按时间顺序返回特定节点的所有条目（无评分）。
 
-#### `clear_node_memory(node_id)`
+没有按节点清空的工具，调试用的也没有。本技能的十三个工具没有一个会删除条目：写入
+是 append-only 且受 CoW 保护，`tests/test_cow.py::test_destructive_clear_is_not_publicly_exposed`
+直接断言其不存在（`assert not hasattr(server, "clear_node_memory")`）。要缩小某个
+节点的占用，做法是用 `consolidate_node_memory` 追加一条合并后的类型化条目，而不是
+删除原始条目。
 
-仅用于调试的单节点清除。与 `add_memory` 使用相同的 CoW 规则。
+当 ARI 的 governance 逻辑擦除了某个节点时，`search_memory` / `get_node_memory`
+也不会悄悄丢掉它的条目，而是带上 `erased` / `erasure_event_id` / `erasure_note`
+标签返回（标签由后端加，所以不止这一层 MCP 面，进程内的读者看到的也一样）。擦除
+撤回的是某个判断的 standing，而不是实验测到的事实本身。但在把记忆**推入**判断的
+路径上（例如论文的接地声明清单），它们是被硬排除而非仅打标签的。
 
 #### `get_experiment_context()`
 
@@ -440,7 +967,7 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 类型化条目（Phase 1）携带结构化来源信息，使论文 / 图表阶段能够将声明接地到可复现的产物上。
 调用方是 loop/pipeline 钩子，而非 LLM 拉取。每个写入工具都受 **Copy-on-Write 保护**：`node_id`
-必须等于 `$ARI_CURRENT_NODE_ID`（ari-core MCPClient 通过 `_set_current_node` 桥接路由写入），
+必须等于 ari-core MCPClient 注入调用的签名 call context 中的节点，
 因此子节点无法改动祖先的条目。
 
 #### `add_experiment_result(node_id, text, metric_ptr=None, artifact_refs=None, node_report_ref=None)`
@@ -480,7 +1007,7 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 在节点结束时通过类型化写入器从 `node_report` 导出并写入类型化记忆（`experiment_result` /
 `failure_case` / `reflection`）（CoW：仅自身节点）。调用方是 ari-core 的节点结束钩子。
 
-存储：每个检查点拥有一个 Letta 代理（两个集合 `ari_node_*` 与 `ari_react_*`）。可移植快照位于 `{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz`，写/读遥测位于 `{ARI_CHECKPOINT_DIR}/memory_access.jsonl`。v0.5.x 的 JSONL 存储（检查点级 `memory_store.jsonl` 以及曾经位于 `$HOME/.ari/` 下的遗留全局 JSONL）已在 v0.5.0 移除；使用 `ari memory migrate --react` 迁移。跨实验“全局记忆”已弃用。
+存储：每个检查点拥有一个 Letta 代理（两个集合 `ari_node_*` 与 `ari_react_*`）。可移植快照位于 `{ARI_CHECKPOINT_DIR}/memory_backup.v1.json.gz`，写/读遥测位于 `{ARI_CHECKPOINT_DIR}/memory_access.jsonl`。v0.5.x 的 JSONL 存储（检查点级 `memory_store.jsonl` 以及曾经位于 `$HOME/.ari/` 下的遗留全局 JSONL）已在 v0.6.0 移除；使用 `ari memory migrate --react` 迁移。跨实验“全局记忆”已弃用。
 
 ---
 
@@ -488,31 +1015,86 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 将 ARI 作为 MCP 服务器暴露给外部智能体和 IDE，支持递归子实验。**LLM：否**（委托给 ARI CLI）。
 
-双传输：**stdio**（用于 Claude Desktop / 其他 MCP 客户端）+ **HTTP**（REST + SSE，`ARI_ORCHESTRATOR_PORT`，默认 9890）。
+双传输：`--transport stdio`（默认，用于 Claude Desktop / 其他 MCP 客户端）与
+`--transport streamable-http`（MCP Streamable HTTP，路径 `/mcp`；
+`ARI_ORCHESTRATOR_HTTP_HOST` 默认 `127.0.0.1`、`ARI_ORCHESTRATOR_HTTP_PORT`
+默认 9890）。没有 `ARI_ORCHESTRATOR_HTTP_TOKENS_FILE` 时 HTTP 传输拒绝启动——
+走网络就必须认证，而不是可选。
+
+每个工具都针对调用方 principal 做授权，所以下面这十二个是一次提交、一次取消加十次
+读取，而不是一个通用的远程控制面。
+
+十二个工具都不抛异常，失败以 `{"error": {"code": ..., "message": ...}}` 信封返回，
+`code` 取 `invalid_request` / `forbidden` / `not_found` / `idempotency_conflict` /
+`quota_exceeded` / `artifact_policy` / `authentication_failed` /
+`orchestrator_error` / `internal_error` 之一。state machine、quota 与 artifact
+准入的规范见 [Orchestrator control plane](orchestrator.md)。
 
 ### 工具
 
-#### `run_experiment(experiment_md, max_nodes=10, model="", max_recursion_depth=3, parent_run_id="", llm_backend="", llm_api_key="", llm_base_url="", executor="", cpus=0, timeout_minutes=0, retrieval_backend="")`
+#### `run_experiment(experiment_md, idempotency_key, parent_run_id="", max_recursion_depth=None, max_nodes=10, max_total_nodes=100, max_descendant_runs=32, estimated_cost_usd=0.0, max_cost_usd=100.0, cpus=1, timeout_minutes=60, model="", llm_backend="", executor="", retrieval_backend="")`
 
-异步启动 ARI 实验。返回 `run_id`。当设置 `parent_run_id` 时，该实验将作为父实验的子项被追踪（用于递归子实验工作流）。
+幂等地提交一次受配额约束的 ARI 运行，返回其持久句柄。`idempotency_key` 是必填的：
+同一个 key 重复提交拿回同一次运行，而不是第二次投入。当设置 `parent_run_id`
+（或继承 `ARI_PARENT_RUN_ID`）时，该实验将作为父实验的子项被追踪（用于递归子实验
+工作流）；`max_recursion_depth` 省略时取 `ARI_MAX_RECURSION_DEPTH`，再没有则是 3。
+`model` / `llm_backend` / `executor` / `retrieval_backend` 为空时分别回落到
+`ARI_MODEL` / `ARI_BACKEND` / `ARI_EXECUTOR` / `ARI_RETRIEVAL_BACKEND`。
+
+配额块是请求的一部分，递归同时受三个轴约束——本次运行的 `max_nodes`、整棵树的
+`max_total_nodes`，以及子树可派生的运行数 `max_descendant_runs`——之上还压着
+`max_cost_usd`。因此子运行无法靠省略参数逃出父运行的预算。本工具**没有任何凭据
+参数**：既不收 API key，也不收 base URL。
 
 #### `get_status(run_id)`
 
-返回运行的进度、当前最佳指标和递归元数据。
+返回运行确切的持久状态与有界的科研进度。
+
+#### `get_result(run_id)`
+
+返回终态元数据与按 digest 寻址的产物。
+
+#### `stop_experiment(run_id)`
+
+取消一次运行、向下传播终止，并落定唯一的终态。
 
 #### `list_runs()`
 
-列出所有过去的实验运行。
+只列出认证 principal 拥有的运行（admin 可列全部）。
 
-#### `list_children(run_id)`
+#### `list_children(parent_run_id)`
 
-返回父实验的子运行列表（用于递归子实验追踪）。
+返回该父运行 ID 的已授权直接子代（用于递归子实验追踪）。
+
+#### `list_artifacts(run_id)`
+
+列出在 allowlist 内、经 digest 校验的产物，不暴露任何路径。
+
+#### `read_artifact(run_id, artifact_id)`
+
+按确切的 SHA-256 身份读取一份已准入的有界产物。
 
 #### `get_paper(run_id)`
 
-返回生成的论文（LaTeX）。
+返回该运行的论文产物引用。
 
-工作空间：`ARI_WORKSPACE` 环境变量（默认：`~/ARI`）。父子关系保存在每个检查点的 `meta.json` 中。
+#### `get_ear(run_id)`
+
+返回该运行经校验的 EAR 与证据产物引用。
+
+#### `list_skills(run_id)`
+
+返回该运行经净化的、不可变的 `SKILLS.lock` 视图。
+
+#### `get_workflow(run_id)`
+
+返回锁定的 phase / 工具成员关系，不含原始 workflow 与机密配置。
+
+工作空间：`ARI_WORKSPACE` 环境变量（默认：解析后的仓库根目录）。运行注册表是位于
+`{logs_root}/.ari-orchestrator/runs.sqlite3` 的 SQLite 数据库，其中 `logs_root` 取
+`ARI_ORCHESTRATOR_LOGS`，否则为 `{workspace}/logs`；父子关系记录在那里，SQLite 是
+唯一权威。每个检查点另有一份 `meta.json` 镜像（`ari.orchestrator-run-meta/v1`，携带
+`parent_run_id` / `root_run_id` / `recursion_depth`），仅用于兼容与索引。
 
 ---
 
@@ -536,6 +1118,7 @@ configurations[*]:
                                                         C: _params_dict)
   metrics                                            ← 兼容性 flat union
   _typed_source: "results.json" | "llm_evaluator" | (无)
+  _typed_schema_version
   _provenance  ← 该节点 results*.json 各变体中
                   emit_results 的 _provenance 的并集（存在时）
 per_key_summary  (输入参数键 & 「_…」保留键被排除)
@@ -558,7 +1141,7 @@ correctness / `required_measured` / 声明的 invariant）——若没有此 gra
 
 **鲁棒性**：LLM 响应解析器剥离 `<think>` 块和 ` ```json ` 围栏，然后从每个候选 `{` 走匹配大括号，按长度降序尝试 `json.loads`。可以救援 `{...} prose {...}` 类型的形状。失败时将原始响应保存到 `{checkpoint_dir}/science_data.debug.txt` 以便事后审计。
 
-模型：`llm_model` 参数 > `LLM_MODEL` 环境变量 > `gpt-4o-mini`。
+模型：`llm_model` 参数 > `ARI_MODEL_TRANSFORM` 环境变量 > `ARI_LLM_MODEL` 环境变量 > `LLM_MODEL` 环境变量 > 与后端匹配的默认值（`ARI_BACKEND=cli-shim` 时为 `claude-cli`，否则为 `gpt-4o-mini`）。
 
 **存在意义：** 确保 BFTS 内部术语不会泄漏到生成的论文或图表中，并保证输入尺寸描述符（`nnz`、`M`、`K`）不会在 best-of 归约中与测量输出（`GFlops_per_s`、accuracy）混淆。
 
@@ -607,40 +1190,63 @@ correctness / `required_measured` / 声明的 invariant）——若没有此 gra
 
 ## ari-skill-web
 
-可插拔检索后端的网络搜索和学术文献检索。**LLM：部分**（仅 `collect_references_iterative` 使用 LLM）。
+钉定 provider 的网络搜索与学术文献检索，全部带 record / replay 快照。
+**LLM：部分**（仅 `rerank_retrieval_records` 使用 LLM）。
+
+每次检索都产出内容寻址的快照：`mode="record"`（默认）在
+`ARI_CHECKPOINT_DIR` 下留下快照并返回 `snapshot_ref`，`"live"` 不落盘，
+`"replay"` 不做任何网络访问、按 `snapshot_ref` 重放。`record` 与 `replay` 都要求
+`ARI_CHECKPOINT_DIR`；缺了它，调用在动手之前就被拒绝。provider 一旦钉定就绝不会
+在中途被换掉——某个 provider 故障时调用会显式失败，而不是悄悄变成另一份语料。
+
+四个检索工具（`web_search` / `fetch_url` / `search_papers` / `walk_citations`）返回
+同一份 `ari.retrieval-result/v1` 文档：`provider`、`query`、`count`、归一化的
+`records`（`RetrievalRecordV1`）、`alias_groups`、内嵌的 `survey_snapshot` 及其
+`survey_snapshot_digest`、可用于重放它的 `snapshot_ref`，以及产出它的
+`execution_mode`。因此被引用的论文总能追溯到找到它的那一次确切检索。其余三个工具
+（`rerank_retrieval_records`、`list_uploaded_files`、`read_uploaded_file`）不带
+`mode`：它们消费已经检索到的记录，或读取检查点自己的 `uploads/`。
 
 ### 工具
 
-#### `web_search(query, n=5)`
+#### `web_search(query, n=5, mode="record", snapshot_ref="")`
 
-DuckDuckGo 网络搜索。无需 API 密钥。确定性。
+DuckDuckGo 网络搜索。无需 API 密钥。确定性。`n` 上限为 10。结果片段带
+`use_restriction: "untrusted search-result snippet"`——它们是数据，绝不是指令。
 
-#### `fetch_url(url, max_chars=8000)`
+#### `fetch_url(url, max_chars=8000, mode="record", snapshot_ref="", max_bytes=2097152)`
 
-通过 BeautifulSoup 获取并提取 URL 中的文本。确定性。
+通过 BeautifulSoup 获取并提取 URL 中的文本（先剥掉 `script` / `style` / `nav` /
+`footer` / `header`），并施加 pinned-IP 的 SSRF 与重定向管控。`max_chars` 夹在
+100,000 以内，`max_bytes` 不得超过 2 MiB；非 2xx 状态是 `NetworkPolicyError`，
+而不是一份空结果。
 
-#### `search_arxiv(query, max_results=5)`
+#### `search_papers(query, max_results=10, provider=None, mode="record", snapshot_ref="")`
 
-arXiv 论文搜索。确定性。
+检索**一个**钉定的学术 provider 并返回 `RetrievalRecordV1`。`provider` 为空时取
+`ARI_RETRIEVAL_BACKEND`（默认 `semantic_scholar`），有效值为
+`semantic-scholar` / `arxiv` / `alphaxiv`（`_` 与 `-` 等价）。`max_results` 被夹在
+1…50。
 
-#### `search_semantic_scholar(query, limit=8, extra_queries=None)`
+复合选择被显式拒绝：`"both"` 会报错并提示「发两次钉定的 `search_papers` 调用，
+再按 alias 合并」——并行去重会让记录说不清它到底来自哪个 provider。
 
-Semantic Scholar API，回退到 arXiv。确定性。
+#### `walk_citations(seed_ids, direction="references", max_depth=2, max_nodes=50, request_budget=20, mode="record", snapshot_ref="")`
 
-#### `search_papers(query, max_results=10)`
+从种子 paper id 出发遍历 Semantic Scholar 引用图，带环检测。`direction` 取
+`references` 或 `citations`；种子最多 20 个，`max_depth` 夹在 0…5、`max_nodes`
+夹在 1…500、`request_budget` 夹在 1…500。预算耗尽或 provider 报错时返回
+`partial: true` 与 `requests_used`，而不是一份看起来完整的图。
 
-调度到所配置的检索后端（`ARI_RETRIEVAL_BACKEND`）：
-- `"semantic_scholar"`（默认）— Semantic Scholar API
-- `"alphaxiv"` — 通过 HTTP 上的 MCP JSON-RPC 调用 AlphaXiv
-- `"both"` — 并行执行并去重
+#### `rerank_retrieval_records(research_question, records, max_results=10)`
 
-#### `set_retrieval_backend(backend)`
-
-在运行时动态切换检索后端。有效值：`"semantic_scholar"`、`"alphaxiv"`、`"both"`。
-
-#### `collect_references_iterative(experiment_summary, keywords, max_rounds=20, min_papers=10)`
-
-AI Scientist v2 风格的迭代式引用收集。LLM 生成搜索查询并在多轮中选择相关论文。
+显式的随机性重排：LLM 按研究问题对已检索到的 `RetrievalRecordV1` 重新排序。
+确定性检索路径绝不调用它，因此这个随机步骤是可选且显式的。模型只被允许对给定的
+下标做排列——它绝不引入新记录——而一个不含任何有效下标的响应是错误，而不是悄悄
+按原序放行。记录文本作为数据传给模型，并附明确指令要求忽略其中的任何指令。返回值
+的 `provenance` 记录 `model`、API base identity（只有 scheme / host / port，不含
+凭据）、temperature，以及 prompt / input / output 的 digest，因此这一步的排序事后
+可审计。
 
 模型：`ARI_LLM_MODEL` 环境变量 > `LLM_MODEL` 环境变量 > `ollama_chat/qwen3:32b`。
 
@@ -650,7 +1256,8 @@ AI Scientist v2 风格的迭代式引用收集。LLM 生成搜索查询并在多
 
 #### `read_uploaded_file(filename, max_chars=50000)`
 
-从上传文件读取文本内容（带二进制检测）。确定性。
+从上传文件读取文本内容（带二进制检测）。确定性。文件名会被归一化为 basename，
+因此目录穿越不会通过。
 
 ---
 
@@ -660,104 +1267,213 @@ AI Scientist v2 风格的迭代式引用收集。LLM 生成搜索查询并在多
 
 ### 工具
 
-#### `write_code(filename, code, work_dir="/tmp/ari_work")`
+#### `describe_environment()`
 
-将源文件写入工作目录。
+返回本集群的环境目录，让智能体不必靠试错去摸索工具链。**无参数**——它的输入
+schema 刻意不设 `additionalProperties: false`，多传的键会被丢弃而不是让调用失败
+（调用它的时刻，智能体正好还不知道该填什么）。
 
-#### `run_code(filename, work_dir="/tmp/ari_work", timeout=60)`
+逐节点给出：架构、CPU、GPU、PATH 上的编译器、原始 `module avail` 目录，以及已设置
+的工具链环境变量的**名字**（值绝不外泄，需要时自己 echo）。在登录节点上会同时报告
+登录节点本身（它也是一个真实的构建目标）和每个已配置的计算分区；在计算节点上只报告
+该节点。
 
-执行源文件（根据扩展名自动检测语言）。输出会被截断，并附带显示省略字符数和重定向至文件的提示标记。
+#### `write_code(filename, code, work_dir="/workspace")`
 
-#### `run_bash(command, work_dir="/tmp/ari_work", timeout=60)`
+将源文件写入工作目录。扩展名决定 `run_code` 选哪个解释器、以及 `run_bash` 该用哪条
+工具链。返回 `{path, digest, lines, status}`，其中 `digest` 是所写内容的 sha256。
 
-在工作目录中运行 bash 命令。结果中带有 `truncated` 布尔标志的输出截断。
+#### `edit_code(filename, old_string, new_string, replace_all=False, work_dir="/workspace")`
 
-#### `read_file(path, offset=0, limit=8000, work_dir="/tmp/ari_work")`
+在已存在的文件中替换一段精确文本，其余部分原样保留。文件已经存在时优先于
+`write_code`：把整个 kernel 重新发一遍既费 token，又有丢掉本来能跑的代码的风险。
 
-针对大文件支持分页读取文本。返回内容、用于继续的 `next_offset` 与总行数。
+`old_string` 必须逐字节匹配（含缩进），并且除非设置 `replace_all`，必须**恰好**
+出现一次——0 次或多次都返回 `{"status": "error", ...}`。落错地方的编辑比失败的
+编辑更糟：智能体会就一个其实没改过的 kernel 报告成功。成功时返回
+`{path, replacements, lines, status: "edited"}`。
+
+#### `run_code(filename, work_dir="/workspace", timeout=600)`
+
+用扩展名选定的解释器执行源文件（`.py` → `python3`、`.sh` → `bash`、`.js` → `node`、`.rb` → `ruby`、`.pl` → `perl`、`.lua` → `lua`）。它**不**编译，因此 C/C++/Fortran/Rust/Go 需走 `run_bash`。内联的 `stdout`/`stderr` 是有界预览（分别 4,000 与 2,000 字符），截断标记会给出省略的字符数并说明完整日志是一个 artifact；完整字节流始终以带 SHA-256 digest 的 content-addressed artifact 写出。
+
+#### `run_bash(command, work_dir="/workspace", timeout=600)`
+
+在工作目录中运行 bash 命令。预览与完整日志的处理同 `run_code`，结果中带有 `truncated` 布尔标志。
+
+#### `read_file(path, offset=0, limit=8000, work_dir="/workspace")`
+
+针对大文件支持分页读取文本。`offset` 与 `limit` 是**字符**偏移而非行号。返回内容、用于继续的 `next_offset`（读到末尾为 `null`）与总字符数。
 
 ```python
 result = read_file("results.csv", offset=0, limit=100)
-# 返回值: {"content": "...", "next_offset": 100, "total_lines": 5000}
+# 返回值: {"path": "...", "content": "...", "offset": 0, "returned_chars": 100,
+#          "total_chars": 5000, "truncated": True, "next_offset": 100}
 ```
 
-工作目录：`work_dir` 参数 > `ARI_WORK_DIR` 环境变量 > `/tmp/ari_work`。
+工作目录：workspace 根目录由 `ARI_WORK_DIR`（默认 `/tmp/ari_work`）固定。`work_dir` 参数并不替换该根目录，而是选定其**下**的一个目录并按需创建；解析后落在根目录之外的路径会被拒绝而不是被改写。智能体看到的根目录是固定的容器路径 `/workspace`，文件类工具会在真正访问前把 `filename`、`command`、`path` 这几个参数中的该路径映射回真实目录，并从每个结果中抹掉真实路径。但 `work_dir` 参数本身**不会**被映射回去：它按原样对真实根目录解析，因此即便 `/workspace` 是该参数在 schema 中声明的默认值，直接把它传给 `work_dir` 也会因逸出根目录而被拒绝。请让 `work_dir` 保持未设置（此时解析为根目录），或交由下文的 `ari.agent.tool_manager` 钉定该节点的真实路径。
 
-#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, file="results.json", work_dir="/tmp/ari_work")`
+#### `emit_results(params, measurements, cases={}, predictions={}, scores={}, provenance={}, units={}, execution=None, file="results.json", work_dir="/workspace")`
 
 写出一份将输入参数与测量输出分离的类型化 `results.json`，使下游（`transform → science_data`、论文撰写、summary stats）不会把「测量到的量」与「运行所用的条件」混淆，避免 best-of 归约把输入尺寸（`nnz`、`M`、`K`、`threads`）误选为真实指标（如 `GFlops_per_s`）。`params` 与 `measurements` 必须 disjoint。
 
-可选的 `provenance` 参数是一个 `{operand: source}` 映射，会被原样写入 `results.json` 的 `_provenance` 键，由 claim/指标正确性门消费。当某个操作数的值是经验**测量**得到的上限/峰值时，标注 `"microbench"` 或 `"benchmark"`（以免归一化指标被判定为依赖占位值）；当它是相对于**独立**参考计算出的残差时，标注 `"correctness"` 或 `"reference"`（以免输出被判定为未经验证）。尽力而为，为空时完全省略。
+文件形如 `{"schema_version": "1.0", "typed_schema_version": "ari.measurement-set/v1", "measurement_set": {...}}`，只包含规范的 `MeasurementSetV1` 对象，旁边不再写平铺投影（见[执行与测量契约](execution_contract.md)）。每个分组都必须是 finite JSON：不可序列化的值（如 `pathlib.Path`）、`NaN`/`Infinity`、以及非数值的 measurement 都会被拒绝并返回 `error`，而不是被强制转换。
+
+可选的 `units` 参数是 `{measurement: unit}` 映射；未声明单位的 measurement 记为 `unit_status: "missing"`，单位从不推断。可选的 `execution` 参数是从上一次 `run_code`/`run_bash` 响应中原样复制的 `measurement_execution` 块（execution identity/attempt、status、exit code、artifact digest 以及服务端签发的 receipt）；不提供时 measurement 会被标记为 `execution_status: "unreported"`，并且不具备 scientifically admissible 资格。`units` 或 `provenance` 中出现 `measurements` 里没有的名字会被拒绝。
+
+`cases` 参数确实声明在工具的 input schema 里（面向测了多个问题规模 / 形状的 run，是可选的 `{case 名: {"params": {...}, "measurements": {...}}}` 映射），但当前服务端并不转发它：`call_tool` 的 `emit_results` 分支只传 `params` / `measurements` / `predictions` / `scores` / `provenance` / `units` / `execution` / `file` / `work_dir`，写入函数也没有 `cases` 形参。因此放进 `cases` 的内容会被接受后丢弃，多形状的 run 不能只靠 `cases` 上报；请换用不同的 `file` 名，为每个 case 各出一份 `results.json`。
+
+可选的 `provenance` 参数是一个 `{operand: source}` 映射，记录在对应的规范 measurement 记录上，由 claim/指标正确性门消费。当某个操作数的值是经验**测量**得到的上限/峰值时，标注 `"microbench"` 或 `"benchmark"`（以免归一化指标被判定为依赖占位值）；当它是相对于**独立**参考计算出的残差时，标注 `"correctness"` 或 `"reference"`（以免输出被判定为未经验证）。尽力而为，为空时完全省略。
 
 ---
 
 ## ari-skill-benchmark
 
-性能分析、绘图和统计检验。**LLM：否**（确定性）。
+结果汇总、统计检验与运行比较。**LLM：否**（确定性）。
+
+三个工具都只接受一个 typed 的 `request` 对象，并返回一份 `AnalysisResultV1`，其中
+带 `kind`、覆盖完全解析后输入的 `input_digest`、调用方的 `analysis_plan_digest`，
+以及产出这些数字所用的 `library_versions`（python / numpy / scipy）；请求带
+`artifact_target` 时，还会向封闭 workspace 的 `{relative_directory}/{digest}/` 下
+原子写出 `result.json` 与 `table.csv` 两份 digest 绑定的 `AnalysisArtifactV1` 产物。
+数值样本要么以 `observations` 内联给出，要么以 `source` 指向封闭 workspace 里一份
+digest 绑定的 CSV / JSON / NPY 列（`expected_digest` 必填）——两者必居其一。
+
+绘图不在本技能内：确定性渲染由 `ari-skill-plot` 承担。
 
 ### 工具
 
-#### `analyze_results(result_path, metrics)`
+#### `analyze_results(request)`
 
-加载并分析 CSV、JSON 或 NPY 结果文件。返回汇总统计信息。
+按 `AnalysisRequestV1` 汇总带单位的 typed 样本。每个 dataset（`MetricSampleSetV1`）
+必须声明 `metric_id` 与 `unit`，同一请求内 `metric_id` 不得重复。`missing_policy`
+取 `error`（默认）或 `drop`，`confidence_level` 默认 `0.95`。每个 metric 返回
+count / missing_count / mean / std / variance / min / q25 / median / q75 / max、
+`mean_confidence_interval`、`constant_data`、`independence_status` 与
+`source_digest`。
 
-#### `plot(data, plot_type, output_path, title="", xlabel="", ylabel="")`
+#### `statistical_test(request)`
 
-生成 matplotlib 图表。图表类型：`bar`、`line`、`scatter`、`heatmap`。
+按 `StatisticalTestRequestV1` 运行**预先声明**的检验族。每个比较给出
+`comparison_id` / `group_a` / `group_b`，`test_family` 取 `auto`（默认）/ `welch_t` /
+`student_t` / `paired_t` / `mann_whitney` / `wilcoxon`，`pairing` 取 `unpaired` /
+`ordered` / `pair_id`，另有 `alternative` / `alpha` / `confidence_level`。两组的
+`metric_id` 与 `unit` 必须一致。
 
-#### `statistical_test(data_a, data_b, test)`
+`correction` 取 `none`（默认）/ `bonferroni` / `holm` / `benjamini_hochberg`：
+比较多于一个时 `none` 会被拒绝——多重性策略必须显式声明，而不是事后再挑一个。
+返回统计量、原始与校正后的 p 值、效应量及其置信区间。
 
-运行 scipy 统计检验：`ttest`、`mannwhitney`、`wilcoxon`。
+#### `compare_runs(request)`
+
+按 `RunComparisonRequestV1` 对标量 run 排名。至少 2 个 run，`metric_id` 与 `unit`
+必须一致，`direction` 取 `higher` / `lower`；`baseline_run_id` 省略时取第一个 run。
+
+默认 `require_compatible_environment=true`：`backend_id` + `environment_digest` 的
+组合不止一种时直接拒绝，要跨环境排名就必须显式关掉它并接受 caveat。返回相对
+baseline 的 `delta` / `relative_delta`、环境分组（同一 substrate 上的 run 标注
+`shared_substrate`，且 `independence_inference: "not-permitted"`），以及
+`independence_status`——只有每个 run 都带互不相同的 `replicate_id` 时才是
+`declared`。
 
 ---
 
 ## ari-skill-plot
 
-科学论文图表生成器。两种模式：**确定性模式**（`generate_figures`，P2-safe 的 matplotlib + 固定 schema）与 **LLM 模式**（`generate_figures_llm`，AI-Scientist-v2 风格让 LLM 写代码并执行，可选 VLM 添加图注）。**LLM：混合**（确定性 + P2 例外）。
+科学论文图表生成器。渲染器只有一个：所有路径最终都落到同一个固定的
+`FigureSpecV1` 渲染器上，**任何调用方（包括 LLM）提供的绘图代码都不会被执行**。
+三个工具的区别只在于 spec 从哪里来——直接给出、确定性推导，还是由 LLM 在被准入的
+字段范围内挑选。**LLM：混合**（确定性 + P2 例外）。
 
 ### 工具
 
-#### `generate_figures(nodes_json_path, output_dir, figures=None, science_data_path="", vlm_captions=True, experiment_context="")`
+#### `render_figure(request)`
 
-从 `nodes_tree.json` 渲染规范化对比图到 `output_dir`。返回每个生成图的清单（含 caption 与源节点 id）。给定 matplotlib 版本下字节确定。
+渲染一份规范的 `FigureSpecV1`。`request` 必须**恰好**是 `spec` / `workspace` /
+`relative_directory` 三个键，多一个少一个都被拒绝。返回该图的 manifest。
 
-#### `generate_figures_llm(nodes_json_path, output_dir, experiment_summary="", context="", n_figures=3, science_data_path="", vlm_feedback="")`
+#### `generate_figures(science_data_path, output_dir, n_figures=3, revision=0)`
 
-LLM 检视数据形状与自然语言 `intent`，编写 matplotlib 代码，在与确定性模式相同的 `_run_plot_code` 沙箱中执行，并（可选地）调用 VLM 为生成的图添加 caption。P2 例外。
+从原生 `ScienceDataV1`（连同其产物 digest 一起加载）推导出确定性的默认 spec 并逐一
+渲染到 `output_dir`，返回一份 `FigureBatchV1`。`n_figures` 取 1…12 的整数；
+`revision` 只能是 `0`——确定性路径没有反馈轮，非零 revision 会被拒绝而不是当成重渲。
+`science_data_path` 必须能解析到由 `output_dir` 推出的 workspace 之内。
 
-`kind="plot"` 的系统提示现在会强制一条 **LAYOUT** 规则（调用 `fig.tight_layout()` 并以 `bbox_inches='tight'` 保存、把图例放在坐标轴之外、旋转过长的刻度标签；文字重叠或被截断的图会被 **REJECTED**）以及一条 **COMPARABILITY** 规则（不要在没有明确坐标轴或注释的情况下，把不同尺度/不同区间测得的值并置）。这些是给编写图表的 LLM 的提示级指引，不会新增机械式门。
+#### `generate_figures_llm(science_data_path, output_dir, experiment_summary="", n_figures=3, vlm_feedback="", revision=0, previous_batch_path="")`
+
+让 LLM 挑选 spec，然后交给同一个固定渲染器。模型**只能**产出 `metric_id`、
+`chart_type` 与 `x_mode` 三个字段；数值、单位、caption、路径、代码、SVG 与产物
+字节全部由经校验的科学记录确定性地选出或生成。P2 例外。
+
+`revision=0` 时不接受 `vlm_feedback`，`revision>0` 时则必须带上一份评审文档；
+反馈还必须绑定上一版的 `manifest_digest`，且不得改动稳定的 `figure_id`——
+「按反馈改图」因此不能悄悄变成「换一张图」。
+
+规划器模型：`ARI_MODEL_PLOT` > `ARI_LLM_MODEL` > `LLM_MODEL`（都没有则报错）；
+`temperature` 固定为 0。
 
 ### 环境变量
 
 | 变量 | 用途 | 默认 |
 |---|---|---|
-| `VLM_MODEL` | 用于图注生成的 Vision LLM | `openai/gpt-4o` |
-| `ARI_LLM_MODEL` | `_llm` 模式中编写 matplotlib 代码的 LLM | （无 — `_llm` 必需）|
-| `LLM_MODEL` | 跨技能回退 | （无）|
-| `ARI_LLM_API_BASE` | LiteLLM API base 覆盖 | LiteLLM 默认 |
-| `OPENAI_API_KEY` | 使用 OpenAI 系模型时所需 | （无）|
+| `ARI_MODEL_PLOT` | `generate_figures_llm` 的 spec 规划模型 | （无）|
+| `ARI_MODEL_PLOT_REVISION` | 记进 manifest 的规划模型 revision | （无）|
+| `ARI_LLM_MODEL` | 未设 `ARI_MODEL_PLOT` 时的回退 | （无）|
+| `LLM_MODEL` | 跨技能回退 | （无 — 三者全缺则 `generate_figures_llm` 报错）|
+| `ARI_LLM_API_BASE` / `LLM_API_BASE` | LiteLLM API base 覆盖 | LiteLLM 默认 |
+| `ARI_CONTAINER_DIGEST` | 记进图表环境记录的容器 digest | （无）|
 
 ### ari-core 边界
 
-`src/server.py` 中 `from ari import cost_tracker`；Phase 4 重构将其迁移到 `ari.public.cost_tracker`。
+`src/server.py` 只经公共边界触达 ari-core，且只用三个模块：`ari.public.figures`
+（`FigureBatchV1` / `FigureSpecV1` / `parse_figure_batch`）、`ari.public.cost_tracker`
+（随后 `bootstrap_skill("plot")`）与 `ari.public.execution`（`WorkspaceRefV1`）。
 
 ---
 
 ## ari-skill-vlm
 
-视觉语言模型，用于图表和表格质量审查。**LLM：是**（VLM）。
+视觉语言模型，用于图表和表格质量审查。**LLM：是**（VLM）。评审对象都必须来自
+已校验的产物：图表按 `figure_id` 从 `FigureBatchV1` 中选出，表格则是封闭 workspace
+下按内容寻址的产物——本技能不接受随手给出的图片路径。
+
+评审规范由 `criteria_profile_id` 选定（图表默认 `figure-publication/v1`）。每份
+`VisualReviewV1` 同时记录 `criteria_profile_id` **与** `criteria_profile_digest`，
+连同 model、model revision、provider、prompt digest 与 `sampling`
+（`temperature: 0.0`），因此分数不会被拿去跨「被悄悄改过的规范」比较。
+
+内置 profile：`figure-publication/v1`（source integrity、单位/标签、可读性、
+可比性、可达性；及格线 0.7）、`figure-domain-integrity/v1`（source integrity、
+不确定性、领域语义、可读性；及格线 0.75）、`table-publication/v1`（source
+integrity、单位/标签、精度、可读性；及格线 0.7）。未知的 profile ID，或
+`target_kind` 与调用不匹配的 profile，都会被拒绝。
 
 ### 工具
 
-#### `review_figure(image_path, context="", criteria=None)`
+#### `review_figure(figures_manifest_path, figure_id, context="", criteria_profile_id="figure-publication/v1", max_output_tokens=2048)`
 
-VLM 审查实验图表。返回评分（0-1）、问题和建议。
+从已校验的 `FigureBatchV1` 中按 `figure_id` 选出一张图评审；batch 里没有这个 id
+时直接报错。返回一份 `VisualReviewV1`（评分、问题与建议，并绑定该图的
+`manifest_digest`）。
 
-#### `review_table(latex_or_path, context="")`
+#### `review_figures_all(figures_manifest_path, context="", criteria_profile_id="figure-publication/v1", budget=None)`
 
-VLM 审查表格（LaTeX 源码或渲染图像）。返回评分、问题和建议。
+评审该 batch 中的每一张图，逐图保留失败与原始证据——一张图取不到产物不会让整批
+评审消失，它会以失败状态留在结果里。`budget`（`ReviewBudgetV1`）可调
+`max_figures`（默认 20，≤100）/ `max_total_bytes`（默认 100 MiB，≤512 MiB）/
+`max_concurrency`（默认 2，≤4）/ `max_model_calls`（默认 20，≤100）/
+`max_output_tokens`（默认 2,048，128–8,192），
+超出上限的图记为 `limit-error`。聚合方式是 `minimum-fail-closed`——只要有一张失败
+分数就是 0.0，否则取全部图的最小值。流水线的图表评审阶段跑的就是这个工具。
 
-模型：`VLM_MODEL` 环境变量 > `openai/gpt-4o`。
+#### `review_table(request)`
+
+评审一份内容寻址的表格产物。`request` 必须**恰好**是 `workspace` / `target_id` /
+`artifact` / `context` / `criteria_profile_id` / `iteration` / `max_output_tokens`
+七个键（`iteration` 取 0…2），多一个少一个都被拒绝。
+
+模型：`ARI_VLM_MODEL` 环境变量 > `VLM_MODEL` 环境变量（两者都缺则报错）；
+`ARI_MODEL_VLM_REVISION` / `ARI_MODEL_VLM_PROVIDER` 会一并记进评审的 provenance。
 
 ---
 

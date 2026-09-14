@@ -174,7 +174,6 @@ def test_restart_endpoint_actually_bounces_the_daemon():
         ckpt.mkdir()
         os.environ["ARI_CHECKPOINT_DIR"] = str(ckpt)
         os.environ["ARI_MEMORY_BACKEND"] = "letta"
-        os.environ["ARI_CURRENT_NODE_ID"] = "post-restart"
         os.environ["LETTA_BASE_URL"] = _BASE
         os.environ.setdefault(
             "LETTA_EMBEDDING_CONFIG", "openai/text-embedding-3-small"

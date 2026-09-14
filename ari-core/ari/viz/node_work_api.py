@@ -102,8 +102,11 @@ def _api_checkpoint_filetree(ckpt_id: str, node_id: str = "") -> dict:
                 continue
             # When viewing a node's work_dir, hide ARI metadata files
             # (node_report.json, viz_access.jsonl, memory_access.jsonl, …)
-            # so they don't masquerade as experiment artefacts.
-            if is_node_view and child.is_file() and PathManager.is_meta_file(name):
+            # so they don't masquerade as experiment artefacts. ``scope="node"``:
+            # the agent's own results.json / *.log ARE experiment artefacts here —
+            # hiding them was the point of the bug, not the point of this filter.
+            if (is_node_view and child.is_file()
+                    and PathManager.is_meta_file(name, scope="node")):
                 continue
             rel = f"{rel_prefix}/{name}" if rel_prefix else name
             if child.is_dir():

@@ -1,0 +1,232 @@
+{
+  "$defs": {
+    "ContainerIdentityV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "reference": {
+          "title": "Reference",
+          "type": "string"
+        },
+        "resolution_status": {
+          "enum": [
+            "resolved",
+            "unresolved"
+          ],
+          "title": "Resolution Status",
+          "type": "string"
+        },
+        "runtime": {
+          "enum": [
+            "docker",
+            "singularity",
+            "apptainer",
+            "unknown"
+          ],
+          "title": "Runtime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime",
+        "reference",
+        "resolution_status"
+      ],
+      "title": "ContainerIdentityV1",
+      "type": "object"
+    },
+    "ExecutionLimitsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "cpu_seconds": {
+          "anyOf": [
+            {
+              "maximum": 86400,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpu Seconds"
+        },
+        "max_output_bytes": {
+          "default": 67108864,
+          "maximum": 1073741824,
+          "minimum": 1024,
+          "title": "Max Output Bytes",
+          "type": "integer"
+        },
+        "max_processes": {
+          "anyOf": [
+            {
+              "maximum": 65536,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Processes"
+        },
+        "memory_bytes": {
+          "anyOf": [
+            {
+              "minimum": 16777216,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Bytes"
+        }
+      },
+      "title": "ExecutionLimitsV1",
+      "type": "object"
+    },
+    "WorkspaceRefV1": {
+      "additionalProperties": false,
+      "description": "One canonical writable root with no caller-controlled escape path.",
+      "properties": {
+        "root": {
+          "title": "Root",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.workspace-ref/v1",
+          "default": "ari.workspace-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "root"
+      ],
+      "title": "WorkspaceRefV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/execution-request-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "argv": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Argv"
+    },
+    "container": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ContainerIdentityV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "environment": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "maxProperties": 128,
+      "title": "Environment",
+      "type": "object"
+    },
+    "input_digests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "maxProperties": 1024,
+      "title": "Input Digests",
+      "type": "object"
+    },
+    "limits": {
+      "$ref": "#/$defs/ExecutionLimitsV1"
+    },
+    "network": {
+      "default": "inherit",
+      "enum": [
+        "inherit",
+        "deny"
+      ],
+      "title": "Network",
+      "type": "string"
+    },
+    "request_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Request Id"
+    },
+    "schema_version": {
+      "const": "ari.execution-request/v1",
+      "default": "ari.execution-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "shell_command": {
+      "anyOf": [
+        {
+          "maxLength": 100000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Shell Command"
+    },
+    "timeout_seconds": {
+      "default": 60,
+      "exclusiveMinimum": 0,
+      "maximum": 86400,
+      "title": "Timeout Seconds",
+      "type": "number"
+    },
+    "workspace": {
+      "$ref": "#/$defs/WorkspaceRefV1"
+    }
+  },
+  "required": [
+    "workspace"
+  ],
+  "title": "ARI Execution Request v1",
+  "type": "object"
+}

@@ -1,0 +1,146 @@
+{
+  "schema_version": "ari.manuscript-release-gates/v1",
+  "required_topologies": [
+    "simple_bfts+linear",
+    "simple_bfts+rqgm_archive",
+    "ari_rqgm+linear",
+    "ari_rqgm+rqgm_archive"
+  ],
+  "topology_test": "ari-core/tests/test_manuscript_complete.py::test_four_topology_release_e2e_locks_exact_bound_builds",
+  "failure_injections": [
+    {
+      "id": "source-tamper-after-derived-artifact",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_compile_is_deterministic_and_tamper_evident",
+        "ari-core/tests/test_manuscript_complete.py::test_publication_finalizer_and_lock_recheck_exact_inputs"
+      ]
+    },
+    {
+      "id": "missing-finalizer-artifact",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_publication_failure_injection_matrix_blocks_before_lock"
+      ]
+    },
+    {
+      "id": "stale-target-mismatched-or-failed-certification",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_executable_fixture_expectations",
+        "ari-core/tests/test_production_harness_evidence.py::test_persisted_certify_publication_e2e_chain_and_cost"
+      ]
+    },
+    {
+      "id": "high-score-debug-frontier-selection",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_executable_fixture_expectations"
+      ]
+    },
+    {
+      "id": "unsupported-numeric-claim-after-readiness",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_rqgm_archive_uses_one_bundle_and_hard_disqualifies_before_utility"
+      ]
+    },
+    {
+      "id": "contextual-negative-used-as-positive-support",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_rqgm_archive_contextual_negative_cannot_win_as_positive_support",
+        "ari-core/tests/test_manuscript_complete.py::test_publication_failure_injection_matrix_blocks_before_lock"
+      ]
+    },
+    {
+      "id": "required-item-exceeds-brief-budget",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_required_brief_item_budget_failure_is_explicit"
+      ]
+    },
+    {
+      "id": "related-work-provider-or-cache-unavailable",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_recorded_literature_repair_resumes_without_provider"
+      ]
+    },
+    {
+      "id": "malformed-or-unknown-manuscript-schema",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_malformed_manuscript_contract_blocks_publication_finalizer"
+      ]
+    },
+    {
+      "id": "model-or-network-unavailable",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_enforced_archive_failure_rejects_an_unbound_fallback",
+        "ari-core/tests/test_manuscript_complete.py::test_audit_archive_backend_failure_records_legacy_fallback"
+      ]
+    },
+    {
+      "id": "repair-exhaustion-no-progress-or-human-decision",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_repair_identity_and_budget_are_fixed",
+        "ari-core/tests/test_manuscript_complete.py::test_auto_repair_stops_on_no_progress_or_human_decision"
+      ]
+    },
+    {
+      "id": "archive-high-utility-hard-failure",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_rqgm_archive_uses_one_bundle_and_hard_disqualifies_before_utility"
+      ]
+    },
+    {
+      "id": "resume-config-profile-mode-or-lock-disagreement",
+      "tests": [
+        "ari-core/tests/test_manuscript_complete.py::test_rqgm_archive_uses_one_bundle_and_hard_disqualifies_before_utility",
+        "ari-core/tests/test_manuscript_complete.py::test_audit_archive_records_legacy_authoring_and_diagnostics",
+        "ari-core/tests/test_manuscript_complete.py::test_publication_finalizer_and_lock_recheck_exact_inputs"
+      ]
+    }
+  ],
+  "migration_tests": [
+    "ari-core/tests/test_manuscript_complete.py::test_off_is_exact_no_artifact_identity",
+    "ari-core/tests/test_manuscript_complete.py::test_legacy_migration_and_rollback_are_additive"
+  ],
+  "checks": [
+    {
+      "id": "manuscript-complete",
+      "argv": ["{python}", "-m", "pytest", "-q", "ari-core/tests/test_manuscript_complete.py"]
+    },
+    {
+      "id": "authentic-production-harness",
+      "argv": ["{python}", "-m", "pytest", "-q", "ari-core/tests/test_production_harness_evidence.py"]
+    },
+    {
+      "id": "paper-skill",
+      "argv": ["{python}", "-m", "pytest", "-q", "ari-skill-paper/tests"]
+    },
+    {
+      "id": "tool-registry",
+      "argv": ["{python}", "-m", "pytest", "-q", "ari-skill-tool-registry/tests"]
+    },
+    {
+      "id": "public-api-boundaries",
+      "argv": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q",
+        "ari-core/tests/test_public_api_boundary.py",
+        "ari-core/tests/test_skill_public_contract.py"
+      ]
+    },
+    {
+      "id": "manuscript-schema-sync",
+      "argv": ["{python}", "scripts/sync_manuscript_schemas.py", "--check"]
+    },
+    {
+      "id": "contract-snapshots",
+      "argv": ["{python}", "scripts/snapshot_contracts.py", "--surface", "all", "--check"]
+    },
+    {
+      "id": "documentation-links",
+      "argv": ["{python}", "scripts/docs/check_doc_links.py"]
+    },
+    {
+      "id": "patch-whitespace",
+      "argv": ["git", "diff", "--check", "HEAD"]
+    }
+  ]
+}

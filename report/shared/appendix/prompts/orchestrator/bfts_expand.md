@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/orchestrator/bfts_expand.md@af0aba2d5805541d3a0ee5122019661a06c3ce27427c98690751ba487214703f @ commit e780fa5626fc
+% snapshot-from: ari-core/ari/prompts/orchestrator/bfts_expand.md@af0aba2d5805541d3a0ee5122019661a06c3ce27427c98690751ba487214703f @ commit 758cce4e2666
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are expanding a BFTS research tree node.

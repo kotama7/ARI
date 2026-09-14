@@ -3,7 +3,6 @@ import { useI18n } from '../../i18n';
 import { useAppContext } from '../../context/AppContext';
 import { StatBox } from '../common/StatBox';
 import { Card } from '../common/Card';
-import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
 
@@ -11,12 +10,13 @@ function StatusBadge({ status }: { status: string }) {
   if (status === 'running') return <Badge variant="yellow">{'⏳'} Running</Badge>;
   if (status === 'completed' || status === 'success') return <Badge variant="green">{'✓'} Done</Badge>;
   if (status === 'failed') return <Badge variant="red">{'✗'} Failed</Badge>;
+  if (status === 'blocked') return <Badge variant="red">{'✗'} Blocked</Badge>;
   return <Badge variant="muted">{status}</Badge>;
 }
 
 export function HomePage() {
   const { t } = useI18n();
-  const { setCurrentPage, checkpoints } = useAppContext();
+  const { checkpoints } = useAppContext();
 
   const { totalNodes, bestScore } = useMemo(() => {
     let nodes = 0;
@@ -29,19 +29,23 @@ export function HomePage() {
     return { totalNodes: nodes, bestScore: best };
   }, [checkpoints]);
 
-  const navigateTo = (page: string) => {
-    setCurrentPage(page);
-    window.location.hash = '#/' + page;
-  };
-
   const latest = checkpoints.length > 0 ? checkpoints[0] : null;
 
   return (
-    <div className="page active" style={{ display: 'block' }}>
-      <h1>{t('home_title')}</h1>
-      <p className="subtitle">{t('home_subtitle')}</p>
+    <div className="page active home-dashboard" style={{ display: 'block' }}>
+      <header className="workspace-header">
+        <div>
+          <div className="workspace-eyebrow">{t('nav_home')}</div>
+          <h1>{t('home_title')}</h1>
+          <p className="subtitle">{t('home_subtitle')}</p>
+        </div>
+        <a className="btn btn-primary workspace-primary-action" href="#/new">
+          <span aria-hidden="true">{'＋'}</span>
+          {t('nav_new')}
+        </a>
+      </header>
 
-      {/* Stat boxes */}
+      {/* Portfolio summary */}
       <div className="grid-3" style={{ marginBottom: 16 }}>
         <StatBox
           value={checkpoints.length || 0}
@@ -57,58 +61,49 @@ export function HomePage() {
         />
       </div>
 
-      {/* Quick Actions + Latest Experiment */}
-      <div className="grid-2">
-        <Card title={t('home_quick_actions')}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <Button variant="primary" onClick={() => navigateTo('new')}>
-              {'✨'} {t('nav_new')}
-            </Button>
-            <Button variant="outline" onClick={() => navigateTo('monitor')}>
-              {'📡'} {t('nav_monitor')}
-            </Button>
-            <Button variant="outline" onClick={() => navigateTo('results')}>
-              {'📊'} {t('nav_results')}
-            </Button>
-            <Button variant="outline" onClick={() => navigateTo('experiments')}>
-              {'🗂️'} {t('nav_experiments')}
-            </Button>
-          </div>
-        </Card>
-
-        <Card title={t('home_latest')}>
+      <div className="home-dashboard-grid">
+        <Card className="home-latest-card" title={t('home_latest')}>
           {latest ? (
-            <div style={{ fontSize: '.85rem', lineHeight: 1.8 }}>
-              <div>
-                ID: <strong>{latest.id}</strong>
+            <div>
+              <div className="home-run-heading">
+                <div>
+                  <strong>{latest.id.replace(/^\d{8,14}_/, '').replace(/_/g, ' ')}</strong>
+                  <code>{latest.id}</code>
+                </div>
+                <StatusBadge status={latest.status} />
               </div>
-              <div>
-                Nodes: <strong>{latest.node_count}</strong>
+
+              <div className="home-run-metrics">
+                <div>
+                  <span>{t('home_total_nodes')}</span>
+                  <strong>{latest.node_count}</strong>
+                </div>
+                <div>
+                  <span>{t('review_score')}</span>
+                  <strong>
+                    {latest.review_score != null ? latest.review_score : '—'}
+                  </strong>
+                </div>
+                <div>
+                  <span>{t('projects_freshness')}</span>
+                  <strong>
+                    {latest.mtime
+                      ? new Date(latest.mtime * 1000).toLocaleDateString()
+                      : '—'}
+                  </strong>
+                </div>
               </div>
-              <div>
-                Score:{' '}
-                <strong>
-                  {latest.review_score != null ? latest.review_score : '—'}
-                </strong>
-              </div>
-              <div>
-                Status: <StatusBadge status={latest.status} />
-              </div>
-              <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigateTo('results')}
-                >
-                  View Results {'→'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigateTo('tree')}
-                >
-                  View Tree {'→'}
-                </Button>
+
+              <div className="home-run-links">
+                <a href={`#/overview?run=${encodeURIComponent(latest.id)}`}>
+                  {t('nav_overview')} {'→'}
+                </a>
+                <a href={`#/tree2?run=${encodeURIComponent(latest.id)}`}>
+                  {t('nav_tree')} {'→'}
+                </a>
+                <a href={`#/results2?run=${encodeURIComponent(latest.id)}`}>
+                  {t('nav_results')} {'→'}
+                </a>
               </div>
             </div>
           ) : (
@@ -117,6 +112,23 @@ export function HomePage() {
               hint={t('home_subtitle')}
             />
           )}
+        </Card>
+
+        <Card className="home-workspaces-card" title={t('home_quick_actions')}>
+          <div className="home-workspace-links">
+            {[
+              ['📁', 'projects', 'nav_projects'],
+              ['📡', 'monitor', 'nav_monitor'],
+              ['🗂️', 'experiments', 'nav_experiments'],
+              ['⚡', 'workflow', 'nav_workflow'],
+            ].map(([icon, path, labelKey]) => (
+              <a key={path} href={`#/${path}`}>
+                <span aria-hidden="true">{icon}</span>
+                <strong>{t(labelKey)}</strong>
+                <span aria-hidden="true">{'›'}</span>
+              </a>
+            ))}
+          </div>
         </Card>
       </div>
     </div>

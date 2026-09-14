@@ -1,0 +1,39 @@
+{
+  "application_network_policy": "disabled-in-pts-user-config",
+  "attachment_execution": "none",
+  "base_docker_image_digest": "sha256:cfd4f4fc6c294670ec3fe7fc3f0583c59d5329b93693a6a2e9ba282f83c8bc7a",
+  "base_sif_sha256": "sha256:596ad0fd79bf397dddf91c54195f8fa65a27349f3444b2860b614727e85061de",
+  "benchmark_binary_sha256": "sha256:18d9c50fcdf82af0c7086c802a3af4ec0a232c3e836c156ff05f4cd0b347165d",
+  "benchmark_source_sha256": "sha256:76c1e5f3b1fa49c450cf96d587c14d7ec7d139b7b672633b0f49259119358ad9",
+  "container_network_namespace_proved": false,
+  "derived_sif_sha256": "sha256:f02d9735dadd6912c21b86fe155b1dab1794453b0a4a24f55f5668029e72d23a",
+  "downloads_manifest_sha256": "sha256:b26f1dbd3ac457f54118382c8df8eb782e286862f372510a6dd2395e5cc75fec",
+  "node_identifier_persisted": false,
+  "profile": "pts/c-ray-2.0.0",
+  "profile_arguments": "-s 1920x1080 -r 16",
+  "profile_manifest_sha256": "sha256:497aaa4ea3d41c86d9f67db4c5828c14870a77b852f29b8b976f6e1a6e91c2a8",
+  "pts_version": "10.8.3",
+  "result": "pass",
+  "run": {
+    "average_seconds": 56.747,
+    "composite_xml_sha256": "sha256:f019497a8088bbe960be7ce43d29a02fbfdadfb03e8f718c5392cbd8ef04d91d",
+    "samples_seconds": [
+      56.703,
+      56.790
+    ]
+  },
+  "run_time_setup_included": false,
+  "runner": "official-phoronix-test-suite-cli",
+  "schema_version": "ari.intel-phoronix-clean-task/v1",
+  "score_direction": "lower-is-better",
+  "whole_run_replay": {
+    "average_delta_percent": 0.574479708,
+    "average_seconds": 57.073,
+    "composite_xml_sha256": "sha256:e6075d65131be2acb8d57e4a08455a6581ee533d939694113a6c74765b50e4d6",
+    "samples_seconds": [
+      56.957,
+      57.188
+    ]
+  },
+  "warmup_policy": "none-declared-by-profile"
+}

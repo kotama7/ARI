@@ -1,34 +1,74 @@
-"""MCP tool-call timeout tiering (ari.mcp.client._resolve_tool_timeout).
+"""Manifest-driven MCP timeout and declared-budget contract tests."""
 
-Regression guard: an LLM-heavy stage omitted from _SLOW_TOOLS silently inherits
-the 300s default and times out under CLI-shim congestion (this is exactly what
-happened to paper_refine — write_paper, already slow-tiered, never failed).
-"""
+from __future__ import annotations
+
+from pathlib import Path
+
 from ari.mcp.client import (
-    _resolve_tool_timeout,
+    DEFAULT_TOOL_TIMEOUT,
     SLOW_TOOL_TIMEOUT,
     VERY_SLOW_TOOL_TIMEOUT,
-    DEFAULT_TOOL_TIMEOUT,
+    _resolve_tool_timeout,
 )
+from ari.skill_manifest import load_skill_manifest
 
 
-def test_llm_and_compile_paper_stages_are_slow_tiered():
-    # Every paper stage that does an internal LLM call OR a multi-pass latexmk
-    # sequence must exceed the 300s default.
-    for tool in ("write_paper_iterative", "paper_refine", "review_compiled_paper",
-                 "compile_paper", "generate_ideas", "collect_references_iterative"):
-        assert _resolve_tool_timeout(tool, {}) == SLOW_TOOL_TIMEOUT, tool
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_plain_deterministic_tool_gets_default():
-    # Pure string/dict tools (no LLM, no subprocess) keep the short default.
-    for tool in ("link_paper_claims", "claim_evidence_hard_gate", "inject_code_availability"):
-        assert _resolve_tool_timeout(tool, {}) == DEFAULT_TOOL_TIMEOUT, tool
+def test_timeout_class_is_name_independent():
+    assert _resolve_tool_timeout({}, timeout_class="slow") == SLOW_TOOL_TIMEOUT
+    assert _resolve_tool_timeout({}, timeout_class="very-slow") == VERY_SLOW_TOOL_TIMEOUT
+    assert _resolve_tool_timeout({}, timeout_class="bounded") == DEFAULT_TOOL_TIMEOUT
 
 
-def test_very_slow_sandbox_tools():
-    assert _resolve_tool_timeout("build_reproduce_sh", {}) == VERY_SLOW_TOOL_TIMEOUT
+def test_undeclared_argument_cannot_expand_outer_timeout():
+    assert (
+        _resolve_tool_timeout(
+            {"time_limit_sec": 100},
+            timeout_class="bounded",
+        )
+        == DEFAULT_TOOL_TIMEOUT
+    )
 
 
-def test_explicit_budget_overrides_with_buffer():
-    assert _resolve_tool_timeout("run_reproduce", {"time_limit_sec": 100}) == 700
+def test_declared_budget_is_buffered_and_bounded():
+    budget = {
+        "argument": "time_limit_sec",
+        "unit": "seconds",
+        "overhead_seconds": 600,
+        "maximum_seconds": 46_800,
+    }
+    assert (
+        _resolve_tool_timeout(
+            {"time_limit_sec": 100},
+            timeout_class="very-slow",
+            timeout_budget=budget,
+        )
+        == 700
+    )
+    assert (
+        _resolve_tool_timeout(
+            {"time_limit_sec": 100_000},
+            timeout_class="very-slow",
+            timeout_budget=budget,
+        )
+        == 46_800
+    )
+
+
+def test_every_canonical_tool_resolves_timeout_policy():
+    manifests = sorted(REPO_ROOT.glob("ari-skill-*/skill.yaml"))
+    assert manifests
+    for path in manifests:
+        manifest = load_skill_manifest(path)
+        resolved = manifest.resolved_tools()
+        assert len(resolved) == len(manifest.tools)
+        for tool in resolved:
+            assert tool.timeout_class in {
+                "default",
+                "bounded",
+                "slow",
+                "very-slow",
+                "async",
+            }, f"{path.parent.name}/{tool.name}"

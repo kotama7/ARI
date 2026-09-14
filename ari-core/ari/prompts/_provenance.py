@@ -7,7 +7,8 @@ the structural twin of :mod:`ari.cost_tracker`'s ``cost_trace.jsonl``: same
 append-under-lock discipline, same additive ``None``/``""``-defaulted fields,
 same checkpoint scoping via ``ARI_CHECKPOINT_DIR`` / :class:`ari.paths.PathManager`.
 
-Design constraints (P2 determinism — see ``docs/refactoring/011_prompt_management_plan.md`` §8.3):
+Design constraints (P2 determinism — the same prompt must produce the same
+recorded hashes on any machine, on any rerun):
 
 * Pure stdlib: no LLM calls, no network, no third-party deps.
 * Hashes are ``sha256(text.encode("utf-8")).hexdigest()[:12]`` — the *exact*

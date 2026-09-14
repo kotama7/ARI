@@ -420,3 +420,50 @@ def test_decide_handles_recursion_depth_at_limit():
     prompt = state_at_limit.to_prompt()
     assert "recursion" in prompt.lower()
     assert "limit" in prompt.lower() or "switch_to_idea" in prompt.lower()
+
+
+# ── RQGM selective erasure: erased nodes never feed lineage decisions ─────
+
+def _tree_node(i, score, *, erased=False, axes=None):
+    m = {"_scientific_score": score}
+    if axes:
+        m["_axis_scores"] = dict(axes)
+    if erased:
+        m["_stale"] = True
+        m["_valid_for_frontier"] = False
+    return {"metrics": m, "label": "improve", "id": f"node_{i}"}
+
+
+def test_lineage_state_excludes_erased_nodes():
+    from ari.orchestrator.lineage_decision import build_lineage_state
+
+    nodes = [
+        _tree_node(1, 0.5, axes={"measurement_validity": 0.5}),
+        _tree_node(2, 0.9, erased=True, axes={"measurement_validity": 0.9}),
+        _tree_node(3, 0.55),
+    ]
+    st = build_lineage_state(all_nodes=nodes, idea_data={}, budget_remaining=3)
+    assert st.recent_composite_scores == [0.5, 0.55]
+    assert st.best_axis_scores == {"measurement_validity": 0.5}
+
+
+def test_stagnation_fires_when_erased_outlier_is_excluded():
+    # A retained stale high score inside the window widens the range and
+    # suppresses a genuine plateau; the filtered composites measure the
+    # correct population, so the pivot fires.
+    from ari.cli.bfts_loop import _valid_composites
+    from ari.orchestrator.lineage_decision import detect_stagnation
+
+    class _N:
+        def __init__(self, score, erased=False):
+            self.metrics = {"_scientific_score": score}
+            if erased:
+                self.metrics["_valid_for_frontier"] = False
+
+    nodes = [_N(0.50), _N(0.51), _N(0.90, erased=True),
+             _N(0.505), _N(0.51), _N(0.50)]
+    contaminated = [0.50, 0.51, 0.90, 0.505, 0.51, 0.50]
+    assert detect_stagnation(contaminated, window=5, threshold=0.02) is False
+    filtered = _valid_composites(nodes)
+    assert filtered == [0.50, 0.51, 0.505, 0.51, 0.50]
+    assert detect_stagnation(filtered, window=5, threshold=0.02) is True

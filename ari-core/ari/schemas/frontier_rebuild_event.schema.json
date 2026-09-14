@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/frontier_rebuild_event.schema.json",
+  "title": "ARI-RQGM FrontierRebuildEvent",
+  "description": "One frontier-rebuild record appended (inside the Task 02 audit envelope) to rqgm_audit.jsonl after the FrontierRepairEngine recomputes the frontier declaratively (eligibility + Rule-A reinstatement over valid children + Rule B via len(children)). status 'conservative' means flagged nodes were dropped outright after a kernel-validation failure; 'halted_expansion' means the run degraded to drain-only (see docs/reference/rqgm_schemas.md, section 'Frontier-repair schemas (Task 10)').",
+  "type": "object",
+  "required": [
+    "record_id",
+    "record_type",
+    "epoch_id",
+    "component_id",
+    "prompt_hash",
+    "role",
+    "created_at",
+    "source_refs",
+    "status",
+    "frontier_before",
+    "frontier_after",
+    "removed_node_ids",
+    "reinstated_node_ids",
+    "recomputed_utility_node_ids",
+    "kernel_validation"
+  ],
+  "properties": {
+    "record_id": {"type": "string", "pattern": "^rebuild_[0-9]{5,}$"},
+    "record_type": {"const": "FrontierRebuildEvent"},
+    "epoch_id": {"type": "string"},
+    "component_id": {"const": "frontier_repair_engine"},
+    "prompt_hash": {"type": "null"},
+    "role": {"const": "kernel"},
+    "created_at": {"type": "string"},
+    "source_refs": {"type": "array", "items": {"type": "string"}},
+    "status": {"enum": ["applied", "conservative", "halted_expansion"]},
+    "frontier_before": {"type": "array", "items": {"type": "string"}},
+    "frontier_after": {"type": "array", "items": {"type": "string"}},
+    "removed_node_ids": {"type": "array", "items": {"type": "string"}},
+    "reinstated_node_ids": {"type": "array", "items": {"type": "string"}},
+    "recomputed_utility_node_ids": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "kernel_validation": {"enum": ["passed", "failed"]}
+  }
+}

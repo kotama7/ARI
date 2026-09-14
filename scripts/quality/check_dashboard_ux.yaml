@@ -1,9 +1,9 @@
 # Config for scripts/check_dashboard_ux.py — the dashboard-UX regression checker
-# (subtask 073; design docs/refactoring/014_dashboard_ux_refactoring_plan.md §14,
-# 009_quality_scripts_plan.md §3/§6/§8).
+# (subtask 073; design refactoring plan 014, dashboard UX, §14, and plan 009,
+# quality scripts, §3/§6/§8).
 #
 # The checker GUARDS the preserved React-i18n + dashboard-UX contract
-# (docs/refactoring/010_contract_preservation_policy.md §4/§5/§9-D); it never
+# (refactoring plan 010, contract preservation, §4/§5/§9-D); it never
 # edits an i18n string, component, route, or endpoint. Every key below is
 # overridable so a 067/070 view-layer refactor can retarget extraction without a
 # code change (P2: stdlib + PyYAML only, no node/npm/pnpm).
